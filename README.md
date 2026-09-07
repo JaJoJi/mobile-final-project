@@ -401,7 +401,9 @@ mobile-final-project/
 │   ├── 02-requirements.md          ← FR + NFR + user stories
 │   ├── 03-architecture.md          ← Nest modules, TypeORM, Redis, Flutter, multi-instance
 │   ├── 04-api-contracts.md         ← REST + WS event schemas (✅ auth/user marked)
-│   └── 05-combat-spec.md           ← combat algorithm, targeting, abilities
+│   ├── 05-combat-spec.md           ← combat algorithm, targeting, abilities
+│   ├── 06-backlog.md               ← 36-issue backlog index
+│   └── 07-design-spec.md           ← UX/UI spec: screens, tokens, components, motion (P0-FE-00)
 │
 └── .opencode/skills/auto-chess-game/
     └── SKILL.md                    ← AI agent conventions (updated for auth + user)
@@ -411,7 +413,7 @@ mobile-final-project/
 
 ## 10. Game rules snapshot
 
-- **Board**: 2 rows × 3 cols per player, mirror layout.
+- **Board**: 3 rows × 3 cols per player (9 slots), mirror layout.
 - **Units**: Fighter (1g), Healer (1g), Ranger (2g), Tank (2g).
 - **Star upgrades**: 2× 0★ → 1★, 2× 1★ → 2★.
 - **Phase per round**: 40 s merged shop + place → battle (≤ 30 cycles of 100 ticks) → damage.
@@ -442,6 +444,7 @@ The full backlog lives in:
 - **Flutter auth flow** — LoginScreen / RegisterScreen / secure token storage / Dio Bearer interceptor / logout
 - 6 connectivity gates + 8 auth lifecycle steps passing
 - **GitHub Project #3** — 12 labels created, **36 backlog issues** open (14 P0 backend setup + 6 P0 backend logic + 7 P0 frontend + 4 P1 + 11 P3), 20 issues closed (14 out-of-MVP P2 + 6 old logic superseded)
+- **UX/UI design spec** ([#106 / P0-FE-00](https://github.com/JaJoJi/mobile-final-project/issues/106)) — `docs/07-design-spec.md`: 7 screens × 4 states, light/dark tokens, 10 components, motion timings, per-PR checklist
 
 **Next** (Phase 0 → Phase 1 → Frontend — see [`docs/06-backlog.md`](./docs/06-backlog.md) for full detail)
 
@@ -453,7 +456,7 @@ The full backlog lives in:
 3. Combat engine (P0-BE-09) → WS handlers (P0-BE-10) → Matchmaking (P0-BE-11) → Match service (P0-BE-12) → Round orchestrator (P0-BE-13) → Shop (P0-BE-14)
 
 *Frontend (can start in parallel with backend):*
-4. Design spec (P0-FE-00) → WS client + DTOs (P0-FE-01) → Auth hardening (P0-FE-02) → Shared widgets (P0-FE-06)
+4. ~~Design spec (P0-FE-00)~~ ✅ → WS client + DTOs (P0-FE-01) → Auth hardening (P0-FE-02) → Shared widgets (P0-FE-06)
 5. Lobby (P0-FE-03) → Match (P0-FE-04) → Battle animation (P0-FE-05)
 
 > **Board geometry**: 3 rows × 3 cols per player (9 board slots each) + 8 bench. See [`docs/01-game-design.md §2`](./docs/01-game-design.md).
@@ -462,8 +465,28 @@ See [`docs/01-game-design.md`](./docs/01-game-design.md) through [`docs/05-comba
 
 ---
 
-## 12. AI agent assistance
+## 12. Design system — read before touching UI
+
+**Every UI ticket starts at [`docs/07-design-spec.md`](./docs/07-design-spec.md)** (deliverable of issue [#106 / P0-FE-00](https://github.com/JaJoJi/mobile-final-project/issues/106)). It is the single source of truth for how the app looks and behaves, written for both humans and AI agents.
+
+| You are about to… | Read |
+|---|---|
+| build or change a screen | §4 — wireframe, component tree, and the four states (loading / empty / error / success) for that route |
+| pick a colour, font size, spacing, radius or animation duration | §2 — tokens. Never invent a value |
+| build a reusable widget | §3 — `Button`, `Card`, `TextField`, `HealthBar`, `UnitAvatar`, `PhaseTimerRing`, `Toast`, `Modal`, `TabBar`, state views |
+| wire a WS action or the phase timer | §5 — optimistic updates + rollback, deadline-based countdown, combat replay |
+| write user-facing text | §7 — the Thai copy table (keyed to the error codes in `04-api-contracts.md` §5) |
+| open a PR | §9.2 — the per-PR checklist |
+
+Hard rules the reviewer will check: no `Colors.*` / `Color(0x…)` / `fontSize:` / off-scale padding / raw `Duration` under `mobile/lib/features/**`; every network screen implements all four states; tap targets ≥ 48 dp; nothing communicated by colour alone; the phase countdown is derived from a deadline, never `Timer.periodic`; combat outcomes are never predicted client-side.
+
+---
+
+## 13. AI agent assistance
 
 The `.opencode/skills/auto-chess-game/SKILL.md` file encodes project conventions, folder layout, hard rules, and the combat cheat sheet. OpenCode/Claude reads it automatically when working in this repo — no manual context needed.
 
-If you change ability behavior, update `docs/05-combat-spec.md` in the same commit. If you change WS event names, update `docs/04-api-contracts.md`. The doc is the source of truth.
+Doc-update rules (the docs are the source of truth):
+- change ability behavior → update `docs/05-combat-spec.md` in the same commit
+- change WS event names or payloads → update `docs/04-api-contracts.md`
+- change a screen layout, token, component variant, or user-facing copy → update `docs/07-design-spec.md`
