@@ -2,7 +2,7 @@
 
 2-player auto-chess mobile game. Flutter client + Nest.js backend + PostgreSQL + Redis. **Stateless backend with horizontal scaling** behind an nginx load balancer, primary + read-replica Postgres, BullMQ-delayed jobs, and an authoritative-server combat engine.
 
-> **Status**: Connectivity ✅ · Auth + User ✅ · Matchmaking ⏳ · Combat engine ⏳ · WebSocket gateway ⏳. See [§11 Roadmap](#11-roadmap).
+> **Status**: Connectivity ✅ · Auth + User ✅ · WebSocket / Matchmaking / Combat / Shop / Match lifecycle ⏳. See [`docs/06-backlog.md`](./docs/06-backlog.md) for the 28-issue backlog and [GitHub Project #3](https://github.com/users/JaJoJi/projects/3) for the board.
 
 ---
 
@@ -425,6 +425,11 @@ Full combat algorithm: [`docs/05-combat-spec.md`](./docs/05-combat-spec.md).
 
 ## 11. Roadmap
 
+The full backlog lives in:
+- [`docs/06-backlog.md`](./docs/06-backlog.md) — summary index
+- [GitHub Issues](https://github.com/JaJoJi/mobile-final-project/issues) — canonical source of truth for every ticket
+- [GitHub Project #3](https://github.com/users/JaJoJi/projects/3) — board with 4 columns (Backlog / In Progress / Review / Done)
+
 **Done** ✅
 - 7-service docker-compose stack (nginx, 3× Nest, postgres-primary, postgres-replica, redis, pgadmin)
 - nginx with `least_conn` + CORS + WS upgrade + bind-mounted config
@@ -436,17 +441,14 @@ Full combat algorithm: [`docs/05-combat-spec.md`](./docs/05-combat-spec.md).
 - **User module** — GET/PATCH `/user/me` guarded by `JwtAccessGuard`
 - **Flutter auth flow** — LoginScreen / RegisterScreen / secure token storage / Dio Bearer interceptor / logout
 - 6 connectivity gates + 8 auth lifecycle steps passing
+- **GitHub Project #3** — labels created, 28 backlog issues filed, 14 out-of-scope issues closed
 
-**Next** (Week 1 remaining)
-1. **WebSocket gateway** — `@nestjs/websockets` + `socket.io` adapter, `WsAuthMiddleware` reading JWT from handshake. Required before matchmaking or combat can deliver events to Flutter.
-2. **Matchmaking** — Redis ZSET queue + BullMQ poller + `game:matchmaking:join`.
-3. **Combat engine** — pure `runBattle(state): CombatEvent[]` + Lua atomicity + combat-lock + Pub/Sub fan-out.
-
-**Later** (Weeks 2–4)
-- Shop module (server-side shop offer generation + RNG)
-- Battle UI + animation in Flutter
-- Match history + ratings + ELO update on match end
-- Reconnect grace period (currently instant forfeit per design)
+**Next** (in priority order — see [`docs/06-backlog.md`](./docs/06-backlog.md) for full detail)
+1. Cycle Processor (P0-BE-05) — pure server-side combat engine
+2. Real-time Gateway (P0-BE-01) — WebSocket + Pub/Sub + Lua primitives
+3. Match Lifecycle (P0-BE-03) + Round Orchestrator (P0-BE-04)
+4. Matchmaking (P0-BE-02) + Shop (P0-BE-06)
+5. Flutter WS client (P0-FE-01) + Lobby/Match/Battle screens (P0-FE-03..05)
 
 See [`docs/01-game-design.md`](./docs/01-game-design.md) through [`docs/05-combat-spec.md`](./docs/05-combat-spec.md) for the full locked design.
 
