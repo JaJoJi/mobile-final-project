@@ -441,14 +441,22 @@ The full backlog lives in:
 - **User module** — GET/PATCH `/user/me` guarded by `JwtAccessGuard`
 - **Flutter auth flow** — LoginScreen / RegisterScreen / secure token storage / Dio Bearer interceptor / logout
 - 6 connectivity gates + 8 auth lifecycle steps passing
-- **GitHub Project #3** — labels created, 28 backlog issues filed, 14 out-of-scope issues closed
+- **GitHub Project #3** — 12 labels created, **36 backlog issues** open (14 P0 backend setup + 6 P0 backend logic + 7 P0 frontend + 4 P1 + 11 P3), 20 issues closed (14 out-of-MVP P2 + 6 old logic superseded)
 
-**Next** (in priority order — see [`docs/06-backlog.md`](./docs/06-backlog.md) for full detail)
-1. Cycle Processor (P0-BE-05) — pure server-side combat engine
-2. Real-time Gateway (P0-BE-01) — WebSocket + Pub/Sub + Lua primitives
-3. Match Lifecycle (P0-BE-03) + Round Orchestrator (P0-BE-04)
-4. Matchmaking (P0-BE-02) + Shop (P0-BE-06)
-5. Flutter WS client (P0-FE-01) + Lobby/Match/Battle screens (P0-FE-03..05)
+**Next** (Phase 0 → Phase 1 → Frontend — see [`docs/06-backlog.md`](./docs/06-backlog.md) for full detail)
+
+*Phase 0 — Backend setup (½–1 day each, do first):*
+1. Redis + Lua loader (P0-BE-01) → TypeORM (P0-BE-02) → BullMQ (P0-BE-03) → WS gateway (P0-BE-04) → Pub/Sub bridge (P0-BE-05)
+2. Lua scripts (P0-BE-06) → Match entities + migration (P0-BE-07) → WS DTOs (P0-BE-08)
+
+*Phase 1 — Backend logic (after Phase 0):*
+3. Combat engine (P0-BE-09) → WS handlers (P0-BE-10) → Matchmaking (P0-BE-11) → Match service (P0-BE-12) → Round orchestrator (P0-BE-13) → Shop (P0-BE-14)
+
+*Frontend (can start in parallel with backend):*
+4. Design spec (P0-FE-00) → WS client + DTOs (P0-FE-01) → Auth hardening (P0-FE-02) → Shared widgets (P0-FE-06)
+5. Lobby (P0-FE-03) → Match (P0-FE-04) → Battle animation (P0-FE-05)
+
+> **Board geometry**: 3 rows × 3 cols per player (9 board slots each) + 8 bench. See [`docs/01-game-design.md §2`](./docs/01-game-design.md).
 
 See [`docs/01-game-design.md`](./docs/01-game-design.md) through [`docs/05-combat-spec.md`](./docs/05-combat-spec.md) for the full locked design.
 

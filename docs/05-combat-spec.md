@@ -80,26 +80,28 @@ function pickTarget(attacker, state):
     // Prioritize but not absolute — fall through if below returns nothing.
     // (Practically: if tank2 is alive, restrict to it.)
 
-  // Base rule: row → lane
-  sameLane = enemies.filter(u => u.position.col == attacker.position.col)
-  front    = sameLane.filter(u => u.position.row == 0)  // attacker-side front row of enemy = 0
-  if front.isNotEmpty:
-    candidates = front
-  else if sameLane.isNotEmpty:
-    candidates = sameLane.filter(u => u.position.row == 1)  // back row same lane
-    if candidates.isEmpty:
-      candidates = sameLane.filter(u => u.position.row == 0)  // fallback order
+  // Base rule: row → lane (3-row board: row 0 = front, 1 = middle, 2 = back)
+  sameLane  = enemies.filter(u => u.position.col == attacker.position.col)
+  frontRow  = sameLane.filter(u => u.position.row == 0)
+  middleRow = sameLane.filter(u => u.position.row == 1)
+  backRow   = sameLane.filter(u => u.position.row == 2)
+  if frontRow.isNotEmpty:
+    candidates = frontRow
+  else if middleRow.isNotEmpty:
+    candidates = middleRow
+  else if backRow.isNotEmpty:
+    candidates = backRow
 
   // If still nothing in same lane, fall back across lanes:
   if candidates is null or empty:
-    // iterate col in 0,1,2 order; pick first non-empty row (front then back)
+    // iterate col in 0,1,2 order; pick first non-empty row (front, then middle, then back)
     for col in [0,1,2]:
       colFront = enemies.filter(u => u.position.col == col and u.position.row == 0)
-      if colFront.isNotEmpty:
-        candidates = colFront; break
-      colBack = enemies.filter(u => u.position.col == col and u.position.row == 1)
-      if colBack.isNotEmpty:
-        candidates = colBack; break
+      if colFront.isNotEmpty: candidates = colFront; break
+      colMiddle = enemies.filter(u => u.position.col == col and u.position.row == 1)
+      if colMiddle.isNotEmpty: candidates = colMiddle; break
+      colBack = enemies.filter(u => u.position.col == col and u.position.row == 2)
+      if colBack.isNotEmpty: candidates = colBack; break
 
   // Unit-specific tie-breaker within candidates:
   if attacker.unitId == 'ranger':
@@ -111,7 +113,7 @@ function pickTarget(attacker, state):
 ### 2.1 Tie-breaker (within equal priority)
 
 1. Lowest `position.col`.
-2. Lowest `position.row` (front row 0 before back row 1).
+2. Lowest `position.row` (front row 0 before middle row 1 before back row 2).
 3. Lower `instanceId` (UUID/string compare) for total determinism.
 
 ## 3. Damage Application & Revive
@@ -155,7 +157,7 @@ emit('lifesteal', { unit: fighter.instanceId, amount: heal, hpAfter: fighter.hp 
 ### 4.2 Ranger
 
 After `applyDamage`:
-- `star == 1` (Pierce): find next alive enemy in same column, behind target (further from the front line). If exists, deal `floor(damage * 0.10)` and emit `pierce`.
+- `star == 1` (Pierce): find next alive enemy in same column, **directly** behind target (i.e. `row + 1` — adjacent). If exists, deal `floor(damage * 0.10)` and emit `pierce`. No further pierce beyond the adjacent row.
 - `star == 2`: targeting already handled in §2 (global lowest HP). No additional event here.
 
 ### 4.3 Tank

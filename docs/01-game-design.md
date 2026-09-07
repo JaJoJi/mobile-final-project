@@ -19,24 +19,26 @@ A match has **no fixed round limit**. Each player starts at **100 HP**. Damage r
 
 ## 2. Board Layout
 
-Each player has their own 2×3 grid:
+Each player has their own 3×3 grid:
 
 ```
         Bob's perspective (top)
    ┌────┬────┬────┐
    │    │    │    │   back row
+   │    │    │    │   middle row
    │    │    │    │   front row (closest to enemy)
    ╞════════════════╡
    │    │    │    │   front row (closest to enemy)
+   │    │    │    │   middle row
    │    │    │    │   back row
    └────┴────┴────┘
         Alice's perspective (bottom)
 ```
 
-Units in the same column fight each other across the front line. **Front row is closer to the enemy; back row is behind.**
+Units in the same column fight each other across the front line. **Front row is closest to the enemy; middle row is between; back row is furthest.**
 
 - **Lane** = column index (0, 1, 2).
-- Each player has independent row numbering: their row 0 = own front row; row 1 = own back row.
+- Each player has independent row numbering: their row 0 = own front row; row 1 = own middle row; row 2 = own back row.
 
 ## 3. Units
 
@@ -56,13 +58,13 @@ Four unit types. Each has stats and a star-upgrade path.
 When a unit picks an attack target:
 
 1. Filter to **enemy** units that are **alive**.
-2. Prefer **front row** over back row.
+2. Prefer **front row** over middle row, over back row.
 3. Within chosen row, prefer **same lane** (same column as attacker). If no target in same lane, fall back to other lanes (deterministic order: lane 0 → 1 → 2).
 4. Within candidates of equal priority, apply unit-specific tie-breaker.
 
 ### 3.2 Unit-specific targeting
 
-- **Fighter / Tank / Healer**: lowest column index wins ties. Within same column, **front row** before back row. Then lower `instanceId`.
+- **Fighter / Tank / Healer**: lowest column index wins ties. Within same column, **front row** before middle row, before back row. Then lower `instanceId`.
 - **Ranger**: among candidates, pick **lowest current HP**. Tie-break by lowest column index.
 - **Ranger 2★**: ignore lane rules entirely; pick **lowest-HP enemy anywhere on the enemy team**. Tie-break by lowest column index.
 
@@ -135,7 +137,7 @@ Players see their shop and board at the same time. They can:
 
 - Buy / sell / refresh / fuse units.
 - Drag units between **board** and **bench** (positions persist).
-- Place units on their 2×3 grid.
+- Place units on their 3×3 grid.
 
 If **both players** click **Ready**, battle starts early. Otherwise battle auto-starts at the 40 s timer expiry.
 
@@ -180,7 +182,7 @@ Each wipe advances the counter by one (cap at index 5). Counter is per-match and
 
 ## 7. Roster Constraints
 
-- **Board**: 6 slots (2 rows × 3 cols).
+- **Board**: 9 slots (3 rows × 3 cols).
 - **Bench**: 8 slots.
 - Positions persist across rounds unless the player moves a unit during the next merged phase.
 
