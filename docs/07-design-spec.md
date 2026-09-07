@@ -8,6 +8,7 @@
 **Related docs**
 | Doc | What it locks |
 |---|---|
+| [`07-design-kit.html`](./07-design-kit.html) | **visual reference** — palette, roster, type, motion, and all 6 screens rendered as a real mockup. Download and open in a browser (no build step). Read this alongside the wireframes below when a text description isn't enough |
 | `01-game-design.md` | board 3×3 (updated from 2×3), units, stars, abilities |
 | `02-requirements.md` | FR/NFR (40 s phase, authoritative server, disconnect = loss) |
 | `04-api-contracts.md` | REST + WS payloads each screen renders |

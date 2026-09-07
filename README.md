@@ -403,7 +403,8 @@ mobile-final-project/
 │   ├── 04-api-contracts.md         ← REST + WS event schemas (✅ auth/user marked)
 │   ├── 05-combat-spec.md           ← combat algorithm, targeting, abilities
 │   ├── 06-backlog.md               ← 36-issue backlog index
-│   └── 07-design-spec.md           ← UX/UI spec: screens, tokens, components, motion (P0-FE-00)
+│   ├── 07-design-spec.md           ← UX/UI spec: screens, tokens, components, motion (P0-FE-00)
+│   └── 07-design-kit.html          ← visual reference — open in a browser, no build step
 │
 └── .opencode/skills/auto-chess-game/
     └── SKILL.md                    ← AI agent conventions (updated for auth + user)
@@ -467,7 +468,7 @@ See [`docs/01-game-design.md`](./docs/01-game-design.md) through [`docs/05-comba
 
 ## 12. Design system — read before touching UI
 
-**Every UI ticket starts at [`docs/07-design-spec.md`](./docs/07-design-spec.md)** (deliverable of issue [#106 / P0-FE-00](https://github.com/JaJoJi/mobile-final-project/issues/106)). It is the single source of truth for how the app looks and behaves, written for both humans and AI agents.
+**Every UI ticket starts at [`docs/07-design-spec.md`](./docs/07-design-spec.md)** (deliverable of issue [#106 / P0-FE-00](https://github.com/JaJoJi/mobile-final-project/issues/106)). It is the single source of truth for how the app looks and behaves, written for both humans and AI agents. Download [`docs/07-design-kit.html`](./docs/07-design-kit.html) and open it in a browser for a visual walkthrough of the same tokens and screens — no build step, single file.
 
 | You are about to… | Read |
 |---|---|
