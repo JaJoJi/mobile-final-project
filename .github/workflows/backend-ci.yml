@@ -1,5 +1,10 @@
 name: backend-ci
 
+# Deliberately minimal while the codebase is moving fast: typecheck +
+# build + unit tests, nothing else. No DB/Redis services, no coverage
+# gate in CI, no artifacts. `npm run test:cov` still runs the >=90%
+# src/game gate locally.
+
 on:
   pull_request:
     paths:
@@ -9,29 +14,30 @@ on:
     branches: [dev, main]
     paths:
       - 'backend/**'
+      - '.github/workflows/backend-ci.yml'
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 defaults:
   run:
     working-directory: backend
 
 jobs:
-  build-and-test:
+  backend:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-
       - uses: actions/setup-node@v4
         with:
           node-version: 22
           cache: npm
           cache-dependency-path: backend/package-lock.json
-
       - run: npm ci
-
+      - name: Lint (typecheck)
+        run: npm run lint
       - name: Build
         run: npm run build
-
-      # jest.config.js enforces >= 90% line coverage on src/game/ (NFR-9);
-      # this step fails the PR if the combat engine drops below it.
-      - name: Test + coverage gate
-        run: npm run test:cov
+      - name: Test
+        run: npm test

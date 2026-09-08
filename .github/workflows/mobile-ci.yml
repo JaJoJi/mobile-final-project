@@ -1,5 +1,8 @@
 name: mobile-ci
 
+# Minimal: format check + analyze + test. No APK build (repo has no
+# mobile/android/ yet).
+
 on:
   pull_request:
     paths:
@@ -9,32 +12,29 @@ on:
     branches: [dev, main]
     paths:
       - 'mobile/**'
+      - '.github/workflows/mobile-ci.yml'
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 defaults:
   run:
     working-directory: mobile
 
 jobs:
-  analyze-and-test:
+  mobile:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-
       - uses: subosito/flutter-action@v2
         with:
           channel: stable
           cache: true
-
       - run: flutter pub get
-
-      - name: Verify formatting
+      - name: Format
         run: dart format --output=none --set-exit-if-changed .
-
-      # `flutter analyze` exits non-zero on any info/warning/error by
-      # default, so a clean tree is the gate.
       - name: Analyze
         run: flutter analyze
-
       - name: Test
         run: flutter test
-
