@@ -1,0 +1,40 @@
+name: mobile-ci
+
+on:
+  pull_request:
+    paths:
+      - 'mobile/**'
+      - '.github/workflows/mobile-ci.yml'
+  push:
+    branches: [dev, main]
+    paths:
+      - 'mobile/**'
+
+defaults:
+  run:
+    working-directory: mobile
+
+jobs:
+  analyze-and-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - run: flutter pub get
+
+      - name: Verify formatting
+        run: dart format --output=none --set-exit-if-changed .
+
+      # `flutter analyze` exits non-zero on any info/warning/error by
+      # default, so a clean tree is the gate.
+      - name: Analyze
+        run: flutter analyze
+
+      - name: Test
+        run: flutter test
+

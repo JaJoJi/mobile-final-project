@@ -242,8 +242,11 @@ void main() {
       tester,
       Builder(
         builder: (context) => AppButton(
-          onPressed: () => AppToast.show(context, 'บันทึกแล้ว',
-              variant: AppToastVariant.success),
+          onPressed: () => AppToast.show(
+            context,
+            'บันทึกแล้ว',
+            variant: AppToastVariant.success,
+          ),
           child: const Text('go'),
         ),
       ),
