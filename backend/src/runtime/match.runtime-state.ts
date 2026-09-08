@@ -4,12 +4,21 @@ import type { Match } from '../match/match.entity';
 
 export type MatchPhase = 'shop_place' | 'battle' | 'resolved' | 'finished';
 
+export interface RuntimeUnitState extends Record<string, unknown> {
+  instanceId: string;
+  unitId: UnitId;
+  star: Star;
+  hp: number;
+  maxHp: number;
+  investedGold?: number;
+}
+
 export interface RuntimePlayerState extends Record<string, unknown> {
   hp: number;
   gold: number;
   ready: boolean;
-  board: Array<Record<string, unknown> | null>;
-  bench: Array<Record<string, unknown> | null>;
+  board: Array<RuntimeUnitState | null>;
+  bench: Array<RuntimeUnitState | null>;
 }
 
 export interface MatchRuntimeState {
@@ -120,9 +129,12 @@ export function unitsFromBoard(
   });
 }
 
-function normalizeSlots(value: unknown, length: number): Array<Record<string, unknown> | null> {
+function normalizeSlots(value: unknown, length: number): Array<RuntimeUnitState | null> {
   const input = Array.isArray(value) ? value : [];
-  return Array.from({ length }, (_, index) => isRecord(input[index]) ? input[index] : null);
+  return Array.from(
+    { length },
+    (_, index) => isRecord(input[index]) ? input[index] as RuntimeUnitState : null,
+  );
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

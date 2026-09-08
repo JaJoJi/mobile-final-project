@@ -96,6 +96,13 @@ class FakeCombat {
   }
 }
 
+class FakeShop {
+  rolls = 0;
+  async rollOffersForMatch() {
+    this.rolls++;
+  }
+}
+
 function match(p2Hp = 100): Match {
   return {
     id: randomUUID(),
@@ -119,14 +126,16 @@ function makeHarness(winner: 'p1' | 'p2' | null = 'p1') {
   const pubsub = new FakePubsub();
   const matches = new FakeMatches();
   const combat = new FakeCombat(redis, pubsub, winner);
+  const shop = new FakeShop();
   const runtime = new MatchRuntimeAdapter(
     redis as any,
     matches as any,
     queue as any,
     pubsub as any,
     combat as any,
+    shop as any,
   );
-  return { redis, queue, pubsub, matches, combat, runtime };
+  return { redis, queue, pubsub, matches, combat, shop, runtime };
 }
 
 function add(results: Result[], name: string, passed: boolean, detail: string) {
@@ -179,8 +188,9 @@ async function run() {
     results,
     'damage event is followed by the next shop phase and timer',
     h.pubsub.events.some((event) => event.type === 'game:match:damage') &&
-      h.pubsub.events.at(-1)?.payload.phase === 'shop_place' && h.queue.phases.length === 2,
-    `events=${h.pubsub.events.map((event) => event.type).join(',')} timers=${h.queue.phases.length}`,
+      h.pubsub.events.at(-1)?.payload.phase === 'shop_place' &&
+      h.queue.phases.length === 2 && h.shop.rolls === 2,
+    `events=${h.pubsub.events.map((event) => event.type).join(',')} timers=${h.queue.phases.length} shops=${h.shop.rolls}`,
   );
 
   const staleStarts = await Promise.all(

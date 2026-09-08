@@ -7,6 +7,7 @@ import { RedisService } from '../redis/redis.service';
 interface PubSubEnvelope {
   type: string;
   payload: unknown;
+  targetUserId?: string;
 }
 
 const CHANNEL_PATTERN = 'match:*:events';
@@ -49,8 +50,8 @@ const COMBAT_RESULT_TTL_SECONDS = 60;
 export class PubsubBridge implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(PubsubBridge.name);
   private subscriber: Redis | null = null;
-  /** matchId → set of socketIds on THIS replica that want its events */
-  private readonly localSubscribers = new Map<string, Set<string>>();
+  /** matchId → socketId/userId pairs on THIS replica that want its events */
+  private readonly localSubscribers = new Map<string, Map<string, string | null>>();
   /** socket.io server for emitting, set by `WsGateway.afterInit` */
   private server: Server | null = null;
 
@@ -101,13 +102,13 @@ export class PubsubBridge implements OnModuleInit, OnModuleDestroy {
    * Register a local socket as interested in a match's events. Idempotent
    * — adding the same `socketId` twice is a no-op.
    */
-  subscribe(matchId: string, socketId: string): void {
+  subscribe(matchId: string, socketId: string, userId?: string): void {
     let bucket = this.localSubscribers.get(matchId);
     if (!bucket) {
-      bucket = new Set<string>();
+      bucket = new Map<string, string | null>();
       this.localSubscribers.set(matchId, bucket);
     }
-    bucket.add(socketId);
+    bucket.set(socketId, userId ?? null);
   }
 
   /**
@@ -136,6 +137,20 @@ export class PubsubBridge implements OnModuleInit, OnModuleDestroy {
    */
   async publish(matchId: string, eventType: string, payload: unknown): Promise<void> {
     const envelope: PubSubEnvelope = { type: eventType, payload };
+    await this.redis.client.publish(
+      `match:${matchId}:events`,
+      JSON.stringify(envelope),
+    );
+  }
+
+  /** Publish a private match event that is delivered only to one player. */
+  async publishToUser(
+    matchId: string,
+    userId: string,
+    eventType: string,
+    payload: unknown,
+  ): Promise<void> {
+    const envelope: PubSubEnvelope = { type: eventType, payload, targetUserId: userId };
     await this.redis.client.publish(
       `match:${matchId}:events`,
       JSON.stringify(envelope),
@@ -214,7 +229,8 @@ export class PubsubBridge implements OnModuleInit, OnModuleDestroy {
     // on a namespaced `@WebSocketGateway` returns the namespace, NOT the
     // parent Server. So `.to(socketId).emit(...)` here is already
     // namespace-scoped; no extra `.of('/game')` needed.
-    for (const sid of bucket) {
+    for (const [sid, userId] of bucket) {
+      if (envelope.targetUserId && envelope.targetUserId !== userId) continue;
       this.server.to(sid).emit(envelope.type, envelope.payload);
     }
   }

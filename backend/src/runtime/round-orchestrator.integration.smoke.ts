@@ -169,12 +169,14 @@ async function run() {
       queue as any,
       runBattle,
     );
+    const shop = { rollOffersForMatch: async () => undefined };
     const adapter = new MatchRuntimeAdapter(
       redis,
       matchService,
       queue as any,
       pubsub as any,
       coordinator,
+      shop as any,
     );
     const input = makeMatch(users[0].id, users[1].id);
     const persisted = await repository.create({
