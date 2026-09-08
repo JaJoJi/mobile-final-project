@@ -8,6 +8,7 @@ import { QueueModule } from './queue/queue.module';
 import { RedisModule } from './redis/redis.module';
 import { RedisService } from './redis/redis.service';
 import { UserModule } from './user/user.module';
+import { WsModule } from './ws/ws.module';
 
 @Module({
   imports: [
@@ -33,6 +34,7 @@ import { UserModule } from './user/user.module';
     QueueModule,
     UserModule,
     AuthModule,
+    WsModule,
   ],
   controllers: [HealthController],
   providers: [RedisService],
