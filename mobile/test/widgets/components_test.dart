@@ -113,6 +113,42 @@ void main() {
     testWidgets('unknown unitId throws', (tester) async {
       expect(() => unitKindFromId('wizard'), throwsArgumentError);
     });
+
+    testWidgets('renders the unit illustration', (tester) async {
+      await pumpThemed(
+        tester,
+        const UnitAvatar(unitId: 'tank', star: 1),
+      );
+      final img = tester.widget<Image>(find.byType(Image));
+      expect(img.image, isA<AssetImage>());
+      expect(
+        (img.image as AssetImage).assetName,
+        'assets/images/units/tank.png',
+      );
+    });
+
+    testWidgets('art path maps every unit id', (tester) async {
+      for (final id in ['fighter', 'healer', 'ranger', 'tank']) {
+        expect(
+          unitKindFromId(id).artPath,
+          'assets/images/units/$id.png',
+        );
+      }
+    });
+
+    testWidgets('sm size keeps a type glyph (no name label)', (tester) async {
+      await pumpThemed(
+        tester,
+        const UnitAvatar(
+          unitId: 'ranger',
+          star: 0,
+          size: UnitAvatarSize.sm,
+          variant: UnitAvatarVariant.bench,
+        ),
+      );
+      expect(find.text('Ranger'), findsNothing);
+      expect(find.byIcon(Icons.change_history), findsOneWidget);
+    });
   });
 
   testWidgets('PhaseTimerRing renders the remaining seconds', (tester) async {

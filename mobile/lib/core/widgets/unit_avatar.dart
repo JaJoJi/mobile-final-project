@@ -24,7 +24,18 @@ extension UnitKindDisplay on UnitKind {
         UnitKind.tank => 'Tank',
       };
 
-  /// MVP placeholder shape — design spec §6 (● / ✚ / ▲ / ■).
+  String get _assetName => switch (this) {
+        UnitKind.fighter => 'fighter',
+        UnitKind.healer => 'healer',
+        UnitKind.ranger => 'ranger',
+        UnitKind.tank => 'tank',
+      };
+
+  /// Illustration for this unit — `mobile/assets/images/units/`.
+  String get artPath => 'assets/images/units/$_assetName.png';
+
+  /// Fallback shape when the art can't load — design spec §6 (● / ✚ / ▲ / ■).
+  /// Also the small type glyph shown at `sm` size where there's no name label.
   IconData get shape => switch (this) {
         UnitKind.fighter => Icons.circle,
         UnitKind.healer => Icons.add,
@@ -53,9 +64,11 @@ enum UnitAvatarSize {
 
 /// Renders one unit anywhere — shop, bench, board, replay. Design spec §3.5.
 ///
-/// MVP art is a coloured Material shape + letter, a star badge, the name,
-/// and (in [UnitAvatarVariant.shop]) the price. **[MUST]** readable without
-/// colour: shape + star count + name label all carry the meaning.
+/// Shows the unit illustration (`assets/images/units/`, with the Material
+/// shape as fallback), a star badge, the name, and — for
+/// [UnitAvatarVariant.shop] — the price. **[MUST]** readable without
+/// colour: the name label (md/lg) or the type glyph (sm) plus the star
+/// count always carry the meaning.
 class UnitAvatar extends StatelessWidget {
   const UnitAvatar({
     super.key,
@@ -142,10 +155,20 @@ class UnitAvatar extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                _StarBadge(star: star, color: game.starColor(star)),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    _StarBadge(star: star, color: game.starColor(star)),
+                    // At `sm` there's no name label, so keep the type glyph
+                    // for colour-blind readers (design spec §6).
+                    if (size == UnitAvatarSize.sm)
+                      Icon(kind.shape, size: 12, color: tint),
+                  ],
+                ),
                 Expanded(
                   child: Center(
-                    child: Icon(kind.shape, color: tint, size: _width * 0.42),
+                    child:
+                        _UnitArt(kind: kind, tint: tint, size: _width * 0.72),
                   ),
                 ),
                 if (size != UnitAvatarSize.sm) ...[
@@ -282,6 +305,30 @@ class UnitAvatar extends StatelessWidget {
 /// Team side for tinting — pairs with an icon/label elsewhere, never colour alone.
 enum UnitSide { ally, enemy }
 
+/// The unit illustration with a graceful fallback to the placeholder shape
+/// if the asset is missing / fails to decode (e.g. in a widget test with no
+/// asset bundle).
+class _UnitArt extends StatelessWidget {
+  const _UnitArt({required this.kind, required this.tint, required this.size});
+
+  final UnitKind kind;
+  final Color tint;
+  final double size;
+
+  @override
+  Widget build(BuildContext context) {
+    return Image.asset(
+      kind.artPath,
+      width: size,
+      height: size,
+      fit: BoxFit.contain,
+      filterQuality: FilterQuality.medium,
+      errorBuilder: (_, __, ___) =>
+          Icon(kind.shape, size: size * 0.6, color: tint),
+    );
+  }
+}
+
 class _StarBadge extends StatelessWidget {
   const _StarBadge({required this.star, required this.color});
 
@@ -290,15 +337,11 @@ class _StarBadge extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    if (star <= 0) {
-      return Text('0★',
-          style:
-              Theme.of(context).textTheme.labelSmall?.copyWith(color: color));
-    }
+    // 0★ = base unit — no glyphs (the design mock only shows stars for 1★+).
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: List.generate(
-        star,
+        star.clamp(0, 2),
         (_) => Icon(Icons.star, size: 12, color: color),
       ),
     );
