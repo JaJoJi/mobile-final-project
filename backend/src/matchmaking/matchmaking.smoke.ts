@@ -110,6 +110,23 @@ class FakePubsubBridge {
   }
 }
 
+class FakeRuntimeAdapter {
+  constructor(private readonly pubsub: FakePubsubBridge) {}
+
+  async initializeMatch(match: Match): Promise<void> {
+    await this.pubsub.publish(match.id, 'game:match:phase', {
+      matchId: match.id,
+      phase: 'shop_place',
+      round: 1,
+      timer: 40,
+      players: [
+        { id: match.player1Id, hp: 100, gold: 5, ready: false },
+        { id: match.player2Id, hp: 100, gold: 5, ready: false },
+      ],
+    });
+  }
+}
+
 class FakeRepeatQueue {
   readonly jobs: Array<{ name: string; every: string }> = [];
   addCalls = 0;
@@ -138,7 +155,8 @@ async function run(): Promise<void> {
   const redis = new FakeRedisService();
   const matches = new FakeMatchRepository();
   const pubsub = new FakePubsubBridge();
-  const service = new MatchmakingService(redis as any, matches as any, pubsub as any);
+  const runtime = new FakeRuntimeAdapter(pubsub);
+  const service = new MatchmakingService(redis as any, matches as any, runtime as any);
   const results: TestResult[] = [];
 
   const activeUser = randomUUID();

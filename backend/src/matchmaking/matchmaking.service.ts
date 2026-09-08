@@ -3,11 +3,9 @@ import { randomUUID } from 'crypto';
 import { Match } from '../match/match.entity';
 import { MatchRepository } from '../match/match.repository';
 import { RedisService } from '../redis/redis.service';
-import { PubsubBridge } from '../runtime/pubsub.bridge';
+import { MatchRuntimeAdapter } from '../runtime/match.runtime.adapter';
 
 export const MATCHMAKING_QUEUE_KEY = 'matchmaking:queue';
-export const MATCH_START_TIMER_SECONDS = 40;
-
 export interface MatchmakingJoinResult {
   /** False means the user was already waiting; their original FIFO score is preserved. */
   queued: boolean;
@@ -50,7 +48,7 @@ export class MatchmakingService {
   constructor(
     private readonly redis: RedisService,
     private readonly matches: MatchRepository,
-    private readonly pubsub: PubsubBridge,
+    private readonly runtime: MatchRuntimeAdapter,
   ) {}
 
   /**
@@ -124,7 +122,7 @@ export class MatchmakingService {
 
     // Once the DB row exists, never requeue these users: doing so after a
     // Pub/Sub outage could create a second active match for the same player.
-    await this.publishMatchStart(match);
+    await this.runtime.initializeMatch(match);
     this.logger.log(
       `paired match=${match.id} player1=${player1Id} player2=${player2Id}`,
     );
@@ -149,19 +147,6 @@ export class MatchmakingService {
       board: Array<null>(9).fill(null),
       bench: Array<null>(8).fill(null),
     };
-  }
-
-  private async publishMatchStart(match: Match): Promise<void> {
-    await this.pubsub.publish(match.id, 'game:match:phase', {
-      matchId: match.id,
-      phase: 'shop_place',
-      round: 1,
-      timer: MATCH_START_TIMER_SECONDS,
-      players: [
-        { id: match.player1Id, hp: 100, gold: 5, ready: false },
-        { id: match.player2Id, hp: 100, gold: 5, ready: false },
-      ],
-    });
   }
 
   private async requeueAfterFailure(...playerIds: string[]): Promise<void> {

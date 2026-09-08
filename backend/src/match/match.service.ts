@@ -44,6 +44,27 @@ export class MatchService {
     if (!updated) this.throwNotFound(matchId);
   }
 
+  async updateRuntimeSnapshot(
+    matchId: string,
+    input: {
+      p1State: Record<string, unknown>;
+      p2State: Record<string, unknown>;
+      wipeIndexP1: number;
+      wipeIndexP2: number;
+    },
+  ): Promise<void> {
+    const updated = await this.matches.updateRuntimeSnapshot(matchId, input);
+    if (!updated) this.throwNotFound(matchId);
+  }
+
+  async forfeitDisconnectedPlayer(matchId: string, userId: string): Promise<boolean> {
+    const match = await this.matches.findById(matchId);
+    if (!match || match.status !== 'in_progress') return false;
+    if (userId !== match.player1Id && userId !== match.player2Id) return false;
+    const winnerId = userId === match.player1Id ? match.player2Id : match.player1Id;
+    return this.finalize(match.id, winnerId, 'disconnect');
+  }
+
   async appendRoundEvents(
     matchId: string,
     roundNumber: number,
@@ -129,12 +150,11 @@ export class MatchService {
     return true;
   }
 
-  /** Instant forfeit used by the WS disconnect handler in P0-BE-10. */
+  /** Finds the active match; RuntimeAdapter closes its Redis phase before calling this. */
   async leaveMatch(userId: string): Promise<boolean> {
     const match = await this.matches.findActiveByUserId(userId);
     if (!match) return false;
-    const winnerId = match.player1Id === userId ? match.player2Id : match.player1Id;
-    return this.finalize(match.id, winnerId, 'disconnect');
+    return this.forfeitDisconnectedPlayer(match.id, userId);
   }
 
   async getHistory(userId: string): Promise<MatchHistoryDto[]> {

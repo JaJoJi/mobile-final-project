@@ -52,7 +52,7 @@ backend/src/
 ├── match/               # ⏳ planned — match lifecycle, persistence
 ├── ws/                  # ⏳ planned — WebSocket gateway
 ├── redis/               # ✅ partially — client + Lua scripts (planned)
-├── runtime/             # ⏳ planned — stateless orchestrator
+├── runtime/             # ✅ stateless round orchestrator + combat coordinator
 └── queue/               # ⏳ planned — BullMQ workers
 
 backend/src/app.module.ts          ← wires TypeORM (auto-migrations RUN_MIGRATIONS-gated),
@@ -386,7 +386,7 @@ Every WS handler that mutates state goes through this pattern:
      const runtime = await redis.hgetall(`match:${id}:runtime`);
      validate action against runtime (phase = 'shop_place'?)
 3. mutate atomically:
-     const ok = await redis.eval(LUA_PHASE_FLIP, KEYS=[runtimeKey], ARGV=[old, new, instId]);
+     const ok = await redis.eval(LUA_PHASE_FLIP, KEYS=[runtimeKey], ARGV=[old, new, instId, round]);
      if (!ok) return;                       // already advanced
 4. publish any necessary updates:
      redis.publish(`match:${id}:events`, JSON.stringify(event));
@@ -445,9 +445,14 @@ All `*.lua` files live in `backend/src/redis/scripts/` and are loaded at boot wi
 -- ARGV[1] = expectedPhase   ('shop_place' / 'battle' / 'resolved')
 -- ARGV[2] = newPhase
 -- ARGV[3] = instanceId (for combat-lock owner tag)
--- Returns 1 if flipped, 0 if phase didn't match.
+-- ARGV[4] = expectedRound (optional for backward compatibility)
+-- Returns 1 if flipped, 0 if phase or round didn't match.
 local cur = redis.call('HGET', KEYS[1], 'phase')
 if cur ~= ARGV[1] then return 0 end
+if ARGV[4] and ARGV[4] ~= '' then
+  local round = redis.call('HGET', KEYS[1], 'round')
+  if round ~= ARGV[4] then return 0 end
+end
 redis.call('HSET', KEYS[1], 'phase', ARGV[2])
 if ARGV[2] == 'battle' then
   redis.call('HSET', KEYS[1], 'combatLockInstance', ARGV[3])
