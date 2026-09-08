@@ -1,22 +1,25 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import '../../core/api/api_client.dart';
+import '../../core/auth/auth_gate.dart';
 import '../../core/auth/auth_repository.dart';
 
-/// Connectivity smoke-test screen, plus identity + logout.
+/// The authenticated landing screen.
 ///
-/// After successful login/register the app lands here. Three actions:
-///   1. GET /health       — backend reachable through nginx
-///   2. GET /user/me      — auth + interceptor + /user/me working
-///   3. Ping 12 times      — nginx least_conn distribution
-class HealthScreen extends ConsumerStatefulWidget {
-  const HealthScreen({super.key});
+/// P0-FE-03 replaces this with the real find-match lobby. For now it keeps
+/// the connectivity smoke test (identity + `/health` + nginx distribution)
+/// and the logout action.
+class LobbyScreen extends ConsumerStatefulWidget {
+  const LobbyScreen({super.key});
+
+  static const path = '/lobby';
 
   @override
-  ConsumerState<HealthScreen> createState() => _HealthScreenState();
+  ConsumerState<LobbyScreen> createState() => _LobbyScreenState();
 }
 
-class _HealthScreenState extends ConsumerState<HealthScreen> {
+class _LobbyScreenState extends ConsumerState<LobbyScreen> {
   Map<String, dynamic>? _health;
   Map<String, dynamic>? _me;
   bool _loading = false;
@@ -27,12 +30,9 @@ class _HealthScreenState extends ConsumerState<HealthScreen> {
   Map<String, int>? _pingCounts;
   bool _pinging = false;
 
-  @override
-  void initState() {
-    super.initState();
-    // Auto-load /user/me on first build so the user sees their identity.
-    WidgetsBinding.instance.addPostFrameCallback((_) => _check());
-  }
+  // NOTE: no auto-load on mount — the identity + health checks run only
+  // when the user taps the buttons. P0-FE-03 replaces this screen with the
+  // real find-match lobby.
 
   Future<void> _check() async {
     setState(() {
@@ -79,8 +79,9 @@ class _HealthScreenState extends ConsumerState<HealthScreen> {
 
   Future<void> _logout() async {
     await ref.read(authRepositoryProvider).logout();
+    AuthGate.instance.signalSignedOut();
     if (!mounted) return;
-    Navigator.of(context).pushNamedAndRemoveUntil('/login', (_) => false);
+    context.go('/login');
   }
 
   @override
@@ -158,7 +159,8 @@ class _HealthScreenState extends ConsumerState<HealthScreen> {
                 ),
               ),
               const SizedBox(height: 24),
-              if (_health != null) _JsonBlock(title: 'GET /health', data: _health!),
+              if (_health != null)
+                _JsonBlock(title: 'GET /health', data: _health!),
               if (_pingCounts != null && _pingCounts!.isNotEmpty)
                 _PingDistribution(counts: _pingCounts!, results: _pingResults!),
               if (_error != null) _ErrorBlock(error: _error!),
@@ -289,7 +291,8 @@ class _PingDistribution extends StatelessWidget {
     final total = results.length;
     final entries = counts.entries.toList()
       ..sort((a, b) => a.key.compareTo(b.key));
-    final maxCount = entries.map((e) => e.value).reduce((a, b) => a > b ? a : b);
+    final maxCount =
+        entries.map((e) => e.value).reduce((a, b) => a > b ? a : b);
     final distinct = entries.length;
 
     return Container(
@@ -368,7 +371,9 @@ class _PingDistribution extends StatelessWidget {
                     ? '⚠ only 1 instance answered — connection may be keep-alive pinned'
                     : 'no responses',
             style: TextStyle(
-              color: distinct >= 2 ? Colors.green.shade700 : Colors.orange.shade700,
+              color: distinct >= 2
+                  ? Colors.green.shade700
+                  : Colors.orange.shade700,
               fontSize: 12,
             ),
           ),
@@ -394,7 +399,8 @@ class _ErrorBlock extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text('Error', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.red)),
+          const Text('Error',
+              style: TextStyle(fontWeight: FontWeight.bold, color: Colors.red)),
           const SizedBox(height: 8),
           Text(error, style: const TextStyle(fontFamily: 'monospace')),
         ],
