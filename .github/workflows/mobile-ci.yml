@@ -21,11 +21,6 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: actions/setup-java@v4
-        with:
-          distribution: temurin
-          java-version: '17'
-
       - uses: subosito/flutter-action@v2
         with:
           channel: stable
@@ -44,5 +39,10 @@ jobs:
       - name: Test
         run: flutter test
 
-      - name: Debug APK build
-        run: flutter build apk --debug
+      # NOTE: `flutter build apk --debug` is intentionally not run yet — the
+      # repo has no `mobile/android/` platform folder (package id, manifest,
+      # signing, icons). Creating it is app-config work, not CI. Re-add this
+      # step once that folder is committed:
+      #   - uses: actions/setup-java@v4
+      #     with: { distribution: temurin, java-version: '17' }
+      #   - run: flutter build apk --debug
