@@ -8,8 +8,9 @@ import { QUEUE_WORKERS } from './workers/queue.workers';
 /**
  * BullMQ wiring for the orchestrator's delayed / repeatable / scheduled jobs.
  *
- * Multi-instance: every Nest replica registers all 5 queues AND all 5
- * workers. BullMQ's WorkerHost acquires a per-queue lock on boot, so only
+ * Multi-instance: every Nest replica registers all 5 queues. Four generic
+ * workers live here; the match-pair worker lives in MatchmakingModule with
+ * its domain service. BullMQ's WorkerHost acquires a per-queue lock, so only
  * one replica actively polls a given queue at a time. If that replica
  * dies, BullMQ's stalled-job detector (default 30s) releases the lock
  * and another replica takes over. No env flag needed.

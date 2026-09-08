@@ -1,43 +1,46 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'core/theme/app_theme.dart';
-import 'features/auth/login_screen.dart';
-import 'features/auth/register_screen.dart';
-import 'features/dev/widget_gallery_screen.dart';
-import 'features/health/health_screen.dart';
 
-/// App entry. Auth-aware routing:
-///   - First screen: LoginScreen
-///   - Push to /register → RegisterScreen
-///   - On successful login/register: push-replace to /home → HealthScreen
+import 'core/router.dart';
+import 'core/theme/app_theme.dart';
+
+/// App entry.
 ///
-/// Tokens are persisted in flutter_secure_storage by AuthRepository, so
-/// a returning user sees the home screen next launch (no logout
-/// happens; tokens survive).
+/// Routing + auth flow live in `core/router.dart`:
+///   - launch → `/splash` resolves the session (token check + silent
+///     refresh), then the router redirect lands the user on `/lobby` or
+///     `/login`.
+///   - a `401` mid-session auto-refreshes and retries once
+///     (`core/api/api_client.dart`); a dead refresh token signs the user
+///     out and the redirect returns them to `/login`.
+///
+/// Design tokens live in `core/theme` (design spec §2). Both light and
+/// dark themes are defined now; the user-facing toggle ships with
+/// P1-FE-02. The `/dev/gallery` widget catalogue is registered in
+/// `buildRouter()`.
 void main() {
   runApp(const ProviderScope(child: AutoChessApp()));
 }
 
-class AutoChessApp extends StatelessWidget {
+class AutoChessApp extends StatefulWidget {
   const AutoChessApp({super.key});
 
   @override
+  State<AutoChessApp> createState() => _AutoChessAppState();
+}
+
+class _AutoChessAppState extends State<AutoChessApp> {
+  final _router = buildRouter();
+
+  @override
   Widget build(BuildContext context) {
-    return MaterialApp(
+    return MaterialApp.router(
       title: 'Auto Chess',
       debugShowCheckedModeBanner: false,
-      // Design tokens live in core/theme (design spec §2). Both themes are
-      // defined now; the user-facing toggle ships with P1-FE-02.
       theme: buildTheme(Brightness.light),
       darkTheme: buildTheme(Brightness.dark),
       themeMode: ThemeMode.system,
-      initialRoute: '/login',
-      routes: {
-        '/login': (ctx) => const LoginScreen(),
-        '/register': (ctx) => const RegisterScreen(),
-        '/home': (ctx) => const HealthScreen(),
-        '/dev/gallery': (ctx) => const WidgetGalleryScreen(),
-      },
+      routerConfig: _router,
     );
   }
 }

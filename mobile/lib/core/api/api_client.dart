@@ -1,6 +1,7 @@
 import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+import '../auth/auth_gate.dart';
 import '../config/app_config.dart';
 
 /// Provider exposing a singleton [ApiClient] for the rest of the app.
@@ -15,26 +16,30 @@ class ApiClient {
   final Dio _dio;
   final FlutterSecureStorage _storage;
 
-  ApiClient()
-      : _dio = Dio(
-          BaseOptions(
-            baseUrl: AppConfig.apiBaseUrl,
-            connectTimeout: AppConfig.requestTimeout,
-            receiveTimeout: AppConfig.requestTimeout,
-            sendTimeout: AppConfig.requestTimeout,
-            headers: {
-              'Accept': 'application/json',
-              // Force a new TCP connection per request so nginx's
-              // `least_conn` actually round-robins across the 3 Nest
-              // instances. Without this, HTTP/1.1 keep-alive pins us to
-              // whatever Nest instance answered first.
-              'Connection': 'close',
-            },
-          ),
-        ),
-        _storage = const FlutterSecureStorage() {
-    _dio.interceptors.add(_AuthHeaderInterceptor(_storage));
+  /// [dio] and [storage] are injectable for tests; production passes
+  /// neither and gets the real HTTP client + secure storage.
+  ApiClient({Dio? dio, FlutterSecureStorage? storage})
+      : _dio = dio ?? _defaultDio(),
+        _storage = storage ?? const FlutterSecureStorage() {
+    _dio.interceptors.add(AuthInterceptor(_storage, _dio));
   }
+
+  static Dio _defaultDio() => Dio(
+        BaseOptions(
+          baseUrl: AppConfig.apiBaseUrl,
+          connectTimeout: AppConfig.requestTimeout,
+          receiveTimeout: AppConfig.requestTimeout,
+          sendTimeout: AppConfig.requestTimeout,
+          headers: {
+            'Accept': 'application/json',
+            // Force a new TCP connection per request so nginx's
+            // `least_conn` actually round-robins across the 3 Nest
+            // instances. Without this, HTTP/1.1 keep-alive pins us to
+            // whatever Nest instance answered first.
+            'Connection': 'close',
+          },
+        ),
+      );
 
   // ─── connectivity / smoke ────────────────────────────────────────
 
@@ -121,28 +126,127 @@ class AuthResult {
   });
 }
 
-/// Dio interceptor that injects `Authorization: Bearer <token>` on every
-/// request, reading the token from secure storage.
+/// Dio interceptor that
+///   1. injects `Authorization: Bearer <token>` on every non-`/auth/`
+///      request, and
+///   2. on a `401`, silently refreshes the access token with the stored
+///      refresh token and retries the original request **once**.
+///
+/// If the refresh itself fails (refresh token expired / revoked) the
+/// stored tokens are wiped and [AuthGate.signalSignedOut] fires, which the
+/// router listens to and redirects to `/login`. The interceptor never
+/// rethrows an unrelated exception — a failed refresh surfaces as the
+/// original `401`.
 ///
 /// Web fallback: flutter_secure_storage on web uses localStorage, which
 /// is acceptable for MVP (real prod would use proper key exchange).
-class _AuthHeaderInterceptor extends Interceptor {
+class AuthInterceptor extends QueuedInterceptor {
+  AuthInterceptor(this._storage, Dio parentDio)
+      : _refreshDio = Dio(BaseOptions(
+          baseUrl: parentDio.options.baseUrl,
+          connectTimeout: parentDio.options.connectTimeout,
+          receiveTimeout: parentDio.options.receiveTimeout,
+          headers: const {'Accept': 'application/json', 'Connection': 'close'},
+        ))
+          // Share the transport so tests' fake adapter also serves the
+          // refresh + retry calls. No interceptors here → those requests
+          // can't re-enter this queued interceptor and deadlock it.
+          ..httpClientAdapter = parentDio.httpClientAdapter;
+
   final FlutterSecureStorage _storage;
-  _AuthHeaderInterceptor(this._storage);
+
+  /// Interceptor-free client used for the token refresh and the one retry.
+  final Dio _refreshDio;
+
+  /// Marks a request that has already been retried after a refresh so a
+  /// second `401` can't loop forever.
+  static const _retriedKey = 'auth_retried';
+
+  bool _isAuthPath(String path) => path.startsWith('/auth/');
 
   @override
   Future<void> onRequest(
     RequestOptions options,
     RequestInterceptorHandler handler,
   ) async {
-    // Skip auth header for /auth/* endpoints (they issue tokens)
-    // and the public /health endpoints.
-    if (!options.path.startsWith('/auth/')) {
+    if (!_isAuthPath(options.path)) {
       final token = await _storage.read(key: _kAccessTokenKey);
       if (token != null && token.isNotEmpty) {
         options.headers['Authorization'] = 'Bearer $token';
       }
     }
     handler.next(options);
+  }
+
+  @override
+  Future<void> onError(
+    DioException err,
+    ErrorInterceptorHandler handler,
+  ) async {
+    final res = err.response;
+    final req = err.requestOptions;
+    final canRetry = res?.statusCode == 401 &&
+        !_isAuthPath(req.path) &&
+        req.extra[_retriedKey] != true;
+
+    if (!canRetry) {
+      handler.next(err);
+      return;
+    }
+
+    final newAccess = await _refresh();
+    if (newAccess == null) {
+      // Refresh failed → tokens already cleared → tell the router.
+      AuthGate.instance.signalSignedOut();
+      handler.next(err);
+      return;
+    }
+
+    try {
+      // Retry on the bare Dio (no interceptors) so a second failure can't
+      // re-enter this queued interceptor and deadlock it.
+      final retried = await _refreshDio.fetch<dynamic>(
+        req
+          ..headers['Authorization'] = 'Bearer $newAccess'
+          ..extra[_retriedKey] = true,
+      );
+      handler.resolve(retried);
+    } on DioException catch (e) {
+      handler.next(e);
+    }
+  }
+
+  /// Exchanges the stored refresh token for a new pair. Persists the new
+  /// tokens and returns the fresh access token, or `null` (and clears
+  /// storage) on any failure. Runs on [_refreshDio] (no interceptors) so
+  /// it never re-enters this queued interceptor.
+  Future<String?> _refresh() async {
+    final refreshToken = await _storage.read(key: _kRefreshTokenKey);
+    if (refreshToken == null || refreshToken.isEmpty) {
+      await _clear();
+      return null;
+    }
+    try {
+      final res = await _refreshDio.post<Map<String, dynamic>>(
+        '/auth/refresh',
+        data: {'refreshToken': refreshToken},
+      );
+      final data = res.data!;
+      final access = data['accessToken'] as String;
+      await _storage.write(key: _kAccessTokenKey, value: access);
+      await _storage.write(
+          key: _kRefreshTokenKey, value: data['refreshToken'] as String);
+      await _storage.write(key: _kUserIdKey, value: data['userId'] as String);
+      return access;
+    } catch (_) {
+      await _clear();
+      return null;
+    }
+  }
+
+  Future<void> _clear() async {
+    await _storage.delete(key: _kAccessTokenKey);
+    await _storage.delete(key: _kRefreshTokenKey);
+    await _storage.delete(key: _kUserIdKey);
   }
 }

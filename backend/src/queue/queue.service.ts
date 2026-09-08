@@ -58,12 +58,21 @@ export class QueueService {
    */
   async ensureMatchPairRepeating(intervalMs = 1000) {
     const existing = await this.matchPair.getRepeatableJobs();
-    const already = existing.some((j) => j.name === JOB_NAMES.MATCH_PAIR && j.pattern === `${intervalMs}`);
+    const already = existing.some(
+      (j) => j.name === JOB_NAMES.MATCH_PAIR && Number(j.every) === intervalMs,
+    );
     if (already) return existing;
     await this.matchPair.add(
       JOB_NAMES.MATCH_PAIR,
       {},
-      { repeat: { every: intervalMs }, jobId: `match-pair-every-${intervalMs}` },
+      {
+        repeat: { every: intervalMs },
+        jobId: `match-pair-every-${intervalMs}`,
+        // This job runs forever; retaining every successful one-second tick
+        // would grow the completed set without bound.
+        removeOnComplete: true,
+        removeOnFail: 100,
+      },
     );
     return this.matchPair.getRepeatableJobs();
   }
