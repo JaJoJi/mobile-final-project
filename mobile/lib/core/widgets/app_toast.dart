@@ -43,7 +43,6 @@ abstract final class AppToast {
     messenger.showSnackBar(
       SnackBar(
         backgroundColor: bg,
-        duration: const Duration(seconds: 4),
         content: Row(
           children: [
             Icon(icon, size: 20, color: fg),

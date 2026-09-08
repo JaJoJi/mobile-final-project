@@ -1,9 +1,29 @@
+include: package:flutter_lints/flutter.yaml
+
 analyzer:
   exclude:
     - build/**
-include: package:flutter_lints/flutter.yaml
+  language:
+    strict-casts: true
+    strict-inference: true
+    strict-raw-types: true
+  errors:
+    # Fail the analyzer (and CI) on anything that isn't purely informational.
+    missing_required_param: error
+    missing_return: error
+    todo: ignore
 
 linter:
   rules:
-    avoid_print: false
+    avoid_print: true
     prefer_single_quotes: true
+    always_declare_return_types: true
+    prefer_const_constructors: true
+    prefer_const_declarations: true
+    prefer_final_locals: true
+    unawaited_futures: true
+    use_super_parameters: true
+    require_trailing_commas: true
+    avoid_redundant_argument_values: true
+    directives_ordering: true
+    sort_child_properties_last: true

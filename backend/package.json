@@ -7,6 +7,8 @@
     "build": "tsc -p tsconfig.build.json && npm run build:assets",
     "build:assets": "node -e \"const fs=require('fs');const path=require('path');const src=path.join('src','redis','scripts');const dst=path.join('dist','redis','scripts');fs.mkdirSync(dst,{recursive:true});for(const f of fs.readdirSync(src)){if(f.endsWith('.lua'))fs.copyFileSync(path.join(src,f),path.join(dst,f));}console.log('[assets] copied', fs.readdirSync(dst).filter(f=>f.endsWith('.lua')).length, 'lua scripts to', dst);\"",
     "smoke:matchmaking": "node dist/matchmaking/matchmaking.smoke.js",
+    "smoke:match-lifecycle": "node dist/match/match-lifecycle.smoke.js",
+    "smoke:match-lifecycle:integration": "node dist/match/match-lifecycle.integration.smoke.js",
     "start": "node dist/main.js",
     "start:dev": "ts-node -T src/main.ts",
     "typeorm": "typeorm-ts-node-commonjs",

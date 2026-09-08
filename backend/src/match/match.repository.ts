@@ -1,7 +1,8 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { EntityManager, Repository } from 'typeorm';
 import { Match, MatchStatus } from './match.entity';
+import { MatchRound } from './match-round.entity';
 
 /**
  * Data access for the `matches` table.
@@ -12,18 +13,27 @@ import { Match, MatchStatus } from './match.entity';
  * P0-BE-07 (diverges from the `UserService` naming but is intentional
  * — the orchestrator owns match lifecycle, this layer is just IO).
  *
- * Lifecycle methods that mutate `status` / `finishedAt` / `wipeIndex*`
- * live in P0-BE-12's `MatchService` and call into this repo. The repo
- * stays read-mostly + the simple create, leaving the orchestrator
- * free to compose `EntityManager` transactions for atomic multi-row
- * updates without going through a third abstraction.
+ * Lifecycle mutations are exposed as small repository methods so
+ * P0-BE-12's `MatchService` and P0-BE-13's orchestrator can compose
+ * them inside shared `EntityManager` transactions without leaking
+ * TypeORM queries into the domain layer.
  */
 @Injectable()
 export class MatchRepository {
   constructor(
     @InjectRepository(Match)
     private readonly repo: Repository<Match>,
+    @InjectRepository(MatchRound)
+    private readonly roundRepo: Repository<MatchRound>,
   ) {}
+
+  private matches(manager?: EntityManager): Repository<Match> {
+    return manager?.getRepository(Match) ?? this.repo;
+  }
+
+  private rounds(manager?: EntityManager): Repository<MatchRound> {
+    return manager?.getRepository(MatchRound) ?? this.roundRepo;
+  }
 
   /**
    * Insert a new match row. Caller provides `player1Id`, `player2Id`,
@@ -55,8 +65,17 @@ export class MatchRepository {
   }
 
   /** Primary-key lookup; returns `null` if not found. */
-  findById(id: string): Promise<Match | null> {
-    return this.repo.findOne({ where: { id } });
+  findById(id: string, manager?: EntityManager): Promise<Match | null> {
+    return this.matches(manager).findOne({ where: { id } });
+  }
+
+  /** Transaction-only row lock used to make finalization idempotent. */
+  findByIdForUpdate(id: string, manager: EntityManager): Promise<Match | null> {
+    return this.matches(manager)
+      .createQueryBuilder('match')
+      .setLock('pessimistic_write')
+      .where('match.id = :id', { id })
+      .getOne();
   }
 
   /**
@@ -72,5 +91,80 @@ export class MatchRepository {
       .where('m.player1Id = :uid OR m.player2Id = :uid', { uid: userId })
       .andWhere("m.status = 'in_progress'")
       .getOne();
+  }
+
+  async updateState(
+    matchId: string,
+    side: 'p1' | 'p2',
+    state: Record<string, unknown>,
+  ): Promise<boolean> {
+    const column = side === 'p1' ? 'p1State' : 'p2State';
+    const result = await this.repo.update({ id: matchId }, { [column]: state });
+    return Boolean(result.affected);
+  }
+
+  /**
+   * Upsert one round while holding the parent Match row lock. The schema has
+   * no `(matchId, roundNumber)` unique constraint, so the parent lock keeps
+   * retries from creating duplicate replay rows across Nest replicas.
+   */
+  async saveRoundEvents(
+    matchId: string,
+    roundNumber: number,
+    events: Record<string, unknown>[],
+    manager: EntityManager,
+  ): Promise<MatchRound> {
+    const repo = this.rounds(manager);
+    const existing = await repo.findOne({ where: { matchId, roundNumber } });
+    if (existing) {
+      existing.events = events;
+      return repo.save(existing);
+    }
+    return repo.save(repo.create({ matchId, roundNumber, events }));
+  }
+
+  findRounds(matchId: string): Promise<MatchRound[]> {
+    return this.roundRepo.find({ where: { matchId }, order: { roundNumber: 'ASC' } });
+  }
+
+  findHistoryByUserId(userId: string, limit = 50): Promise<Match[]> {
+    return this.repo
+      .createQueryBuilder('match')
+      .where('(match.player1Id = :userId OR match.player2Id = :userId)', { userId })
+      .andWhere("match.status IN ('finished', 'forfeited')")
+      .orderBy('match.createdAt', 'DESC')
+      .take(Math.min(Math.max(limit, 1), 50))
+      .getMany();
+  }
+
+  async countRoundsByMatchIds(matchIds: string[]): Promise<Map<string, number>> {
+    if (matchIds.length === 0) return new Map();
+    const rows = await this.roundRepo
+      .createQueryBuilder('round')
+      .select('round.matchId', 'matchId')
+      .addSelect('COUNT(*)', 'count')
+      .where('round.matchId IN (:...matchIds)', { matchIds })
+      .groupBy('round.matchId')
+      .getRawMany<{ matchId: string; count: string }>();
+    return new Map(rows.map((row) => [row.matchId, Number(row.count)]));
+  }
+
+  async finalize(
+    match: Match,
+    input: {
+      status: MatchStatus;
+      winnerId: string | null;
+      finishedAt: Date;
+    },
+    manager: EntityManager,
+  ): Promise<void> {
+    await this.matches(manager).update(
+      { id: match.id },
+      {
+        status: input.status,
+        winnerId: input.winnerId,
+        finishedAt: input.finishedAt,
+      },
+    );
   }
 }

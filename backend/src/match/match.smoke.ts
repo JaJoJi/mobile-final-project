@@ -42,7 +42,10 @@ async function run(): Promise<void> {
   await ds.initialize();
   console.log(`[connect] ${DATABASE_URL}`);
 
-  const matchRepo = new MatchRepository(ds.getRepository(Match));
+  const matchRepo = new MatchRepository(
+    ds.getRepository(Match),
+    ds.getRepository('MatchRound'),
+  );
 
   const results: TestResult[] = [];
 

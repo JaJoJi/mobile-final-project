@@ -17,7 +17,10 @@ class _FakeAdapter implements HttpClientAdapter {
   final ResponseBody Function(RequestOptions) handler;
   @override
   Future<ResponseBody> fetch(
-          RequestOptions o, Stream<Uint8List>? _, Future<void>? __) async =>
+    RequestOptions o,
+    Stream<Uint8List>? _,
+    Future<void>? __,
+  ) async =>
       handler(o);
   @override
   void close({bool force = false}) {}
@@ -78,7 +81,7 @@ void main() {
           'id': 'u1',
           'username': 'alice',
           'email': 'alice@example.com',
-          'rating': 1200
+          'rating': 1200,
         },
         200,
       );

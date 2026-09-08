@@ -112,8 +112,11 @@ class EmptyView extends StatelessWidget {
       children: [
         Icon(icon, size: 48, color: t.colorScheme.onSurfaceVariant),
         const SizedBox(height: AppSpacing.lg),
-        Text(message,
-            textAlign: TextAlign.center, style: t.textTheme.bodyLarge),
+        Text(
+          message,
+          textAlign: TextAlign.center,
+          style: t.textTheme.bodyLarge,
+        ),
         const SizedBox(height: AppSpacing.xl),
         AppButton(
           onPressed: onAction,
@@ -167,8 +170,11 @@ class ErrorView extends StatelessWidget {
       children: [
         Icon(Icons.cloud_off_outlined, size: 48, color: t.colorScheme.error),
         const SizedBox(height: AppSpacing.lg),
-        Text(message,
-            textAlign: TextAlign.center, style: t.textTheme.bodyLarge),
+        Text(
+          message,
+          textAlign: TextAlign.center,
+          style: t.textTheme.bodyLarge,
+        ),
         const SizedBox(height: AppSpacing.xl),
         AppButton(
           onPressed: onRetry,

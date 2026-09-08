@@ -65,7 +65,11 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
                   const SizedBox(height: 32),
-                  const Icon(Icons.castle, size: 64, color: Colors.indigo),
+                  Icon(
+                    Icons.castle,
+                    size: 64,
+                    color: Theme.of(context).colorScheme.primary,
+                  ),
                   const SizedBox(height: 16),
                   Text(
                     'Auto Chess',
@@ -78,7 +82,9 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                   Text(
                     'Sign in to play',
                     textAlign: TextAlign.center,
-                    style: TextStyle(color: Colors.grey.shade600),
+                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                          color: Theme.of(context).colorScheme.onSurfaceVariant,
+                        ),
                   ),
                   const SizedBox(height: 32),
                   TextFormField(
@@ -108,7 +114,9 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                       prefixIcon: const Icon(Icons.lock_outline),
                       suffixIcon: IconButton(
                         icon: Icon(
-                            _obscure ? Icons.visibility : Icons.visibility_off),
+                          _obscure ? Icons.visibility : Icons.visibility_off,
+                        ),
+                        tooltip: _obscure ? 'Show password' : 'Hide password',
                         onPressed: () => setState(() => _obscure = !_obscure),
                       ),
                       border: const OutlineInputBorder(),
@@ -123,19 +131,26 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                     Container(
                       padding: const EdgeInsets.all(12),
                       decoration: BoxDecoration(
-                        color: Colors.red.shade50,
-                        border: Border.all(color: Colors.red.shade200),
+                        color: Theme.of(context).colorScheme.errorContainer,
                         borderRadius: BorderRadius.circular(8),
                       ),
                       child: Row(
                         children: [
-                          Icon(Icons.error_outline,
-                              color: Colors.red.shade700, size: 20),
+                          Icon(
+                            Icons.error_outline,
+                            color:
+                                Theme.of(context).colorScheme.onErrorContainer,
+                            size: 20,
+                          ),
                           const SizedBox(width: 8),
                           Expanded(
                             child: Text(
                               _error!,
-                              style: TextStyle(color: Colors.red.shade700),
+                              style: TextStyle(
+                                color: Theme.of(context)
+                                    .colorScheme
+                                    .onErrorContainer,
+                              ),
                             ),
                           ),
                         ],
