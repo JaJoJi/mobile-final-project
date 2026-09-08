@@ -5,8 +5,9 @@ import { JOB_NAMES, QUEUE_NAMES } from '../queue.constants';
 
 /**
  * Stub workers for P0-BE-03 plumbing. They only log job arrival so we
- * can prove end-to-end delivery in the smoke test. Real processing logic
- * arrives in P0-BE-11 (Matchmaking) and P0-BE-13 (Round Orchestrator).
+ * can prove end-to-end delivery in the smoke test. Match-pair processing
+ * now lives in MatchmakingModule (P0-BE-11); the remaining real processing
+ * logic arrives with the Round Orchestrator and match lifecycle tickets.
  *
  * Multi-instance behavior: every Nest replica starts one of each worker.
  * BullMQ's WorkerHost acquires a per-queue lock so only one replica's
@@ -46,17 +47,6 @@ export class DisconnectDetectWorker extends WorkerHost {
   }
 }
 
-@Processor(QUEUE_NAMES.MATCH_PAIR)
-export class MatchPairWorker extends WorkerHost {
-  private readonly logger = new Logger(MatchPairWorker.name);
-
-  async process(job: Job): Promise<void> {
-    this.logger.log(
-      `[match-pair] job=${job.name} id=${job.id} ts=${new Date().toISOString()}`,
-    );
-  }
-}
-
 @Processor(QUEUE_NAMES.MATCH_CLEANUP)
 export class MatchCleanupWorker extends WorkerHost {
   private readonly logger = new Logger(MatchCleanupWorker.name);
@@ -72,7 +62,6 @@ export const QUEUE_WORKERS = [
   PhaseTimerWorker,
   CombatDoneTimeoutWorker,
   DisconnectDetectWorker,
-  MatchPairWorker,
   MatchCleanupWorker,
 ];
 

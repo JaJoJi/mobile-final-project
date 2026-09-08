@@ -33,6 +33,6 @@ import { WsValidationPipe } from './ws.pipes';
 @Module({
   imports: [JwtAuthModule],
   providers: [PubsubBridge, WsAuthGuard, WsValidationPipe, WsGateway],
-  exports: [WsGateway, WsValidationPipe],
+  exports: [PubsubBridge, WsGateway, WsValidationPipe],
 })
 export class WsModule {}
