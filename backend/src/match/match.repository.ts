@@ -103,6 +103,27 @@ export class MatchRepository {
     return Boolean(result.affected);
   }
 
+  async updateRuntimeSnapshot(
+    matchId: string,
+    input: {
+      p1State: Record<string, unknown>;
+      p2State: Record<string, unknown>;
+      wipeIndexP1: number;
+      wipeIndexP2: number;
+    },
+  ): Promise<boolean> {
+    const result = await this.repo.update(
+      { id: matchId },
+      {
+        p1State: input.p1State,
+        p2State: input.p2State,
+        wipeIndexP1: input.wipeIndexP1,
+        wipeIndexP2: input.wipeIndexP2,
+      },
+    );
+    return Boolean(result.affected);
+  }
+
   /**
    * Upsert one round while holding the parent Match row lock. The schema has
    * no `(matchId, roundNumber)` unique constraint, so the parent lock keeps

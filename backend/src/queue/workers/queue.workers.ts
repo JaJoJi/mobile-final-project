@@ -4,10 +4,10 @@ import { Job } from 'bullmq';
 import { JOB_NAMES, QUEUE_NAMES } from '../queue.constants';
 
 /**
- * Stub workers for P0-BE-03 plumbing. They only log job arrival so we
- * can prove end-to-end delivery in the smoke test. Match-pair processing
- * now lives in MatchmakingModule (P0-BE-11); the remaining real processing
- * logic arrives with the Round Orchestrator and match lifecycle tickets.
+ * Generic workers that do not require a domain orchestrator. Match-pair
+ * processing lives in MatchmakingModule (P0-BE-11); phase, combat timeout,
+ * and disconnect workers live in RuntimeModule (P0-BE-13) so Nest can inject
+ * the runtime adapter without creating a QueueModule import cycle.
  *
  * Multi-instance behavior: every Nest replica starts one of each worker
  * and they ALL pull from the queue concurrently — jobs are load-balanced
@@ -15,39 +15,6 @@ import { JOB_NAMES, QUEUE_NAMES } from '../queue.constants';
  * (a stalled job's lock expires and it is re-queued), so a given job is
  * processed by exactly one worker at a time.
  */
-
-@Processor(QUEUE_NAMES.PHASE_TIMER)
-export class PhaseTimerWorker extends WorkerHost {
-  private readonly logger = new Logger(PhaseTimerWorker.name);
-
-  async process(job: Job): Promise<void> {
-    this.logger.log(
-      `[phase-timer] job=${job.name} id=${job.id} data=${JSON.stringify(job.data)}`,
-    );
-  }
-}
-
-@Processor(QUEUE_NAMES.COMBAT_DONE_TIMEOUT)
-export class CombatDoneTimeoutWorker extends WorkerHost {
-  private readonly logger = new Logger(CombatDoneTimeoutWorker.name);
-
-  async process(job: Job): Promise<void> {
-    this.logger.log(
-      `[combat-done-timeout] job=${job.name} id=${job.id} data=${JSON.stringify(job.data)}`,
-    );
-  }
-}
-
-@Processor(QUEUE_NAMES.DISCONNECT_DETECT)
-export class DisconnectDetectWorker extends WorkerHost {
-  private readonly logger = new Logger(DisconnectDetectWorker.name);
-
-  async process(job: Job): Promise<void> {
-    this.logger.log(
-      `[disconnect-detect] job=${job.name} id=${job.id} data=${JSON.stringify(job.data)}`,
-    );
-  }
-}
 
 @Processor(QUEUE_NAMES.MATCH_CLEANUP)
 export class MatchCleanupWorker extends WorkerHost {
@@ -61,9 +28,6 @@ export class MatchCleanupWorker extends WorkerHost {
 }
 
 export const QUEUE_WORKERS = [
-  PhaseTimerWorker,
-  CombatDoneTimeoutWorker,
-  DisconnectDetectWorker,
   MatchCleanupWorker,
 ];
 

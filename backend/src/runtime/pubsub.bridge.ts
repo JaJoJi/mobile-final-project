@@ -1,19 +1,8 @@
 import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
 import Redis from 'ioredis';
 import type { Server } from 'socket.io';
+import type { CombatEvent } from '../game';
 import { RedisService } from '../redis/redis.service';
-
-/**
- * Combat event payload shape stored in the 60 s late-subscriber cache.
- * Loosely typed here — the engine / orchestrator lands in P0-BE-09 and
- * will own the canonical `CombatEvent` type from `docs/04-api-contracts.md §2.1`.
- */
-export interface CombatEvent {
-  type: string;
-  cycle: number;
-  tick: number;
-  [extra: string]: unknown;
-}
 
 interface PubSubEnvelope {
   type: string;

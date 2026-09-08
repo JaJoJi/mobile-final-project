@@ -14,6 +14,7 @@
  *   REDIS_URL=redis://localhost:6379 npx ts-node -T src/queue/queue.smoke.ts
  */
 import { Queue } from 'bullmq';
+import { randomUUID } from 'crypto';
 import Redis from 'ioredis';
 import { JOB_NAMES, QUEUE_NAMES } from './queue.constants';
 
@@ -34,10 +35,12 @@ async function run() {
 
   const results: Result[] = [];
   const start = Date.now();
+  const smokeMatchId = randomUUID();
+  const smokeUserId = randomUUID();
 
   // 1. phase-timer — delayed 2 s
   const phaseQ = new Queue(QUEUE_NAMES.PHASE_TIMER, { connection });
-  const phaseJob = await phaseQ.add(JOB_NAMES.PHASE_START, { matchId: 'smoke-1', round: 1 }, { delay: 2000 });
+  const phaseJob = await phaseQ.add(JOB_NAMES.PHASE_START, { matchId: smokeMatchId, round: 1 }, { delay: 2000 });
   results.push({
     queue: QUEUE_NAMES.PHASE_TIMER,
     jobName: JOB_NAMES.PHASE_START,
@@ -49,7 +52,7 @@ async function run() {
 
   // 2. combat-done-timeout — delayed 3 s
   const combatQ = new Queue(QUEUE_NAMES.COMBAT_DONE_TIMEOUT, { connection });
-  const combatJob = await combatQ.add(JOB_NAMES.COMBAT_DONE_TIMEOUT, { matchId: 'smoke-1', round: 1 }, { delay: 3000 });
+  const combatJob = await combatQ.add(JOB_NAMES.COMBAT_DONE_TIMEOUT, { matchId: smokeMatchId, round: 1 }, { delay: 3000 });
   results.push({
     queue: QUEUE_NAMES.COMBAT_DONE_TIMEOUT,
     jobName: JOB_NAMES.COMBAT_DONE_TIMEOUT,
@@ -61,7 +64,7 @@ async function run() {
 
   // 3. disconnect-detect — delayed 4 s
   const discQ = new Queue(QUEUE_NAMES.DISCONNECT_DETECT, { connection });
-  const discJob = await discQ.add(JOB_NAMES.DISCONNECT_DETECT, { matchId: 'smoke-1', userId: 'u-1' }, { delay: 4000 });
+  const discJob = await discQ.add(JOB_NAMES.DISCONNECT_DETECT, { matchId: smokeMatchId, userId: smokeUserId }, { delay: 4000 });
   results.push({
     queue: QUEUE_NAMES.DISCONNECT_DETECT,
     jobName: JOB_NAMES.DISCONNECT_DETECT,
@@ -93,7 +96,7 @@ async function run() {
   const cleanQ = new Queue(QUEUE_NAMES.MATCH_CLEANUP, { connection });
   const cleanJob = await cleanQ.add(
     JOB_NAMES.MATCH_CLEANUP,
-    { matchId: 'smoke-1' },
+    { matchId: smokeMatchId },
     { delay: 5000, jobId: 'smoke-cleanup' },
   );
   results.push({
