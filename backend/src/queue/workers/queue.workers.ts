@@ -9,9 +9,11 @@ import { JOB_NAMES, QUEUE_NAMES } from '../queue.constants';
  * now lives in MatchmakingModule (P0-BE-11); the remaining real processing
  * logic arrives with the Round Orchestrator and match lifecycle tickets.
  *
- * Multi-instance behavior: every Nest replica starts one of each worker.
- * BullMQ's WorkerHost acquires a per-queue lock so only one replica's
- * worker actively pulls jobs at a time; the others sit idle.
+ * Multi-instance behavior: every Nest replica starts one of each worker
+ * and they ALL pull from the queue concurrently — jobs are load-balanced
+ * across replicas. BullMQ locks each individual job while it is `active`
+ * (a stalled job's lock expires and it is re-queued), so a given job is
+ * processed by exactly one worker at a time.
  */
 
 @Processor(QUEUE_NAMES.PHASE_TIMER)
