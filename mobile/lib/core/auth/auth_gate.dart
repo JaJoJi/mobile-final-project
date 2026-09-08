@@ -29,4 +29,12 @@ class AuthGate extends ChangeNotifier {
     _isSignedIn = value;
     notifyListeners();
   }
+
+  /// Back to the pre-launch "unresolved" state. Tests only — the app never
+  /// un-resolves the gate at runtime.
+  @visibleForTesting
+  void reset() {
+    _isSignedIn = null;
+    notifyListeners();
+  }
 }

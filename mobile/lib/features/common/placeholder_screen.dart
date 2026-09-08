@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:go_router/go_router.dart';
 
 /// Temporary scaffold for routes whose real screen is owned by a later
 /// ticket. Keeps `buildRouter()`'s 7 routes wired and navigable so
@@ -23,7 +22,9 @@ class PlaceholderScreen extends StatelessWidget {
     return Scaffold(
       appBar: AppBar(
         title: Text(title),
-        leading: context.canPop() ? BackButton(onPressed: context.pop) : null,
+        // BackButton defaults to Navigator.maybePop; only show it when
+        // there's something to pop.
+        leading: Navigator.canPop(context) ? const BackButton() : null,
       ),
       body: Center(
         child: Padding(
