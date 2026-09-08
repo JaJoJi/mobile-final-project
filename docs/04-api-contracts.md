@@ -123,6 +123,9 @@ Sent when phase changes (match start or transition).
 
 #### `game:shop:offer`
 Per-player (each player only sees their own shop).
+It is emitted at the start of every `shop_place` phase and again after that
+player uses their one free refresh. Purchased slots are tracked server-side;
+the initiating action response tells the client which offer it consumed.
 ```ts
 {
   matchId: string;

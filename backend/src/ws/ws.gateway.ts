@@ -135,7 +135,8 @@ export class WsGateway implements OnGatewayConnection, OnGatewayDisconnect, OnGa
    * tracked in `socketMatches` so `handleDisconnect` can clean up.
    */
   subscribeToMatch(client: Socket, matchId: string): void {
-    this.pubsubBridge.subscribe(matchId, client.id);
+    const userId = (client.data.user as SocketUser | undefined)?.sub;
+    this.pubsubBridge.subscribe(matchId, client.id, userId);
     let set = this.socketMatches.get(client.id);
     if (!set) {
       set = new Set<string>();

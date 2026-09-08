@@ -3,6 +3,7 @@ import type { Match } from '../match/match.entity';
 import { MatchService } from '../match/match.service';
 import { QueueService } from '../queue/queue.service';
 import { RedisService } from '../redis/redis.service';
+import { ShopService } from '../shop/shop.service';
 import { CombatCoordinator } from './combat.coordinator';
 import {
   MatchRuntimeState,
@@ -32,6 +33,7 @@ export class MatchRuntimeAdapter {
     private readonly queue: QueueService,
     private readonly pubsub: PubsubBridge,
     private readonly combat: CombatCoordinator,
+    private readonly shop: ShopService,
   ) {}
 
   /** Creates the shared Redis runtime and starts round one's 40 s timer. */
@@ -40,7 +42,7 @@ export class MatchRuntimeAdapter {
     await this.redis.client.hset(key, initialRuntimeHash(match));
     await this.redis.client.expire(key, RUNTIME_TTL_SECONDS);
     await this.queue.schedulePhaseStart(match.id, 1, SHOP_PHASE_MS);
-    await this.pubsub.publish(match.id, 'game:match:phase', this.phasePayload({
+    const runtime: MatchRuntimeState = {
       matchId: match.id,
       player1Id: match.player1Id,
       player2Id: match.player2Id,
@@ -54,7 +56,13 @@ export class MatchRuntimeAdapter {
       wipeIndexP1: match.wipeIndexP1 ?? 0,
       wipeIndexP2: match.wipeIndexP2 ?? 0,
       combatRound: null,
-    }, SHOP_PHASE_SECONDS));
+    };
+    await this.pubsub.publish(
+      match.id,
+      'game:match:phase',
+      this.phasePayload(runtime, SHOP_PHASE_SECONDS),
+    );
+    await this.shop.rollOffersForMatch(runtime);
   }
 
   async getRuntime(matchId: string): Promise<MatchRuntimeState> {
@@ -81,6 +89,41 @@ export class MatchRuntimeAdapter {
     const readyCount = Number(updated.readyP1) + Number(updated.readyP2);
     if (readyCount === 2) await this.tryStartCombat(matchId, round);
     return readyCount;
+  }
+
+  buy(
+    userId: string,
+    matchId: string,
+    round: number,
+    offerIndex: number,
+    clientActionId: string,
+  ) {
+    return this.shop.buy(userId, matchId, round, offerIndex, clientActionId);
+  }
+
+  sell(
+    userId: string,
+    matchId: string,
+    round: number,
+    source: 'board' | 'bench',
+    slot: number,
+    clientActionId: string,
+  ) {
+    return this.shop.sell(userId, matchId, round, source, slot, clientActionId);
+  }
+
+  refresh(userId: string, matchId: string, round: number, clientActionId: string) {
+    return this.shop.refresh(userId, matchId, round, clientActionId);
+  }
+
+  fuse(
+    userId: string,
+    matchId: string,
+    round: number,
+    unitId: 'fighter' | 'healer' | 'ranger' | 'tank',
+    clientActionId: string,
+  ) {
+    return this.shop.fuse(userId, matchId, round, unitId, clientActionId);
   }
 
   /** CAS shop_place → battle; only the winner invokes the combat coordinator. */
@@ -249,6 +292,7 @@ export class MatchRuntimeAdapter {
       'game:match:phase',
       this.phasePayload(runtime, SHOP_PHASE_SECONDS),
     );
+    await this.shop.rollOffersForMatch(runtime);
     this.logger.log(`advanced match=${matchId} round=${round} -> ${nextRound}`);
     return true;
   }

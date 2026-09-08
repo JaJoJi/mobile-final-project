@@ -162,6 +162,9 @@ The backend is **stateless**. Mutable game state lives entirely in Redis; multip
 | `match:<matchId>:runtime` | HASH | Live match state: `phase`, `round`, `readyFlags`, `combatLockInstance`, `combatLockUntil`, `wipeIndexP1`, `wipeIndexP2`, `p1Gold`, `p2Gold`, `p1Hp`, `p2Hp`, etc. Whole state is JSON-serialized in fields. | 30 min after match start |
 | `match:<matchId>:combat-done` | HASH | Per-player combat-done acks: `playerId -> epoch-ms`. Cleared at each battle start. | 90 s |
 | `match:<matchId>:combat-result` | STRING | Serialized `CombatEvent[]` of last battle (for late subscribers). | 60 s |
+| `match:<matchId>:shop:<userId>` | STRING | Player-private offers, refresh count, and consumed offer slots for the current round. | 30 min |
+| `match:<matchId>:actionLog:<userId>` | HASH | Processed `clientActionId` values used to make retries a no-op. | 120 s |
+| `match:<matchId>:shop-lock:<userId>` | STRING | Short per-player mutex serializing concurrent shop actions across replicas. | 5 s |
 | `combat-lock:<matchId>` | STRING | `SET NX EX 30s`. Holds the right to call `engine.runBattle()` for this match. | 30 s |
 | BullMQ keys | — | Delayed + repeatable jobs (phase timers, combat-done timeout, cleanup). | — |
 | Pub/Sub channel `match:<id>:events` | — | Fan-out for combat events and round events across all NestJS instances. | ephemeral |
@@ -176,6 +179,7 @@ The backend is **stateless**. Mutable game state lives entirely in Redis; multip
 | Matchmaking pair | Lua atomic pop of bottom 2 ZSET entries (`ZRANGE` + `ZREM` in one Lua) | Lua atomic |
 | Combat single-runner | `SET combat-lock:<id> <instanceId> NX EX 30` | Redis native (atomic) |
 | Combat-done ack | Lua `combat_done.lua`: HSET if absent, return count | Lua atomic |
+| Shop action commit | Per-player `SET NX PX` mutex + `action_log.lua` writes action id, runtime state, and shop state together | Lua atomic |
 | Cross-instance WS fan-out | `PUBLISH match:<id>:events <json>` | Pub/Sub |
 
 ### 4.3 Matchmaking flow
@@ -202,7 +206,7 @@ This is **pure FIFO** (current implementation). Rating (ELO) is tracked but not 
 
 Server → client:
 - `game:match:phase`     — phase transitions
-- `game:shop:offer`      — per-player shop offers
+- `game:shop:offer`      — per-player shop offers (`targetUserId` stays inside the Pub/Sub envelope)
 - `game:match:state`     — roster / gold / ready-count snapshot
 - `game:combat:events`   — **batch** of all combat events for one battle
 - `game:match:damage`    — end-of-round damage
@@ -528,15 +532,27 @@ Each shop/place/ready/combat_done action carries a `clientActionId`. The runtime
 
 ```lua
 -- KEYS[1] = match:<id>:actionLog:<userId>
+-- KEYS[2] = match:<id>:runtime                 (optional shop commit)
+-- KEYS[3] = match:<id>:shop:<userId>           (optional shop commit)
 -- ARGV[1] = clientActionId
 -- Returns 1 if newly recorded, 0 if duplicate.
 if redis.call('HEXISTS', KEYS[1], ARGV[1]) == 1 then return 0 end
+if KEYS[2] and KEYS[3] then
+  if redis.call('HGET', KEYS[2], 'round') ~= ARGV[8] then return -2 end
+  if redis.call('HGET', KEYS[2], 'phase') ~= ARGV[7] then return -1 end
+end
 redis.call('HSET', KEYS[1], ARGV[1], ARGV[2])    -- ARGV[2] = epoch ms
 redis.call('EXPIRE', KEYS[1], 120)
+if KEYS[2] and KEYS[3] then
+  redis.call('HSET', KEYS[2], ARGV[3], ARGV[4])  -- player state field + JSON
+  redis.call('SET', KEYS[3], ARGV[5], 'EX', ARGV[6])
+end
 return 1
 ```
 
-If a client retries on network failure, the second arrival is a no-op. Re-tries within 120 s are safe.
+For shop actions, the same script atomically records the action and commits the
+updated runtime/shop JSON. If a client retries on network failure, the second
+arrival is a no-op. Re-tries within 120 s are safe.
 
 ## 16. Boot Order & Topology
 

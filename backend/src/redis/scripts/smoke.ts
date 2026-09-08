@@ -161,6 +161,60 @@ async function run(): Promise<void> {
   }
   await client.del(logKey);
 
+  // 9. optional shop commit writes action + runtime + shop atomically
+  {
+    const shopRuntimeKey = KEY('shop-runtime');
+    const shopStateKey = KEY('shop-state:u1');
+    await client.hset(shopRuntimeKey, { phase: 'shop_place', round: '3' });
+    const ret = await client.evalsha(
+      sha('action_log'),
+      3,
+      logKey,
+      shopRuntimeKey,
+      shopStateKey,
+      'act-shop',
+      '300',
+      'p1State',
+      '{"gold":4}',
+      '{"round":3}',
+      '1800',
+      'shop_place',
+      '3',
+    );
+    const [state, shop] = await Promise.all([
+      client.hget(shopRuntimeKey, 'p1State'),
+      client.get(shopStateKey),
+    ]);
+    results.push({
+      name: '9. action_log atomically commits shop + runtime state',
+      passed: ret === 1 && state === '{"gold":4}' && shop === '{"round":3}',
+      detail: `ret=${ret} state=${state} shop=${shop}`,
+    });
+
+    await client.hset(shopRuntimeKey, 'phase', 'battle');
+    const phaseMismatch = await client.evalsha(
+      sha('action_log'), 3, logKey, shopRuntimeKey, shopStateKey,
+      'act-late', '400', 'p1State', '{"gold":3}', '{"round":3}', '1800', 'shop_place', '3',
+    );
+    results.push({
+      name: '10. action_log rejects a shop commit after phase flip',
+      passed: phaseMismatch === -1 && await client.hexists(logKey, 'act-late') === 0,
+      detail: `ret=${phaseMismatch}`,
+    });
+
+    await client.hset(shopRuntimeKey, { phase: 'shop_place', round: '4' });
+    const roundMismatch = await client.evalsha(
+      sha('action_log'), 3, logKey, shopRuntimeKey, shopStateKey,
+      'act-stale', '500', 'p1State', '{"gold":2}', '{"round":3}', '1800', 'shop_place', '3',
+    );
+    results.push({
+      name: '11. action_log rejects a stale-round shop commit',
+      passed: roundMismatch === -2 && await client.hexists(logKey, 'act-stale') === 0,
+      detail: `ret=${roundMismatch}`,
+    });
+    await client.del(logKey, shopRuntimeKey, shopStateKey);
+  }
+
   // ─── match_pair ────────────────────────────────────────────────────────
   const queueKey = KEY('matchmaking');
   await client.del(queueKey);
@@ -170,7 +224,7 @@ async function run(): Promise<void> {
     const ret = (await client.evalsha(sha('match_pair'), 1, queueKey)) as string[];
     const remaining = await client.zrange(queueKey, 0, -1);
     results.push({
-      name: '9. match_pair with 2 members → [user-A, user-B], ZREM drains queue',
+      name: '12. match_pair with 2 members → [user-A, user-B], ZREM drains queue',
       passed:
         Array.isArray(ret) &&
         ret.length === 2 &&
@@ -184,7 +238,7 @@ async function run(): Promise<void> {
   {
     const ret = (await client.evalsha(sha('match_pair'), 1, queueKey)) as unknown[];
     results.push({
-      name: '10. match_pair empty queue → []',
+      name: '13. match_pair empty queue → []',
       passed: Array.isArray(ret) && ret.length === 0,
       detail: `ret=${JSON.stringify(ret)}`,
     });
@@ -212,7 +266,7 @@ async function run(): Promise<void> {
     await client.hset(runtimeKey, 'phase', 'shop_place');
     const retried = await client.evalsha(reloaded, 1, runtimeKey, 'shop_place', 'battle', 'nest-1');
     results.push({
-      name: '11. NOSCRIPT fallback (SCRIPT FLUSH → reload → retry works)',
+      name: '14. NOSCRIPT fallback (SCRIPT FLUSH → reload → retry works)',
       passed: retried === 1,
       detail: `reloadedSha=${reloaded} retried=${retried}`,
     });
