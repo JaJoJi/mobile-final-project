@@ -9,14 +9,41 @@ on:
     branches: [dev, main]
     paths:
       - 'backend/**'
+      - '.github/workflows/backend-ci.yml'
 
 defaults:
   run:
     working-directory: backend
 
 jobs:
-  build-and-test:
+  backend:
     runs-on: ubuntu-latest
+
+    # Available for future DB / Redis integration tests. The combat-engine
+    # suite (P3-BE-01) is pure and ignores these.
+    services:
+      postgres:
+        image: postgres:18-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: auto_chess_test
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s --health-timeout 5s --health-retries 5
+      redis:
+        image: redis:7-alpine
+        ports: ['6379:6379']
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s --health-timeout 5s --health-retries 5
+
+    env:
+      DATABASE_URL: postgres://postgres:postgres@localhost:5432/auto_chess_test
+      REDIS_URL: redis://localhost:6379
+      JWT_SECRET: test_secret_at_least_32_bytes_long_padding_xx
+
     steps:
       - uses: actions/checkout@v4
 
@@ -28,10 +55,22 @@ jobs:
 
       - run: npm ci
 
+      # `lint` is a full typecheck (tsc --noEmit) for now; P3-BE-03 swaps
+      # in eslint without touching this workflow.
+      - name: Lint
+        run: npm run lint
+
       - name: Build
         run: npm run build
 
-      # jest.config.js enforces >= 90% line coverage on src/game/ (NFR-9);
-      # this step fails the PR if the combat engine drops below it.
+      # jest.config.js gates src/game/ at ≥ 90 % line coverage (NFR-9).
       - name: Test + coverage gate
         run: npm run test:cov
+
+      - name: Upload coverage
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: backend-coverage
+          path: backend/coverage/
+          if-no-files-found: ignore

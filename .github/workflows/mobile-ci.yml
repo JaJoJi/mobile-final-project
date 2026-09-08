@@ -9,16 +9,22 @@ on:
     branches: [dev, main]
     paths:
       - 'mobile/**'
+      - '.github/workflows/mobile-ci.yml'
 
 defaults:
   run:
     working-directory: mobile
 
 jobs:
-  analyze-and-test:
+  mobile:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
 
       - uses: subosito/flutter-action@v2
         with:
@@ -30,11 +36,13 @@ jobs:
       - name: Verify formatting
         run: dart format --output=none --set-exit-if-changed .
 
-      # `flutter analyze` exits non-zero on any info/warning/error by
-      # default, so a clean tree is the gate.
+      # `flutter analyze` exits non-zero on any info/warning/error given
+      # the strict analysis_options.yaml (P3-FE-02), so a clean tree is the gate.
       - name: Analyze
         run: flutter analyze
 
       - name: Test
         run: flutter test
 
+      - name: Debug APK build
+        run: flutter build apk --debug
