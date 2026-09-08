@@ -1,10 +1,15 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
+import '../../core/auth/auth_gate.dart';
 import '../../core/auth/auth_repository.dart';
 
-/// Registration screen. On success, push-replaces to home.
+/// Registration screen. On success the router redirect sends the new user
+/// to `/lobby`.
 class RegisterScreen extends ConsumerStatefulWidget {
   const RegisterScreen({super.key});
+
+  static const path = '/register';
 
   @override
   ConsumerState<RegisterScreen> createState() => _RegisterScreenState();
@@ -28,12 +33,13 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
     });
     try {
       await ref.read(authRepositoryProvider).register(
-        email: _emailCtrl.text.trim(),
-        username: _usernameCtrl.text.trim(),
-        password: _passwordCtrl.text,
-      );
+            email: _emailCtrl.text.trim(),
+            username: _usernameCtrl.text.trim(),
+            password: _passwordCtrl.text,
+          );
+      AuthGate.instance.signalSignedIn();
       if (!mounted) return;
-      Navigator.of(context).pushReplacementNamed('/home');
+      context.go('/lobby');
     } on AuthException catch (e) {
       setState(() => _error = e.message);
     } finally {
@@ -91,8 +97,8 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
                     'Join Auto Chess',
                     textAlign: TextAlign.center,
                     style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                      fontWeight: FontWeight.w600,
-                    ),
+                          fontWeight: FontWeight.w600,
+                        ),
                   ),
                   const SizedBox(height: 24),
                   TextFormField(
@@ -130,7 +136,8 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
                       labelText: 'Password',
                       prefixIcon: const Icon(Icons.lock_outline),
                       suffixIcon: IconButton(
-                        icon: Icon(_obscure ? Icons.visibility : Icons.visibility_off),
+                        icon: Icon(
+                            _obscure ? Icons.visibility : Icons.visibility_off),
                         onPressed: () => setState(() => _obscure = !_obscure),
                       ),
                       helperText: '≥ 8 characters',
@@ -149,7 +156,8 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
                       ),
                       child: Row(
                         children: [
-                          Icon(Icons.error_outline, color: Colors.red.shade700, size: 20),
+                          Icon(Icons.error_outline,
+                              color: Colors.red.shade700, size: 20),
                           const SizedBox(width: 8),
                           Expanded(
                             child: Text(
@@ -179,9 +187,9 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
                   TextButton(
                     onPressed: _loading
                         ? null
-                        : () {
-                            Navigator.of(context).pop();
-                          },
+                        : () => context.canPop()
+                            ? context.pop()
+                            : context.go('/login'),
                     child: const Text('Already have an account? Sign in'),
                   ),
                 ],
