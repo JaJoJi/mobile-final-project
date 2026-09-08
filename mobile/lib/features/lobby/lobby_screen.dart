@@ -94,6 +94,11 @@ class _LobbyScreenState extends ConsumerState<LobbyScreen> {
         title: const Text('Auto Chess — Connect'),
         actions: [
           IconButton(
+            tooltip: 'บัญชีของฉัน',
+            icon: const Icon(Icons.person_outline),
+            onPressed: () => context.push('/profile'),
+          ),
+          IconButton(
             tooltip: 'Sign out',
             icon: const Icon(Icons.logout),
             onPressed: _logout,
