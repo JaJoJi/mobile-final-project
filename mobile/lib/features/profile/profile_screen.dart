@@ -95,8 +95,10 @@ class _Content extends ConsumerWidget {
                         Icon(Icons.military_tech, size: 16, color: game.gold),
                         const SizedBox(width: AppSpacing.xs),
                         Flexible(
-                          child: Text('เรตติ้ง ${rating ?? '—'}',
-                              style: t.textTheme.bodyMedium),
+                          child: Text(
+                            'เรตติ้ง ${rating ?? '—'}',
+                            style: t.textTheme.bodyMedium,
+                          ),
                         ),
                       ],
                     ),

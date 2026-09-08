@@ -29,9 +29,11 @@ class _WidgetGalleryScreenState extends State<WidgetGalleryScreen> {
               tooltip: _brightness == Brightness.light
                   ? 'สลับเป็นธีมมืด'
                   : 'สลับเป็นธีมสว่าง',
-              icon: Icon(_brightness == Brightness.light
-                  ? Icons.dark_mode_outlined
-                  : Icons.light_mode_outlined),
+              icon: Icon(
+                _brightness == Brightness.light
+                    ? Icons.dark_mode_outlined
+                    : Icons.light_mode_outlined,
+              ),
               onPressed: () => setState(() {
                 _brightness = _brightness == Brightness.light
                     ? Brightness.dark
@@ -120,7 +122,6 @@ class _WidgetGalleryScreenState extends State<WidgetGalleryScreen> {
                     UnitAvatar(
                       unitId: 'fighter',
                       star: 2,
-                      variant: UnitAvatarVariant.board,
                       hp: 40,
                       maxHp: 100,
                     ),
@@ -176,14 +177,19 @@ class _WidgetGalleryScreenState extends State<WidgetGalleryScreen> {
                   spacing: AppSpacing.sm,
                   children: [
                     OutlinedButton(
-                      onPressed: () => AppToast.show(context, 'บันทึกแล้ว',
-                          variant: AppToastVariant.success),
+                      onPressed: () => AppToast.show(
+                        context,
+                        'บันทึกแล้ว',
+                        variant: AppToastVariant.success,
+                      ),
                       child: const Text('toast success'),
                     ),
                     OutlinedButton(
                       onPressed: () => AppToast.show(
-                          context, 'การเชื่อมต่อหลุด',
-                          variant: AppToastVariant.danger),
+                        context,
+                        'การเชื่อมต่อหลุด',
+                        variant: AppToastVariant.danger,
+                      ),
                       child: const Text('toast danger'),
                     ),
                     OutlinedButton(

@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -43,7 +45,9 @@ class _SplashScreenState extends ConsumerState<SplashScreen> {
       if (mounted) context.go(signedIn ? '/lobby' : '/login');
     }
 
-    Future<void>.delayed(SplashScreen._maxWait).then((_) => settle(false));
+    unawaited(
+      Future<void>.delayed(SplashScreen._maxWait).then((_) => settle(false)),
+    );
 
     final hasToken = (await auth.getAccessToken())?.isNotEmpty ?? false;
     if (!hasToken) {

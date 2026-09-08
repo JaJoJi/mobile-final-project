@@ -141,7 +141,9 @@ class UnitAvatar extends StatelessWidget {
           boxShadow: state == UnitAvatarState.fusable
               ? [
                   BoxShadow(
-                      color: game.star2.withValues(alpha: 0.6), blurRadius: 8)
+                    color: game.star2.withValues(alpha: 0.6),
+                    blurRadius: 8,
+                  ),
                 ]
               : null,
         ),
@@ -317,14 +319,18 @@ class _UnitArt extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Image.asset(
-      kind.artPath,
-      width: size,
-      height: size,
-      fit: BoxFit.contain,
-      filterQuality: FilterQuality.medium,
-      errorBuilder: (_, __, ___) =>
-          Icon(kind.shape, size: size * 0.6, color: tint),
+    // The unit's identity is already announced by the parent
+    // `UnitAvatar` Semantics label + the name text + star badge, so the
+    // illustration itself is decorative to a screen reader.
+    return ExcludeSemantics(
+      child: Image.asset(
+        kind.artPath,
+        width: size,
+        height: size,
+        fit: BoxFit.contain,
+        errorBuilder: (_, __, ___) =>
+            Icon(kind.shape, size: size * 0.6, color: tint),
+      ),
     );
   }
 }

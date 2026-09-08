@@ -29,8 +29,10 @@ class PhaseTimerRing extends StatefulWidget {
     this.size = 56,
     this.stroke = 6,
     this.clock,
-  }) : assert(deadline != null || durationSeconds != null,
-            'provide deadline or durationSeconds');
+  }) : assert(
+          deadline != null || durationSeconds != null,
+          'provide deadline or durationSeconds',
+        );
 
   final DateTime? deadline;
   final int? durationSeconds;

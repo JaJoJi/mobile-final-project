@@ -179,8 +179,11 @@ class _HealthBarState extends State<HealthBar>
           mainAxisSize: MainAxisSize.min,
           children: [
             if (_isLow) ...[
-              Icon(Icons.warning_amber_rounded,
-                  size: widget.thickness + 8, color: game.hpLow),
+              Icon(
+                Icons.warning_amber_rounded,
+                size: widget.thickness + 8,
+                color: game.hpLow,
+              ),
               const SizedBox(width: AppSpacing.xs),
             ],
             Flexible(child: animatedBar),

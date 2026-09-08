@@ -14,63 +14,54 @@ abstract final class AppTypography {
   static const TextTheme textTheme = TextTheme(
     // h1 — WIN · LOSE
     displaySmall: TextStyle(
-      fontFamily: fontFamily,
       fontSize: 36,
       fontWeight: FontWeight.w700,
       height: 1.2,
     ),
     // h2 — screen titles
     headlineMedium: TextStyle(
-      fontFamily: fontFamily,
       fontSize: 28,
       fontWeight: FontWeight.w600,
       height: 1.25,
     ),
     // h3 — modal titles, section heads
     titleLarge: TextStyle(
-      fontFamily: fontFamily,
       fontSize: 22,
       fontWeight: FontWeight.w600,
       height: 1.3,
     ),
     // subtitle — unit name, list row title
     titleMedium: TextStyle(
-      fontFamily: fontFamily,
       fontSize: 16,
       fontWeight: FontWeight.w600,
       height: 1.4,
     ),
     // body — default text everywhere
     bodyLarge: TextStyle(
-      fontFamily: fontFamily,
       fontSize: 16,
       fontWeight: FontWeight.w400,
       height: 1.5,
     ),
     // body-sm — secondary description
     bodyMedium: TextStyle(
-      fontFamily: fontFamily,
       fontSize: 14,
       fontWeight: FontWeight.w400,
       height: 1.5,
     ),
     // button — button labels
     labelLarge: TextStyle(
-      fontFamily: fontFamily,
       fontSize: 14,
       fontWeight: FontWeight.w600,
       height: 1.2,
     ),
     // caption — timestamps, helper text
     labelMedium: TextStyle(
-      fontFamily: fontFamily,
       fontSize: 12,
       fontWeight: FontWeight.w500,
       height: 1.4,
     ),
     // micro — badges only
     labelSmall: TextStyle(
-      fontFamily: fontFamily,
       fontSize: 11,
       fontWeight: FontWeight.w500,
       height: 1.3,

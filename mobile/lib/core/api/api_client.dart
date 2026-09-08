@@ -44,13 +44,13 @@ class ApiClient {
   // ─── connectivity / smoke ────────────────────────────────────────
 
   Future<Map<String, dynamic>> getHealth() async {
-    final res = await _dio.get('/health');
-    return Map<String, dynamic>.from(res.data as Map);
+    final res = await _dio.get<Map<String, dynamic>>('/health');
+    return Map<String, dynamic>.from(res.data!);
   }
 
   Future<Map<String, dynamic>> whoami() async {
-    final res = await _dio.get('/health/whoami');
-    return Map<String, dynamic>.from(res.data as Map);
+    final res = await _dio.get<Map<String, dynamic>>('/health/whoami');
+    return Map<String, dynamic>.from(res.data!);
   }
 
   Future<List<Map<String, dynamic>>> pingInstances(int times) async {
@@ -65,11 +65,14 @@ class ApiClient {
     required String username,
     required String password,
   }) async {
-    final res = await _dio.post('/auth/register', data: {
-      'email': email,
-      'username': username,
-      'password': password,
-    });
+    final res = await _dio.post<Map<String, dynamic>>(
+      '/auth/register',
+      data: {
+        'email': email,
+        'username': username,
+        'password': password,
+      },
+    );
     return _parseAuth(res);
   }
 
@@ -77,36 +80,43 @@ class ApiClient {
     required String email,
     required String password,
   }) async {
-    final res = await _dio.post('/auth/login', data: {
-      'email': email,
-      'password': password,
-    });
+    final res = await _dio.post<Map<String, dynamic>>(
+      '/auth/login',
+      data: {
+        'email': email,
+        'password': password,
+      },
+    );
     return _parseAuth(res);
   }
 
   Future<AuthResult> refresh(String refreshToken) async {
-    final res = await _dio.post('/auth/refresh', data: {
-      'refreshToken': refreshToken,
-    });
+    final res = await _dio.post<Map<String, dynamic>>(
+      '/auth/refresh',
+      data: {
+        'refreshToken': refreshToken,
+      },
+    );
     return _parseAuth(res);
   }
 
   // ─── user ─────────────────────────────────────────────────────────
 
   Future<Map<String, dynamic>> getMe() async {
-    final res = await _dio.get('/user/me');
-    return Map<String, dynamic>.from(res.data as Map);
+    final res = await _dio.get<Map<String, dynamic>>('/user/me');
+    return Map<String, dynamic>.from(res.data!);
   }
 
   Future<Map<String, dynamic>> updateMe({required String username}) async {
-    final res = await _dio.patch('/user/me', data: {'username': username});
-    return Map<String, dynamic>.from(res.data as Map);
+    final res = await _dio
+        .patch<Map<String, dynamic>>('/user/me', data: {'username': username});
+    return Map<String, dynamic>.from(res.data!);
   }
 
   // ─── helpers ──────────────────────────────────────────────────────
 
-  AuthResult _parseAuth(Response res) {
-    final data = res.data as Map<String, dynamic>;
+  AuthResult _parseAuth(Response<Map<String, dynamic>> res) {
+    final data = res.data!;
     return AuthResult(
       userId: data['userId'] as String,
       accessToken: data['accessToken'] as String,
@@ -142,12 +152,17 @@ class AuthResult {
 /// is acceptable for MVP (real prod would use proper key exchange).
 class AuthInterceptor extends QueuedInterceptor {
   AuthInterceptor(this._storage, Dio parentDio)
-      : _refreshDio = Dio(BaseOptions(
-          baseUrl: parentDio.options.baseUrl,
-          connectTimeout: parentDio.options.connectTimeout,
-          receiveTimeout: parentDio.options.receiveTimeout,
-          headers: const {'Accept': 'application/json', 'Connection': 'close'},
-        ))
+      : _refreshDio = Dio(
+          BaseOptions(
+            baseUrl: parentDio.options.baseUrl,
+            connectTimeout: parentDio.options.connectTimeout,
+            receiveTimeout: parentDio.options.receiveTimeout,
+            headers: const {
+              'Accept': 'application/json',
+              'Connection': 'close',
+            },
+          ),
+        )
           // Share the transport so tests' fake adapter also serves the
           // refresh + retry calls. No interceptors here → those requests
           // can't re-enter this queued interceptor and deadlock it.
@@ -235,7 +250,9 @@ class AuthInterceptor extends QueuedInterceptor {
       final access = data['accessToken'] as String;
       await _storage.write(key: _kAccessTokenKey, value: access);
       await _storage.write(
-          key: _kRefreshTokenKey, value: data['refreshToken'] as String);
+        key: _kRefreshTokenKey,
+        value: data['refreshToken'] as String,
+      );
       await _storage.write(key: _kUserIdKey, value: data['userId'] as String);
       return access;
     } catch (_) {

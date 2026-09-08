@@ -404,8 +404,10 @@ class _ErrorBlock extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text('Error',
-              style: TextStyle(fontWeight: FontWeight.bold, color: Colors.red)),
+          const Text(
+            'Error',
+            style: TextStyle(fontWeight: FontWeight.bold, color: Colors.red),
+          ),
           const SizedBox(height: 8),
           Text(error, style: const TextStyle(fontFamily: 'monospace')),
         ],

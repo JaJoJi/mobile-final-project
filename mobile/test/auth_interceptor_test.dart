@@ -45,8 +45,11 @@ class _FakeAdapter implements HttpClientAdapter {
   final ResponseBody Function(RequestOptions options) handler;
 
   @override
-  Future<ResponseBody> fetch(RequestOptions options, Stream<Uint8List>? _,
-          Future<void>? __) async =>
+  Future<ResponseBody> fetch(
+    RequestOptions options,
+    Stream<Uint8List>? _,
+    Future<void>? __,
+  ) async =>
       handler(options);
 
   @override
@@ -76,8 +79,9 @@ void main() {
     final dio = Dio(BaseOptions(baseUrl: 'http://test.local'));
     dio.httpClientAdapter = adapter;
     ApiClient(
-        dio: dio,
-        storage: const FlutterSecureStorage()); // wires AuthInterceptor
+      dio: dio,
+      storage: const FlutterSecureStorage(),
+    ); // wires AuthInterceptor
     return dio;
   }
 
@@ -89,25 +93,30 @@ void main() {
     var meCalls = 0;
     var refreshCalls = 0;
 
-    final dio = buildDio(_FakeAdapter((options) {
-      if (options.path == '/auth/refresh') {
-        refreshCalls++;
-        return _json({
-          'userId': 'u1',
-          'accessToken': 'new-access',
-          'refreshToken': 'new-refresh',
-        }, 200);
-      }
-      if (options.path == '/user/me') {
-        meCalls++;
-        final auth = options.headers['Authorization'];
-        if (auth == 'Bearer new-access') {
-          return _json({'id': 'u1', 'username': 'alice'}, 200);
+    final dio = buildDio(
+      _FakeAdapter((options) {
+        if (options.path == '/auth/refresh') {
+          refreshCalls++;
+          return _json(
+            {
+              'userId': 'u1',
+              'accessToken': 'new-access',
+              'refreshToken': 'new-refresh',
+            },
+            200,
+          );
         }
-        return _json({'message': 'unauthorized'}, 401);
-      }
-      return _json({}, 404);
-    }));
+        if (options.path == '/user/me') {
+          meCalls++;
+          final auth = options.headers['Authorization'];
+          if (auth == 'Bearer new-access') {
+            return _json({'id': 'u1', 'username': 'alice'}, 200);
+          }
+          return _json({'message': 'unauthorized'}, 401);
+        }
+        return _json({}, 404);
+      }),
+    );
 
     final res = await dio.get<dynamic>('/user/me');
 
@@ -126,17 +135,21 @@ void main() {
     store['refresh_token'] = 'dead-refresh';
     store['user_id'] = 'u1';
 
-    final dio = buildDio(_FakeAdapter((options) {
-      if (options.path == '/auth/refresh') {
-        return _json({'message': 'refresh expired'}, 401);
-      }
-      return _json({'message': 'unauthorized'}, 401);
-    }));
+    final dio = buildDio(
+      _FakeAdapter((options) {
+        if (options.path == '/auth/refresh') {
+          return _json({'message': 'refresh expired'}, 401);
+        }
+        return _json({'message': 'unauthorized'}, 401);
+      }),
+    );
 
     await expectLater(
       dio.get<dynamic>('/user/me'),
-      throwsA(isA<DioException>()
-          .having((e) => e.response?.statusCode, 'status', 401)),
+      throwsA(
+        isA<DioException>()
+            .having((e) => e.response?.statusCode, 'status', 401),
+      ),
     );
 
     expect(store.containsKey('access_token'), isFalse);
@@ -149,29 +162,38 @@ void main() {
     store['refresh_token'] = 'good-refresh';
 
     var meCalls = 0;
-    final dio = buildDio(_FakeAdapter((options) {
-      if (options.path == '/auth/refresh') {
-        return _json({
-          'userId': 'u1',
-          'accessToken': 'new-access',
-          'refreshToken': 'new-refresh',
-        }, 200);
-      }
-      meCalls++;
-      return _json({'message': 'still no'}, 401);
-    }));
+    final dio = buildDio(
+      _FakeAdapter((options) {
+        if (options.path == '/auth/refresh') {
+          return _json(
+            {
+              'userId': 'u1',
+              'accessToken': 'new-access',
+              'refreshToken': 'new-refresh',
+            },
+            200,
+          );
+        }
+        meCalls++;
+        return _json({'message': 'still no'}, 401);
+      }),
+    );
 
     await expectLater(
-        dio.get<dynamic>('/user/me'), throwsA(isA<DioException>()));
+      dio.get<dynamic>('/user/me'),
+      throwsA(isA<DioException>()),
+    );
     expect(meCalls, 2, reason: 'original + one retry, no third attempt');
   });
 
   test('401 on an /auth/ path is not intercepted', () async {
     var refreshCalls = 0;
-    final dio = buildDio(_FakeAdapter((options) {
-      refreshCalls++;
-      return _json({'message': 'bad creds'}, 401);
-    }));
+    final dio = buildDio(
+      _FakeAdapter((options) {
+        refreshCalls++;
+        return _json({'message': 'bad creds'}, 401);
+      }),
+    );
 
     await expectLater(
       dio.post<dynamic>('/auth/login', data: {'email': 'x', 'password': 'y'}),

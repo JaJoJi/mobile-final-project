@@ -1,8 +1,8 @@
 import 'package:auto_chess_mobile/core/auth/auth_gate.dart';
 import 'package:auto_chess_mobile/core/router.dart';
 import 'package:auto_chess_mobile/features/auth/login_screen.dart';
-import 'package:auto_chess_mobile/features/lobby/lobby_screen.dart';
 import 'package:auto_chess_mobile/features/history/history_list_screen.dart';
+import 'package:auto_chess_mobile/features/lobby/lobby_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
