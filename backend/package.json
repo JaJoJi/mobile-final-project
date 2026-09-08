@@ -1,7 +1,7 @@
 {
   "name": "auto-chess-backend",
   "version": "0.1.0",
-  "description": "Backend for the Auto Chess mobile game — NestJS + TypeORM + ioredis + BullMQ",
+  "description": "Backend for the Auto Chess mobile game \u0e42\u20ac\u201d NestJS + TypeORM + ioredis + BullMQ",
   "private": true,
   "scripts": {
     "build": "tsc -p tsconfig.build.json && npm run build:assets",
@@ -14,7 +14,9 @@
     "typeorm": "typeorm-ts-node-commonjs",
     "migration:generate": "npm run typeorm -- migration:generate -d src/data-source.ts",
     "migration:run": "npm run typeorm -- migration:run -d src/data-source.ts",
-    "migration:revert": "npm run typeorm -- migration:revert -d src/data-source.ts"
+    "migration:revert": "npm run typeorm -- migration:revert -d src/data-source.ts",
+    "test": "jest",
+    "test:cov": "jest --coverage"
   },
   "dependencies": {
     "@nestjs/bullmq": "^12.0.0",
@@ -41,8 +43,11 @@
   "devDependencies": {
     "@types/bcrypt": "^5.0.2",
     "@types/express": "^4.17.21",
+    "@types/jest": "^29.5.13",
     "@types/node": "^22.5.5",
+    "jest": "^29.7.0",
     "socket.io-client": "^4.8.3",
+    "ts-jest": "^29.2.5",
     "ts-node": "^10.9.2",
     "typescript": "^5.5.4"
   }
