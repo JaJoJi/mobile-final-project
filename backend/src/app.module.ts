@@ -3,9 +3,9 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { join } from 'path';
 import { AuthModule } from './auth/auth.module';
 import { HealthController } from './common/health.controller';
+import { ENTITIES } from './database/entities';
 import { RedisModule } from './redis/redis.module';
 import { RedisService } from './redis/redis.service';
-import { User } from './user/user.entity';
 import { UserModule } from './user/user.module';
 
 @Module({
@@ -14,7 +14,7 @@ import { UserModule } from './user/user.module';
       useFactory: () => ({
         type: 'postgres',
         url: process.env.DATABASE_URL,
-        entities: [User],
+        entities: ENTITIES,
         // Migrations are compiled to dist/migrations/*.js by `npm run build`.
         migrations: [join(__dirname, 'migrations', '*.js')],
         // Only ONE Nest instance should run migrations on boot, to avoid
