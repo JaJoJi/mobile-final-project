@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -23,35 +25,45 @@ class SplashScreen extends ConsumerStatefulWidget {
 }
 
 class _SplashScreenState extends ConsumerState<SplashScreen> {
+  Timer? _fallback;
+  bool _settled = false;
+
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) => _resolve());
   }
 
+  @override
+  void dispose() {
+    _fallback?.cancel();
+    super.dispose();
+  }
+
+  void _settle(bool signedIn) {
+    if (_settled) return;
+    _settled = true;
+    _fallback?.cancel();
+    signedIn
+        ? AuthGate.instance.signalSignedIn()
+        : AuthGate.instance.signalSignedOut();
+    // Nudge the router in case the redirect didn't already fire.
+    if (mounted) context.go(signedIn ? '/lobby' : '/login');
+  }
+
   Future<void> _resolve() async {
     final auth = ref.read(authRepositoryProvider);
 
-    var settled = false;
-    void settle(bool signedIn) {
-      if (settled) return;
-      settled = true;
-      signedIn
-          ? AuthGate.instance.signalSignedIn()
-          : AuthGate.instance.signalSignedOut();
-      // Nudge the router in case the redirect didn't already fire.
-      if (mounted) context.go(signedIn ? '/lobby' : '/login');
-    }
-
-    Future<void>.delayed(SplashScreen._maxWait).then((_) => settle(false));
+    // Never hang the launch on a slow / dead network.
+    _fallback = Timer(SplashScreen._maxWait, () => _settle(false));
 
     final hasToken = (await auth.getAccessToken())?.isNotEmpty ?? false;
     if (!hasToken) {
-      settle(false);
+      _settle(false);
       return;
     }
     final refreshed = await auth.tryRefresh();
-    settle(refreshed != null);
+    _settle(refreshed != null);
   }
 
   @override
