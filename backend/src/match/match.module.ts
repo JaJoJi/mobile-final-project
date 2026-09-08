@@ -1,26 +1,36 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
+import { JwtAuthModule } from '../common/jwt-auth.module';
+import { UserModule } from '../user/user.module';
+import { WsModule } from '../ws/ws.module';
+import { MatchController } from './match.controller';
 import { MatchRound } from './match-round.entity';
 import { Match } from './match.entity';
 import { MatchRepository } from './match.repository';
+import { MatchService } from './match.service';
 
 /**
  * Match domain module.
  *
  * Imports `TypeOrmModule.forFeature([Match, MatchRound])` so both
- * entities get their repositories wired (MatchRound's repo is reserved
- * for the orchestrator — P0-BE-13 writes the per-round event log here).
+ * entities get their repositories wired. The lifecycle service persists
+ * round events here and P0-BE-13's orchestrator will call that service.
  *
- * Exports `MatchRepository` so the matchmaking flow (P0-BE-11) and
- * the match lifecycle service (P0-BE-12) can both create / look up
- * matches. No controllers — match lifecycle is WS-driven, not REST.
+ * Exports the repository and lifecycle service for matchmaking and the
+ * orchestrator. MatchController exposes the guarded history/detail routes.
  *
  * Mirrors the structure of `UserModule` (TypeOrmModule.forFeature +
  * providers + exports) so the project stays consistent.
  */
 @Module({
-  imports: [TypeOrmModule.forFeature([Match, MatchRound])],
-  providers: [MatchRepository],
-  exports: [MatchRepository],
+  imports: [
+    TypeOrmModule.forFeature([Match, MatchRound]),
+    JwtAuthModule,
+    UserModule,
+    WsModule,
+  ],
+  controllers: [MatchController],
+  providers: [MatchRepository, MatchService],
+  exports: [MatchRepository, MatchService],
 })
 export class MatchModule {}

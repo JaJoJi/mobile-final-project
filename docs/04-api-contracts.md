@@ -12,8 +12,8 @@
 | `POST /auth/refresh` | ✅ implemented | long-lived (no rotation); both old + new refresh work |
 | `GET /user/me` | ✅ implemented | guarded by `JwtAccessGuard` |
 | `PATCH /user/me` | ✅ implemented | username only |
-| `GET /match/history` | ⏳ planned | |
-| `GET /match/:matchId` | ⏳ planned | |
+| `GET /match/history` | ✅ implemented | JWT-guarded; latest 50 completed matches |
+| `GET /match/:matchId` | ✅ implemented | JWT-guarded; participants only |
 | WS gateway (`/socket.io`) | ⏳ planned | schema frozen in §2 |
 
 ## 1. REST Endpoints
@@ -72,7 +72,15 @@ JWT payload shape: `{ sub: <userId>, type: 'access' | 'refresh' }`. Guards rejec
 **Response 200**
 ```json
 [
-  { "matchId": "uuid", "opponent": "bob", "winner": "alice", "createdAt": "ISO", "duration": 180 }
+  {
+    "matchId": "uuid",
+    "opponent": { "id": "uuid", "username": "bob" },
+    "winner": "self",
+    "status": "finished",
+    "rounds": 7,
+    "createdAt": "ISO",
+    "duration": 180
+  }
 ]
 ```
 Most recent 50 matches.
@@ -83,13 +91,17 @@ Most recent 50 matches.
 {
   "matchId": "uuid",
   "players": [{ "id": "uuid", "username": "alice" }, { "id": "uuid", "username": "bob" }],
+  "winnerId": "uuid",
   "winner": "alice",
+  "status": "finished",
   "rounds": [
-    { "roundNumber": 1, "winner": "alice", "damage": 0 }
+    { "roundNumber": 1, "events": [{ "type": "battle_end", "cycle": 4, "winner": "p1" }] }
   ],
   "createdAt": "ISO", "finishedAt": "ISO"
 }
 ```
+
+**Errors**: `401` missing/invalid JWT; `403 { code: 'match.not_your_match' }` for a non-participant; `404 { code: 'match.not_found' }` for an unknown match.
 
 ## 2. WebSocket Events
 
