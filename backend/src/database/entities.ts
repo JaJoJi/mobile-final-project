@@ -1,6 +1,6 @@
+import { Match } from '../match/match.entity';
+import { MatchRound } from '../match/match-round.entity';
 import { User } from '../user/user.entity';
-// import { Match } from '../match/match.entity';                  // added by P0-BE-07
-// import { MatchRound } from '../match/match-round.entity';       // added by P0-BE-07
 
 /**
  * Single source of truth for TypeORM entity registration.
@@ -16,4 +16,4 @@ import { User } from '../user/user.entity';
  *
  * nest-1 runs migrations on boot (RUN_MIGRATIONS=true); nest-2/3 skip.
  */
-export const ENTITIES = [User];
+export const ENTITIES = [User, Match, MatchRound];

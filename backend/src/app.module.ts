@@ -4,6 +4,7 @@ import { join } from 'path';
 import { AuthModule } from './auth/auth.module';
 import { HealthController } from './common/health.controller';
 import { ENTITIES } from './database/entities';
+import { MatchModule } from './match/match.module';
 import { QueueModule } from './queue/queue.module';
 import { RedisModule } from './redis/redis.module';
 import { RedisService } from './redis/redis.service';
@@ -34,6 +35,7 @@ import { WsModule } from './ws/ws.module';
     QueueModule,
     UserModule,
     AuthModule,
+    MatchModule,
     WsModule,
   ],
   controllers: [HealthController],
