@@ -1,0 +1,1192 @@
+[
+  {
+    "type": "attack",
+    "cycle": 1,
+    "tick": 10,
+    "attacker": "p2-ranger-011",
+    "target": "p1-ranger-002",
+    "damage": 18,
+    "targetHpAfter": 52
+  },
+  {
+    "type": "pierce",
+    "cycle": 1,
+    "tick": 10,
+    "attacker": "p2-ranger-011",
+    "target": "p1-fighter-005",
+    "damage": 1
+  },
+  {
+    "type": "attack",
+    "cycle": 1,
+    "tick": 10,
+    "attacker": "p2-ranger-015",
+    "target": "p1-ranger-002",
+    "damage": 24,
+    "targetHpAfter": 28
+  },
+  {
+    "type": "attack",
+    "cycle": 1,
+    "tick": 10,
+    "attacker": "p1-ranger-002",
+    "target": "p2-ranger-011",
+    "damage": 18,
+    "targetHpAfter": 52
+  },
+  {
+    "type": "pierce",
+    "cycle": 1,
+    "tick": 10,
+    "attacker": "p1-ranger-002",
+    "target": "p2-fighter-014",
+    "damage": 1
+  },
+  {
+    "type": "attack",
+    "cycle": 1,
+    "tick": 10,
+    "attacker": "p1-ranger-006",
+    "target": "p2-ranger-011",
+    "damage": 24,
+    "targetHpAfter": 28
+  },
+  {
+    "type": "attack",
+    "cycle": 1,
+    "tick": 20,
+    "attacker": "p2-ranger-011",
+    "target": "p1-ranger-002",
+    "damage": 18,
+    "targetHpAfter": 10
+  },
+  {
+    "type": "pierce",
+    "cycle": 1,
+    "tick": 20,
+    "attacker": "p2-ranger-011",
+    "target": "p1-fighter-005",
+    "damage": 1
+  },
+  {
+    "type": "death",
+    "cycle": 1,
+    "tick": 20,
+    "unit": "p1-ranger-002"
+  },
+  {
+    "type": "attack",
+    "cycle": 1,
+    "tick": 20,
+    "attacker": "p2-ranger-015",
+    "target": "p1-ranger-002",
+    "damage": 24,
+    "targetHpAfter": 0
+  },
+  {
+    "type": "attack",
+    "cycle": 1,
+    "tick": 20,
+    "attacker": "p1-ranger-006",
+    "target": "p2-ranger-011",
+    "damage": 24,
+    "targetHpAfter": 4
+  },
+  {
+    "type": "attack",
+    "cycle": 1,
+    "tick": 30,
+    "attacker": "p2-ranger-011",
+    "target": "p1-fighter-005",
+    "damage": 18,
+    "targetHpAfter": 80
+  },
+  {
+    "type": "pierce",
+    "cycle": 1,
+    "tick": 30,
+    "attacker": "p2-ranger-011",
+    "target": "p1-tank-008",
+    "damage": 1
+  },
+  {
+    "type": "attack",
+    "cycle": 1,
+    "tick": 30,
+    "attacker": "p2-ranger-015",
+    "target": "p1-fighter-001",
+    "damage": 24,
+    "targetHpAfter": 36
+  },
+  {
+    "type": "death",
+    "cycle": 1,
+    "tick": 30,
+    "unit": "p2-ranger-011"
+  },
+  {
+    "type": "attack",
+    "cycle": 1,
+    "tick": 30,
+    "attacker": "p1-ranger-006",
+    "target": "p2-ranger-011",
+    "damage": 24,
+    "targetHpAfter": 0
+  },
+  {
+    "type": "attack",
+    "cycle": 1,
+    "tick": 40,
+    "attacker": "p2-ranger-015",
+    "target": "p1-fighter-001",
+    "damage": 24,
+    "targetHpAfter": 12
+  },
+  {
+    "type": "attack",
+    "cycle": 1,
+    "tick": 40,
+    "attacker": "p1-ranger-006",
+    "target": "p2-fighter-010",
+    "damage": 24,
+    "targetHpAfter": 36
+  },
+  {
+    "type": "death",
+    "cycle": 1,
+    "tick": 50,
+    "unit": "p1-fighter-001"
+  },
+  {
+    "type": "attack",
+    "cycle": 1,
+    "tick": 50,
+    "attacker": "p2-ranger-015",
+    "target": "p1-fighter-001",
+    "damage": 24,
+    "targetHpAfter": 0
+  },
+  {
+    "type": "attack",
+    "cycle": 1,
+    "tick": 50,
+    "attacker": "p2-healer-012",
+    "target": "p1-healer-003",
+    "damage": 12,
+    "targetHpAfter": 68
+  },
+  {
+    "type": "heal",
+    "cycle": 1,
+    "tick": 50,
+    "target": "p2-fighter-010",
+    "by": "p2-healer-012",
+    "amount": 10,
+    "targetHpAfter": 46
+  },
+  {
+    "type": "slow",
+    "cycle": 1,
+    "tick": 50,
+    "target": "p1-healer-003",
+    "by": "p2-healer-012"
+  },
+  {
+    "type": "attack",
+    "cycle": 1,
+    "tick": 50,
+    "attacker": "p2-healer-016",
+    "target": "p1-tank-004",
+    "damage": 6,
+    "targetHpAfter": 84
+  },
+  {
+    "type": "heal",
+    "cycle": 1,
+    "tick": 50,
+    "target": "p2-fighter-010",
+    "by": "p2-healer-016",
+    "amount": 10,
+    "targetHpAfter": 56
+  },
+  {
+    "type": "attack",
+    "cycle": 1,
+    "tick": 50,
+    "attacker": "p1-ranger-006",
+    "target": "p2-fighter-010",
+    "damage": 24,
+    "targetHpAfter": 32
+  },
+  {
+    "type": "attack",
+    "cycle": 1,
+    "tick": 50,
+    "attacker": "p1-healer-003",
+    "target": "p2-healer-012",
+    "damage": 12,
+    "targetHpAfter": 68
+  },
+  {
+    "type": "heal",
+    "cycle": 1,
+    "tick": 50,
+    "target": "p1-healer-003",
+    "by": "p1-healer-003",
+    "amount": 10,
+    "targetHpAfter": 78
+  },
+  {
+    "type": "heal",
+    "cycle": 1,
+    "tick": 50,
+    "target": "p1-fighter-005",
+    "by": "p1-healer-003",
+    "amount": 10,
+    "targetHpAfter": 90
+  },
+  {
+    "type": "slow",
+    "cycle": 1,
+    "tick": 50,
+    "target": "p2-healer-012",
+    "by": "p1-healer-003"
+  },
+  {
+    "type": "attack",
+    "cycle": 1,
+    "tick": 50,
+    "attacker": "p1-healer-007",
+    "target": "p2-fighter-010",
+    "damage": 6,
+    "targetHpAfter": 26
+  },
+  {
+    "type": "heal",
+    "cycle": 1,
+    "tick": 50,
+    "target": "p1-healer-003",
+    "by": "p1-healer-007",
+    "amount": 2,
+    "targetHpAfter": 80
+  },
+  {
+    "type": "attack",
+    "cycle": 1,
+    "tick": 60,
+    "attacker": "p2-ranger-015",
+    "target": "p1-healer-003",
+    "damage": 24,
+    "targetHpAfter": 56
+  },
+  {
+    "type": "attack",
+    "cycle": 1,
+    "tick": 60,
+    "attacker": "p1-ranger-006",
+    "target": "p2-fighter-010",
+    "damage": 24,
+    "targetHpAfter": 2
+  },
+  {
+    "type": "attack",
+    "cycle": 1,
+    "tick": 65,
+    "attacker": "p2-healer-012",
+    "target": "p1-healer-003",
+    "damage": 12,
+    "targetHpAfter": 44
+  },
+  {
+    "type": "heal",
+    "cycle": 1,
+    "tick": 65,
+    "target": "p2-fighter-010",
+    "by": "p2-healer-012",
+    "amount": 10,
+    "targetHpAfter": 12
+  },
+  {
+    "type": "heal",
+    "cycle": 1,
+    "tick": 65,
+    "target": "p2-healer-012",
+    "by": "p2-healer-012",
+    "amount": 10,
+    "targetHpAfter": 78
+  },
+  {
+    "type": "slow",
+    "cycle": 1,
+    "tick": 65,
+    "target": "p1-healer-003",
+    "by": "p2-healer-012"
+  },
+  {
+    "type": "attack",
+    "cycle": 1,
+    "tick": 65,
+    "attacker": "p1-healer-003",
+    "target": "p2-healer-012",
+    "damage": 12,
+    "targetHpAfter": 66
+  },
+  {
+    "type": "heal",
+    "cycle": 1,
+    "tick": 65,
+    "target": "p1-healer-003",
+    "by": "p1-healer-003",
+    "amount": 10,
+    "targetHpAfter": 54
+  },
+  {
+    "type": "heal",
+    "cycle": 1,
+    "tick": 65,
+    "target": "p1-tank-004",
+    "by": "p1-healer-003",
+    "amount": 6,
+    "targetHpAfter": 90
+  },
+  {
+    "type": "slow",
+    "cycle": 1,
+    "tick": 65,
+    "target": "p2-healer-012",
+    "by": "p1-healer-003"
+  },
+  {
+    "type": "attack",
+    "cycle": 1,
+    "tick": 70,
+    "attacker": "p2-ranger-015",
+    "target": "p1-healer-003",
+    "damage": 24,
+    "targetHpAfter": 30
+  },
+  {
+    "type": "death",
+    "cycle": 1,
+    "tick": 70,
+    "unit": "p2-fighter-010"
+  },
+  {
+    "type": "attack",
+    "cycle": 1,
+    "tick": 70,
+    "attacker": "p1-ranger-006",
+    "target": "p2-fighter-010",
+    "damage": 24,
+    "targetHpAfter": 0
+  },
+  {
+    "type": "attack",
+    "cycle": 1,
+    "tick": 80,
+    "attacker": "p2-ranger-015",
+    "target": "p1-healer-003",
+    "damage": 24,
+    "targetHpAfter": 6
+  },
+  {
+    "type": "attack",
+    "cycle": 1,
+    "tick": 80,
+    "attacker": "p2-fighter-014",
+    "target": "p1-fighter-005",
+    "damage": 22,
+    "targetHpAfter": 68
+  },
+  {
+    "type": "lifesteal",
+    "cycle": 1,
+    "tick": 80,
+    "unit": "p2-fighter-014",
+    "amount": 1,
+    "hpAfter": 100
+  },
+  {
+    "type": "death",
+    "cycle": 1,
+    "tick": 80,
+    "unit": "p1-healer-003"
+  },
+  {
+    "type": "attack",
+    "cycle": 1,
+    "tick": 80,
+    "attacker": "p2-fighter-018",
+    "target": "p1-healer-003",
+    "damage": 30,
+    "targetHpAfter": 0
+  },
+  {
+    "type": "lifesteal",
+    "cycle": 1,
+    "tick": 80,
+    "unit": "p2-fighter-018",
+    "amount": 0,
+    "hpAfter": 140
+  },
+  {
+    "type": "attack",
+    "cycle": 1,
+    "tick": 80,
+    "attacker": "p1-ranger-006",
+    "target": "p2-healer-012",
+    "damage": 24,
+    "targetHpAfter": 42
+  },
+  {
+    "type": "attack",
+    "cycle": 1,
+    "tick": 80,
+    "attacker": "p1-fighter-005",
+    "target": "p2-fighter-014",
+    "damage": 22,
+    "targetHpAfter": 78
+  },
+  {
+    "type": "lifesteal",
+    "cycle": 1,
+    "tick": 80,
+    "unit": "p1-fighter-005",
+    "amount": 1,
+    "hpAfter": 69
+  },
+  {
+    "type": "attack",
+    "cycle": 1,
+    "tick": 80,
+    "attacker": "p1-fighter-009",
+    "target": "p2-healer-012",
+    "damage": 30,
+    "targetHpAfter": 12
+  },
+  {
+    "type": "lifesteal",
+    "cycle": 1,
+    "tick": 80,
+    "unit": "p1-fighter-009",
+    "amount": 0,
+    "hpAfter": 140
+  },
+  {
+    "type": "attack",
+    "cycle": 1,
+    "tick": 90,
+    "attacker": "p2-ranger-015",
+    "target": "p1-fighter-005",
+    "damage": 24,
+    "targetHpAfter": 45
+  },
+  {
+    "type": "death",
+    "cycle": 1,
+    "tick": 90,
+    "unit": "p2-healer-012"
+  },
+  {
+    "type": "attack",
+    "cycle": 1,
+    "tick": 90,
+    "attacker": "p1-ranger-006",
+    "target": "p2-healer-012",
+    "damage": 24,
+    "targetHpAfter": 0
+  },
+  {
+    "type": "attack",
+    "cycle": 1,
+    "tick": 100,
+    "attacker": "p2-ranger-015",
+    "target": "p1-fighter-005",
+    "damage": 24,
+    "targetHpAfter": 21
+  },
+  {
+    "type": "attack",
+    "cycle": 1,
+    "tick": 100,
+    "attacker": "p2-healer-016",
+    "target": "p1-tank-004",
+    "damage": 6,
+    "targetHpAfter": 84
+  },
+  {
+    "type": "heal",
+    "cycle": 1,
+    "tick": 100,
+    "target": "p2-fighter-014",
+    "by": "p2-healer-016",
+    "amount": 10,
+    "targetHpAfter": 88
+  },
+  {
+    "type": "attack",
+    "cycle": 1,
+    "tick": 100,
+    "attacker": "p2-tank-013",
+    "target": "p1-tank-004",
+    "damage": 8,
+    "targetHpAfter": 76
+  },
+  {
+    "type": "attack",
+    "cycle": 1,
+    "tick": 100,
+    "attacker": "p2-tank-017",
+    "target": "p1-fighter-005",
+    "damage": 12,
+    "targetHpAfter": 9
+  },
+  {
+    "type": "attack",
+    "cycle": 1,
+    "tick": 100,
+    "attacker": "p1-ranger-006",
+    "target": "p2-fighter-014",
+    "damage": 24,
+    "targetHpAfter": 64
+  },
+  {
+    "type": "attack",
+    "cycle": 1,
+    "tick": 100,
+    "attacker": "p1-healer-007",
+    "target": "p2-tank-013",
+    "damage": 6,
+    "targetHpAfter": 84
+  },
+  {
+    "type": "heal",
+    "cycle": 1,
+    "tick": 100,
+    "target": "p1-fighter-005",
+    "by": "p1-healer-007",
+    "amount": 10,
+    "targetHpAfter": 19
+  },
+  {
+    "type": "attack",
+    "cycle": 1,
+    "tick": 100,
+    "attacker": "p1-tank-004",
+    "target": "p2-tank-013",
+    "damage": 8,
+    "targetHpAfter": 76
+  },
+  {
+    "type": "attack",
+    "cycle": 1,
+    "tick": 100,
+    "attacker": "p1-tank-008",
+    "target": "p2-fighter-014",
+    "damage": 12,
+    "targetHpAfter": 52
+  },
+  {
+    "type": "cycle_end",
+    "cycle": 1
+  },
+  {
+    "type": "death",
+    "cycle": 2,
+    "tick": 10,
+    "unit": "p1-fighter-005"
+  },
+  {
+    "type": "attack",
+    "cycle": 2,
+    "tick": 10,
+    "attacker": "p2-ranger-015",
+    "target": "p1-fighter-005",
+    "damage": 24,
+    "targetHpAfter": 0
+  },
+  {
+    "type": "attack",
+    "cycle": 2,
+    "tick": 10,
+    "attacker": "p1-ranger-006",
+    "target": "p2-fighter-014",
+    "damage": 24,
+    "targetHpAfter": 28
+  },
+  {
+    "type": "attack",
+    "cycle": 2,
+    "tick": 20,
+    "attacker": "p2-ranger-015",
+    "target": "p1-tank-004",
+    "damage": 24,
+    "targetHpAfter": 52
+  },
+  {
+    "type": "attack",
+    "cycle": 2,
+    "tick": 20,
+    "attacker": "p1-ranger-006",
+    "target": "p2-fighter-014",
+    "damage": 24,
+    "targetHpAfter": 4
+  },
+  {
+    "type": "attack",
+    "cycle": 2,
+    "tick": 30,
+    "attacker": "p2-ranger-015",
+    "target": "p1-tank-004",
+    "damage": 24,
+    "targetHpAfter": 28
+  },
+  {
+    "type": "death",
+    "cycle": 2,
+    "tick": 30,
+    "unit": "p2-fighter-014"
+  },
+  {
+    "type": "attack",
+    "cycle": 2,
+    "tick": 30,
+    "attacker": "p1-ranger-006",
+    "target": "p2-fighter-014",
+    "damage": 24,
+    "targetHpAfter": 0
+  },
+  {
+    "type": "attack",
+    "cycle": 2,
+    "tick": 40,
+    "attacker": "p2-ranger-015",
+    "target": "p1-tank-004",
+    "damage": 24,
+    "targetHpAfter": 4
+  },
+  {
+    "type": "attack",
+    "cycle": 2,
+    "tick": 40,
+    "attacker": "p1-ranger-006",
+    "target": "p2-tank-013",
+    "damage": 24,
+    "targetHpAfter": 52
+  },
+  {
+    "type": "death",
+    "cycle": 2,
+    "tick": 50,
+    "unit": "p1-tank-004"
+  },
+  {
+    "type": "attack",
+    "cycle": 2,
+    "tick": 50,
+    "attacker": "p2-ranger-015",
+    "target": "p1-tank-004",
+    "damage": 24,
+    "targetHpAfter": 0
+  },
+  {
+    "type": "attack",
+    "cycle": 2,
+    "tick": 50,
+    "attacker": "p2-healer-016",
+    "target": "p1-healer-007",
+    "damage": 6,
+    "targetHpAfter": 114
+  },
+  {
+    "type": "heal",
+    "cycle": 2,
+    "tick": 50,
+    "target": "p2-tank-013",
+    "by": "p2-healer-016",
+    "amount": 10,
+    "targetHpAfter": 62
+  },
+  {
+    "type": "attack",
+    "cycle": 2,
+    "tick": 50,
+    "attacker": "p1-ranger-006",
+    "target": "p2-tank-013",
+    "damage": 24,
+    "targetHpAfter": 38
+  },
+  {
+    "type": "attack",
+    "cycle": 2,
+    "tick": 50,
+    "attacker": "p1-healer-007",
+    "target": "p2-tank-013",
+    "damage": 6,
+    "targetHpAfter": 32
+  },
+  {
+    "type": "attack",
+    "cycle": 2,
+    "tick": 60,
+    "attacker": "p2-ranger-015",
+    "target": "p1-ranger-006",
+    "damage": 24,
+    "targetHpAfter": 86
+  },
+  {
+    "type": "attack",
+    "cycle": 2,
+    "tick": 60,
+    "attacker": "p1-ranger-006",
+    "target": "p2-tank-013",
+    "damage": 24,
+    "targetHpAfter": 8
+  },
+  {
+    "type": "attack",
+    "cycle": 2,
+    "tick": 70,
+    "attacker": "p2-ranger-015",
+    "target": "p1-ranger-006",
+    "damage": 24,
+    "targetHpAfter": 62
+  },
+  {
+    "type": "death",
+    "cycle": 2,
+    "tick": 70,
+    "unit": "p2-tank-013"
+  },
+  {
+    "type": "attack",
+    "cycle": 2,
+    "tick": 70,
+    "attacker": "p1-ranger-006",
+    "target": "p2-tank-013",
+    "damage": 24,
+    "targetHpAfter": 0
+  },
+  {
+    "type": "attack",
+    "cycle": 2,
+    "tick": 80,
+    "attacker": "p2-ranger-015",
+    "target": "p1-ranger-006",
+    "damage": 24,
+    "targetHpAfter": 38
+  },
+  {
+    "type": "attack",
+    "cycle": 2,
+    "tick": 80,
+    "attacker": "p2-fighter-018",
+    "target": "p1-ranger-006",
+    "damage": 30,
+    "targetHpAfter": 8
+  },
+  {
+    "type": "lifesteal",
+    "cycle": 2,
+    "tick": 80,
+    "unit": "p2-fighter-018",
+    "amount": 0,
+    "hpAfter": 140
+  },
+  {
+    "type": "attack",
+    "cycle": 2,
+    "tick": 80,
+    "attacker": "p1-ranger-006",
+    "target": "p2-ranger-015",
+    "damage": 24,
+    "targetHpAfter": 86
+  },
+  {
+    "type": "attack",
+    "cycle": 2,
+    "tick": 80,
+    "attacker": "p1-fighter-009",
+    "target": "p2-ranger-015",
+    "damage": 30,
+    "targetHpAfter": 56
+  },
+  {
+    "type": "lifesteal",
+    "cycle": 2,
+    "tick": 80,
+    "unit": "p1-fighter-009",
+    "amount": 0,
+    "hpAfter": 140
+  },
+  {
+    "type": "death",
+    "cycle": 2,
+    "tick": 90,
+    "unit": "p1-ranger-006"
+  },
+  {
+    "type": "attack",
+    "cycle": 2,
+    "tick": 90,
+    "attacker": "p2-ranger-015",
+    "target": "p1-ranger-006",
+    "damage": 24,
+    "targetHpAfter": 0
+  },
+  {
+    "type": "attack",
+    "cycle": 2,
+    "tick": 100,
+    "attacker": "p2-ranger-015",
+    "target": "p1-healer-007",
+    "damage": 24,
+    "targetHpAfter": 90
+  },
+  {
+    "type": "attack",
+    "cycle": 2,
+    "tick": 100,
+    "attacker": "p2-healer-016",
+    "target": "p1-healer-007",
+    "damage": 6,
+    "targetHpAfter": 84
+  },
+  {
+    "type": "heal",
+    "cycle": 2,
+    "tick": 100,
+    "target": "p2-ranger-015",
+    "by": "p2-healer-016",
+    "amount": 10,
+    "targetHpAfter": 66
+  },
+  {
+    "type": "attack",
+    "cycle": 2,
+    "tick": 100,
+    "attacker": "p2-tank-017",
+    "target": "p1-tank-008",
+    "damage": 12,
+    "targetHpAfter": 117
+  },
+  {
+    "type": "attack",
+    "cycle": 2,
+    "tick": 100,
+    "attacker": "p1-healer-007",
+    "target": "p2-healer-016",
+    "damage": 6,
+    "targetHpAfter": 114
+  },
+  {
+    "type": "heal",
+    "cycle": 2,
+    "tick": 100,
+    "target": "p1-healer-007",
+    "by": "p1-healer-007",
+    "amount": 10,
+    "targetHpAfter": 94
+  },
+  {
+    "type": "attack",
+    "cycle": 2,
+    "tick": 100,
+    "attacker": "p1-tank-008",
+    "target": "p2-tank-017",
+    "damage": 12,
+    "targetHpAfter": 118
+  },
+  {
+    "type": "cycle_end",
+    "cycle": 2
+  },
+  {
+    "type": "attack",
+    "cycle": 3,
+    "tick": 10,
+    "attacker": "p2-ranger-015",
+    "target": "p1-healer-007",
+    "damage": 24,
+    "targetHpAfter": 70
+  },
+  {
+    "type": "attack",
+    "cycle": 3,
+    "tick": 20,
+    "attacker": "p2-ranger-015",
+    "target": "p1-healer-007",
+    "damage": 24,
+    "targetHpAfter": 46
+  },
+  {
+    "type": "attack",
+    "cycle": 3,
+    "tick": 30,
+    "attacker": "p2-ranger-015",
+    "target": "p1-healer-007",
+    "damage": 24,
+    "targetHpAfter": 22
+  },
+  {
+    "type": "death",
+    "cycle": 3,
+    "tick": 40,
+    "unit": "p1-healer-007"
+  },
+  {
+    "type": "attack",
+    "cycle": 3,
+    "tick": 40,
+    "attacker": "p2-ranger-015",
+    "target": "p1-healer-007",
+    "damage": 24,
+    "targetHpAfter": 0
+  },
+  {
+    "type": "attack",
+    "cycle": 3,
+    "tick": 50,
+    "attacker": "p2-ranger-015",
+    "target": "p1-tank-008",
+    "damage": 24,
+    "targetHpAfter": 93
+  },
+  {
+    "type": "attack",
+    "cycle": 3,
+    "tick": 50,
+    "attacker": "p2-healer-016",
+    "target": "p1-tank-008",
+    "damage": 6,
+    "targetHpAfter": 87
+  },
+  {
+    "type": "heal",
+    "cycle": 3,
+    "tick": 50,
+    "target": "p2-ranger-015",
+    "by": "p2-healer-016",
+    "amount": 10,
+    "targetHpAfter": 76
+  },
+  {
+    "type": "attack",
+    "cycle": 3,
+    "tick": 60,
+    "attacker": "p2-ranger-015",
+    "target": "p1-tank-008",
+    "damage": 24,
+    "targetHpAfter": 63
+  },
+  {
+    "type": "attack",
+    "cycle": 3,
+    "tick": 70,
+    "attacker": "p2-ranger-015",
+    "target": "p1-tank-008",
+    "damage": 24,
+    "targetHpAfter": 39
+  },
+  {
+    "type": "attack",
+    "cycle": 3,
+    "tick": 80,
+    "attacker": "p2-ranger-015",
+    "target": "p1-tank-008",
+    "damage": 24,
+    "targetHpAfter": 15
+  },
+  {
+    "type": "attack",
+    "cycle": 3,
+    "tick": 80,
+    "attacker": "p2-fighter-018",
+    "target": "p1-fighter-009",
+    "damage": 30,
+    "targetHpAfter": 110
+  },
+  {
+    "type": "lifesteal",
+    "cycle": 3,
+    "tick": 80,
+    "unit": "p2-fighter-018",
+    "amount": 0,
+    "hpAfter": 140
+  },
+  {
+    "type": "attack",
+    "cycle": 3,
+    "tick": 80,
+    "attacker": "p1-fighter-009",
+    "target": "p2-ranger-015",
+    "damage": 30,
+    "targetHpAfter": 46
+  },
+  {
+    "type": "lifesteal",
+    "cycle": 3,
+    "tick": 80,
+    "unit": "p1-fighter-009",
+    "amount": 3,
+    "hpAfter": 113
+  },
+  {
+    "type": "revive",
+    "cycle": 3,
+    "tick": 90,
+    "unit": "p1-tank-008",
+    "hpAfter": 65
+  },
+  {
+    "type": "attack",
+    "cycle": 3,
+    "tick": 100,
+    "attacker": "p2-ranger-015",
+    "target": "p1-tank-008",
+    "damage": 24,
+    "targetHpAfter": 41
+  },
+  {
+    "type": "attack",
+    "cycle": 3,
+    "tick": 100,
+    "attacker": "p2-healer-016",
+    "target": "p1-tank-008",
+    "damage": 6,
+    "targetHpAfter": 35
+  },
+  {
+    "type": "heal",
+    "cycle": 3,
+    "tick": 100,
+    "target": "p2-ranger-015",
+    "by": "p2-healer-016",
+    "amount": 10,
+    "targetHpAfter": 56
+  },
+  {
+    "type": "attack",
+    "cycle": 3,
+    "tick": 100,
+    "attacker": "p2-tank-017",
+    "target": "p1-tank-008",
+    "damage": 12,
+    "targetHpAfter": 23
+  },
+  {
+    "type": "attack",
+    "cycle": 3,
+    "tick": 100,
+    "attacker": "p1-tank-008",
+    "target": "p2-tank-017",
+    "damage": 12,
+    "targetHpAfter": 106
+  },
+  {
+    "type": "cycle_end",
+    "cycle": 3
+  },
+  {
+    "type": "death",
+    "cycle": 4,
+    "tick": 10,
+    "unit": "p1-tank-008"
+  },
+  {
+    "type": "attack",
+    "cycle": 4,
+    "tick": 10,
+    "attacker": "p2-ranger-015",
+    "target": "p1-tank-008",
+    "damage": 24,
+    "targetHpAfter": 0
+  },
+  {
+    "type": "attack",
+    "cycle": 4,
+    "tick": 20,
+    "attacker": "p2-ranger-015",
+    "target": "p1-fighter-009",
+    "damage": 24,
+    "targetHpAfter": 89
+  },
+  {
+    "type": "attack",
+    "cycle": 4,
+    "tick": 30,
+    "attacker": "p2-ranger-015",
+    "target": "p1-fighter-009",
+    "damage": 24,
+    "targetHpAfter": 65
+  },
+  {
+    "type": "attack",
+    "cycle": 4,
+    "tick": 40,
+    "attacker": "p2-ranger-015",
+    "target": "p1-fighter-009",
+    "damage": 24,
+    "targetHpAfter": 41
+  },
+  {
+    "type": "attack",
+    "cycle": 4,
+    "tick": 50,
+    "attacker": "p2-ranger-015",
+    "target": "p1-fighter-009",
+    "damage": 24,
+    "targetHpAfter": 17
+  },
+  {
+    "type": "attack",
+    "cycle": 4,
+    "tick": 50,
+    "attacker": "p2-healer-016",
+    "target": "p1-fighter-009",
+    "damage": 6,
+    "targetHpAfter": 11
+  },
+  {
+    "type": "heal",
+    "cycle": 4,
+    "tick": 50,
+    "target": "p2-ranger-015",
+    "by": "p2-healer-016",
+    "amount": 10,
+    "targetHpAfter": 66
+  },
+  {
+    "type": "death",
+    "cycle": 4,
+    "tick": 60,
+    "unit": "p1-fighter-009"
+  },
+  {
+    "type": "attack",
+    "cycle": 4,
+    "tick": 60,
+    "attacker": "p2-ranger-015",
+    "target": "p1-fighter-009",
+    "damage": 24,
+    "targetHpAfter": 0
+  },
+  {
+    "type": "heal",
+    "cycle": 4,
+    "tick": 100,
+    "target": "p2-ranger-015",
+    "by": "p2-healer-016",
+    "amount": 10,
+    "targetHpAfter": 76
+  },
+  {
+    "type": "cycle_end",
+    "cycle": 4
+  },
+  {
+    "type": "battle_end",
+    "cycle": 4,
+    "winner": "p2"
+  }
+]
