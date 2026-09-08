@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import 'core/router.dart';
 import 'core/theme/app_theme.dart';
+import 'features/profile/settings_provider.dart';
 
 /// App entry.
 ///
@@ -14,32 +16,39 @@ import 'core/theme/app_theme.dart';
 ///     (`core/api/api_client.dart`); a dead refresh token signs the user
 ///     out and the redirect returns them to `/login`.
 ///
-/// Design tokens live in `core/theme` (design spec §2). Both light and
-/// dark themes are defined now; the user-facing toggle ships with
-/// P1-FE-02. The `/dev/gallery` widget catalogue is registered in
-/// `buildRouter()`.
-void main() {
-  runApp(const ProviderScope(child: AutoChessApp()));
+/// Design tokens live in `core/theme` (design spec §2). The active
+/// [ThemeMode] comes from `settingsProvider` (P1-FE-02, `/profile`); the
+/// `/dev/gallery` widget catalogue is registered in `buildRouter()`.
+Future<void> main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  final prefs = await SharedPreferences.getInstance();
+  runApp(
+    ProviderScope(
+      overrides: [sharedPreferencesProvider.overrideWithValue(prefs)],
+      child: const AutoChessApp(),
+    ),
+  );
 }
 
-class AutoChessApp extends StatefulWidget {
+class AutoChessApp extends ConsumerStatefulWidget {
   const AutoChessApp({super.key});
 
   @override
-  State<AutoChessApp> createState() => _AutoChessAppState();
+  ConsumerState<AutoChessApp> createState() => _AutoChessAppState();
 }
 
-class _AutoChessAppState extends State<AutoChessApp> {
+class _AutoChessAppState extends ConsumerState<AutoChessApp> {
   final _router = buildRouter();
 
   @override
   Widget build(BuildContext context) {
+    final themeMode = ref.watch(settingsProvider).themeMode;
     return MaterialApp.router(
       title: 'Auto Chess',
       debugShowCheckedModeBanner: false,
       theme: buildTheme(Brightness.light),
       darkTheme: buildTheme(Brightness.dark),
-      themeMode: ThemeMode.system,
+      themeMode: themeMode,
       routerConfig: _router,
     );
   }

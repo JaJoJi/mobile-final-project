@@ -2,7 +2,7 @@ import 'package:auto_chess_mobile/core/auth/auth_gate.dart';
 import 'package:auto_chess_mobile/core/router.dart';
 import 'package:auto_chess_mobile/features/auth/login_screen.dart';
 import 'package:auto_chess_mobile/features/lobby/lobby_screen.dart';
-import 'package:auto_chess_mobile/features/profile/profile_screen.dart';
+import 'package:auto_chess_mobile/features/history/history_list_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -74,23 +74,23 @@ void main() {
     expect(find.byType(LobbyScreen), findsOneWidget);
   });
 
-  testWidgets('signed in → deep link to /profile resolves', (tester) async {
+  testWidgets('signed in → deep link to /history resolves', (tester) async {
     AuthGate.instance.signalSignedIn();
     final router = await pumpApp(tester);
 
-    router.go(ProfileScreen.path);
+    router.go(HistoryListScreen.path);
     await tester.pumpAndSettle();
 
-    expect(find.byType(ProfileScreen), findsOneWidget);
+    expect(find.byType(HistoryListScreen), findsOneWidget);
   });
 
   testWidgets('sign-out signal bounces an authed screen back to /login',
       (tester) async {
     AuthGate.instance.signalSignedIn();
     final router = await pumpApp(tester);
-    router.go(ProfileScreen.path);
+    router.go(HistoryListScreen.path);
     await tester.pumpAndSettle();
-    expect(find.byType(ProfileScreen), findsOneWidget);
+    expect(find.byType(HistoryListScreen), findsOneWidget);
 
     AuthGate.instance.signalSignedOut();
     await tester.pumpAndSettle();
