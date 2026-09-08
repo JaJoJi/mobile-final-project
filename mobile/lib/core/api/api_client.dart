@@ -113,6 +113,22 @@ class ApiClient {
     return Map<String, dynamic>.from(res.data!);
   }
 
+  // ─── match history ────────────────────────────────────────────────
+
+  /// `GET /match/history` — the caller's last matches (server caps the count).
+  Future<List<Map<String, dynamic>>> getMatchHistory() async {
+    final res = await _dio.get<List<dynamic>>('/match/history');
+    return (res.data ?? const [])
+        .whereType<Map<String, dynamic>>()
+        .toList(growable: false);
+  }
+
+  /// `GET /match/:matchId` — round-by-round detail for one match.
+  Future<Map<String, dynamic>> getMatchDetail(String matchId) async {
+    final res = await _dio.get<Map<String, dynamic>>('/match/$matchId');
+    return Map<String, dynamic>.from(res.data!);
+  }
+
   // ─── helpers ──────────────────────────────────────────────────────
 
   AuthResult _parseAuth(Response<Map<String, dynamic>> res) {
