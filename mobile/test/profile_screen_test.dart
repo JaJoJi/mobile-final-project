@@ -45,6 +45,7 @@ void main() {
 
   Future<Widget> app({
     required _FakeAdapter adapter,
+    double textScale = 1.0,
   }) async {
     SharedPreferences.setMockInitialValues({});
     _installFakeSecureStorage();
@@ -60,6 +61,11 @@ void main() {
       ],
       child: MaterialApp(
         theme: buildTheme(Brightness.light),
+        builder: (context, child) => MediaQuery(
+          data: MediaQuery.of(context)
+              .copyWith(textScaler: TextScaler.linear(textScale)),
+          child: child!,
+        ),
         home: const ProfileScreen(),
       ),
     );
@@ -125,5 +131,27 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('ลองอีกครั้ง'), findsOneWidget);
+  });
+
+  testWidgets('meets tap-target / contrast / label guidelines', (tester) async {
+    await tester.pumpWidget(await app(adapter: okMe));
+    await tester.pumpAndSettle();
+
+    final handle = tester.ensureSemantics();
+    await expectLater(tester, meetsGuideline(androidTapTargetGuideline));
+    await expectLater(tester, meetsGuideline(iOSTapTargetGuideline));
+    await expectLater(tester, meetsGuideline(textContrastGuideline));
+    await expectLater(tester, meetsGuideline(labeledTapTargetGuideline));
+    handle.dispose();
+  });
+
+  testWidgets('no overflow at 360x640 and textScale 2.0', (tester) async {
+    tester.view.physicalSize = const Size(360, 640);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.reset);
+
+    await tester.pumpWidget(await app(adapter: okMe, textScale: 2.0));
+    await tester.pumpAndSettle();
+    expect(tester.takeException(), isNull);
   });
 }

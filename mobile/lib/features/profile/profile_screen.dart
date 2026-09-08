@@ -76,9 +76,16 @@ class _Content extends ConsumerWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(username, style: t.textTheme.titleLarge),
+                    Text(
+                      username,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: t.textTheme.titleLarge,
+                    ),
                     Text(
                       email,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
                       style: t.textTheme.bodyMedium
                           ?.copyWith(color: t.colorScheme.onSurfaceVariant),
                     ),
@@ -87,8 +94,10 @@ class _Content extends ConsumerWidget {
                       children: [
                         Icon(Icons.military_tech, size: 16, color: game.gold),
                         const SizedBox(width: AppSpacing.xs),
-                        Text('เรตติ้ง ${rating ?? '—'}',
-                            style: t.textTheme.bodyMedium),
+                        Flexible(
+                          child: Text('เรตติ้ง ${rating ?? '—'}',
+                              style: t.textTheme.bodyMedium),
+                        ),
                       ],
                     ),
                   ],
@@ -110,15 +119,22 @@ class _Content extends ConsumerWidget {
         SettingsTile(
           leading: Icons.brightness_6_outlined,
           title: 'ธีม',
-          trailing: SegmentedButton<ThemeMode>(
-            showSelectedIcon: false,
-            segments: const [
-              ButtonSegment(value: ThemeMode.system, label: Text('ระบบ')),
-              ButtonSegment(value: ThemeMode.light, label: Text('สว่าง')),
-              ButtonSegment(value: ThemeMode.dark, label: Text('มืด')),
-            ],
-            selected: {settings.themeMode},
-            onSelectionChanged: (s) => settingsNotifier.setThemeMode(s.first),
+          stackTrailing: true,
+          // A 3-option segmented control can't hold doubled Thai labels on
+          // a 360 dp screen — clamp its own text scale (spec §2.2 allows
+          // clamping a dense control's subtree, never globally).
+          trailing: MediaQuery.withClampedTextScaling(
+            maxScaleFactor: 1.3,
+            child: SegmentedButton<ThemeMode>(
+              showSelectedIcon: false,
+              segments: const [
+                ButtonSegment(value: ThemeMode.system, label: Text('ระบบ')),
+                ButtonSegment(value: ThemeMode.light, label: Text('สว่าง')),
+                ButtonSegment(value: ThemeMode.dark, label: Text('มืด')),
+              ],
+              selected: {settings.themeMode},
+              onSelectionChanged: (s) => settingsNotifier.setThemeMode(s.first),
+            ),
           ),
         ),
         SettingsTile(
@@ -134,10 +150,13 @@ class _Content extends ConsumerWidget {
         SettingsTile(
           leading: Icons.info_outline,
           title: 'เวอร์ชัน',
-          trailing: Text(
-            ProfileScreen._appVersion,
-            style: t.textTheme.bodyMedium
-                ?.copyWith(color: t.colorScheme.onSurfaceVariant),
+          trailing: Flexible(
+            child: Text(
+              ProfileScreen._appVersion,
+              overflow: TextOverflow.ellipsis,
+              style: t.textTheme.bodyMedium
+                  ?.copyWith(color: t.colorScheme.onSurfaceVariant),
+            ),
           ),
         ),
         const SizedBox(height: AppSpacing.xl),
