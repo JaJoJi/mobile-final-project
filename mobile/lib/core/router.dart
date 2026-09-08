@@ -3,6 +3,7 @@ import 'package:go_router/go_router.dart';
 
 import '../features/auth/login_screen.dart';
 import '../features/auth/register_screen.dart';
+import '../features/dev/widget_gallery_screen.dart';
 import '../features/history/history_detail_screen.dart';
 import '../features/history/history_list_screen.dart';
 import '../features/lobby/lobby_screen.dart';
@@ -30,6 +31,9 @@ GoRouter buildRouter() {
       final signedIn = AuthGate.instance.isSignedIn;
       final loc = state.matchedLocation;
       const authRoutes = {LoginScreen.path, RegisterScreen.path};
+
+      // Dev-only routes are never guarded.
+      if (loc.startsWith('/dev/')) return null;
 
       if (signedIn == null) {
         return loc == SplashScreen.path ? null : SplashScreen.path;
@@ -76,6 +80,11 @@ GoRouter buildRouter() {
       GoRoute(
         path: ProfileScreen.path,
         builder: (_, __) => const ProfileScreen(),
+      ),
+      // Dev tool: the P0-FE-06 widget catalogue. Not part of any user flow.
+      GoRoute(
+        path: '/dev/gallery',
+        builder: (_, __) => const WidgetGalleryScreen(),
       ),
     ],
     errorBuilder: (_, state) => Scaffold(

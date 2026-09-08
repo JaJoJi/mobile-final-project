@@ -1,0 +1,306 @@
+import 'package:flutter/material.dart';
+
+import '../theme/app_spacing.dart';
+import '../theme/app_typography.dart';
+import '../theme/game_theme.dart';
+import 'health_bar.dart';
+
+/// The four unit types — `docs/05-combat-spec.md §3`.
+enum UnitKind { fighter, healer, ranger, tank }
+
+UnitKind unitKindFromId(String id) => switch (id) {
+      'fighter' => UnitKind.fighter,
+      'healer' => UnitKind.healer,
+      'ranger' => UnitKind.ranger,
+      'tank' => UnitKind.tank,
+      _ => throw ArgumentError('unknown unitId: $id'),
+    };
+
+extension UnitKindDisplay on UnitKind {
+  String get label => switch (this) {
+        UnitKind.fighter => 'Fighter',
+        UnitKind.healer => 'Healer',
+        UnitKind.ranger => 'Ranger',
+        UnitKind.tank => 'Tank',
+      };
+
+  /// MVP placeholder shape — design spec §6 (● / ✚ / ▲ / ■).
+  IconData get shape => switch (this) {
+        UnitKind.fighter => Icons.circle,
+        UnitKind.healer => Icons.add,
+        UnitKind.ranger => Icons.change_history,
+        UnitKind.tank => Icons.square,
+      };
+}
+
+/// Where a [UnitAvatar] is being shown — design spec §3.5.
+enum UnitAvatarVariant { shop, bench, board, replay }
+
+/// Interaction / status state — design spec §3.5.
+enum UnitAvatarState { normal, selected, unaffordable, dragging, fusable, dead }
+
+/// Avatar sizes — design spec §3.5.
+enum UnitAvatarSize {
+  /// 48 dp square — bench chip.
+  sm,
+
+  /// 64×96 — board.
+  md,
+
+  /// 88×132 — shop card.
+  lg,
+}
+
+/// Renders one unit anywhere — shop, bench, board, replay. Design spec §3.5.
+///
+/// MVP art is a coloured Material shape + letter, a star badge, the name,
+/// and (in [UnitAvatarVariant.shop]) the price. **[MUST]** readable without
+/// colour: shape + star count + name label all carry the meaning.
+class UnitAvatar extends StatelessWidget {
+  const UnitAvatar({
+    super.key,
+    required this.unitId,
+    required this.star,
+    this.variant = UnitAvatarVariant.board,
+    this.state = UnitAvatarState.normal,
+    this.size = UnitAvatarSize.md,
+    this.side = UnitSide.ally,
+    this.price,
+    this.hp,
+    this.maxHp,
+    this.floatingDamage,
+    this.onTap,
+    this.onLongPress,
+  }) : assert(star >= 0 && star <= 2);
+
+  final String unitId;
+  final int star;
+  final UnitAvatarVariant variant;
+  final UnitAvatarState state;
+  final UnitAvatarSize size;
+  final UnitSide side;
+
+  /// Shop price in gold (shown only for [UnitAvatarVariant.shop]).
+  final int? price;
+
+  /// Board variant shows a small HP bar when both are provided.
+  final int? hp;
+  final int? maxHp;
+
+  /// Replay variant shows this number floating (animation lands in P0-FE-05).
+  final int? floatingDamage;
+
+  final VoidCallback? onTap;
+  final VoidCallback? onLongPress;
+
+  double get _width => switch (size) {
+        UnitAvatarSize.sm => 48,
+        UnitAvatarSize.md => 64,
+        UnitAvatarSize.lg => 88,
+      };
+
+  double get _aspect => size == UnitAvatarSize.sm ? 1.0 : 64 / 96;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = Theme.of(context);
+    final game = t.extension<GameTheme>()!;
+    final kind = unitKindFromId(unitId);
+
+    final tint = side == UnitSide.ally ? game.ally : game.enemy;
+    final borderColor = switch (state) {
+      UnitAvatarState.selected => t.colorScheme.primary,
+      UnitAvatarState.fusable => game.star2,
+      _ => t.colorScheme.outlineVariant,
+    };
+    final borderWidth =
+        state == UnitAvatarState.selected || state == UnitAvatarState.fusable
+            ? 2.0
+            : 1.0;
+
+    Widget body = AspectRatio(
+      aspectRatio: _aspect,
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          color: t.colorScheme.surfaceContainerHigh,
+          borderRadius: AppRadius.allMd,
+          border: Border.all(color: borderColor, width: borderWidth),
+          boxShadow: state == UnitAvatarState.fusable
+              ? [
+                  BoxShadow(
+                      color: game.star2.withValues(alpha: 0.6), blurRadius: 8)
+                ]
+              : null,
+        ),
+        // Dense game component — clamp runaway text scaling to keep the
+        // fixed AspectRatio intact (design spec §2.2 allows clamping a
+        // HUD-like subtree, never a global override).
+        child: MediaQuery.withClampedTextScaling(
+          maxScaleFactor: 1.3,
+          child: Padding(
+            padding: const EdgeInsets.all(AppSpacing.xs),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                _StarBadge(star: star, color: game.starColor(star)),
+                Expanded(
+                  child: Center(
+                    child: Icon(kind.shape, color: tint, size: _width * 0.42),
+                  ),
+                ),
+                if (size != UnitAvatarSize.sm) ...[
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Flexible(
+                        child: Text(
+                          kind.label,
+                          overflow: TextOverflow.ellipsis,
+                          style: t.textTheme.titleMedium,
+                        ),
+                      ),
+                      if (variant == UnitAvatarVariant.shop && price != null)
+                        Flexible(
+                          child: Text(
+                            '${price}g',
+                            overflow: TextOverflow.ellipsis,
+                            style: AppTypography.tabular(
+                              (t.textTheme.labelLarge ?? const TextStyle())
+                                  .copyWith(
+                                color: state == UnitAvatarState.unaffordable
+                                    ? t.colorScheme.error
+                                    : game.gold,
+                              ),
+                            ),
+                          ),
+                        ),
+                    ],
+                  ),
+                  if (variant == UnitAvatarVariant.board &&
+                      hp != null &&
+                      maxHp != null)
+                    Padding(
+                      padding: const EdgeInsets.only(top: AppSpacing.xxs),
+                      child: HealthBar(
+                        current: hp!,
+                        max: maxHp!,
+                        size: HealthBarSize.sm,
+                        showText: false,
+                      ),
+                    ),
+                ],
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+
+    if (state == UnitAvatarState.fusable) {
+      body = Stack(
+        children: [
+          body,
+          Positioned(
+            left: 0,
+            right: 0,
+            bottom: 0,
+            child: ColoredBox(
+              color: game.star2,
+              child: Padding(
+                padding: const EdgeInsets.symmetric(vertical: AppSpacing.xxs),
+                child: Text(
+                  'รวมได้',
+                  textAlign: TextAlign.center,
+                  overflow: TextOverflow.ellipsis,
+                  style: t.textTheme.labelSmall?.copyWith(
+                    color: t.colorScheme.surface,
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ],
+      );
+    }
+
+    if (state == UnitAvatarState.dragging) {
+      body = Transform.scale(scale: 1.05, child: body);
+    }
+    if (state == UnitAvatarState.unaffordable ||
+        state == UnitAvatarState.dead) {
+      body = Opacity(opacity: 0.4, child: body);
+    }
+    if (state == UnitAvatarState.dead) {
+      body = ColorFiltered(
+        colorFilter: const ColorFilter.matrix(<double>[
+          0.2126, 0.7152, 0.0722, 0, 0, //
+          0.2126, 0.7152, 0.0722, 0, 0, //
+          0.2126, 0.7152, 0.0722, 0, 0, //
+          0, 0, 0, 1, 0,
+        ]),
+        child: body,
+      );
+    }
+
+    if (floatingDamage != null && variant == UnitAvatarVariant.replay) {
+      body = Stack(
+        clipBehavior: Clip.none,
+        alignment: Alignment.topCenter,
+        children: [
+          body,
+          Positioned(
+            top: -AppSpacing.lg,
+            child: Text(
+              '-${floatingDamage!}',
+              style: AppTypography.tabular(
+                (t.textTheme.titleMedium ?? const TextStyle())
+                    .copyWith(color: t.colorScheme.error),
+              ),
+            ),
+          ),
+        ],
+      );
+    }
+
+    return Semantics(
+      button: onTap != null,
+      label: '${kind.label} ${star > 0 ? '$star ดาว' : ''}'
+          '${price != null ? ' ราคา $price ทอง' : ''}',
+      child: SizedBox(
+        width: _width,
+        child: InkWell(
+          onTap: onTap,
+          onLongPress: onLongPress,
+          borderRadius: AppRadius.allMd,
+          child: body,
+        ),
+      ),
+    );
+  }
+}
+
+/// Team side for tinting — pairs with an icon/label elsewhere, never colour alone.
+enum UnitSide { ally, enemy }
+
+class _StarBadge extends StatelessWidget {
+  const _StarBadge({required this.star, required this.color});
+
+  final int star;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    if (star <= 0) {
+      return Text('0★',
+          style:
+              Theme.of(context).textTheme.labelSmall?.copyWith(color: color));
+    }
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: List.generate(
+        star,
+        (_) => Icon(Icons.star, size: 12, color: color),
+      ),
+    );
+  }
+}
