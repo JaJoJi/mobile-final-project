@@ -15,6 +15,7 @@
 - **FR-MATCH-4**: User can leave queue via `game:matchmaking:leave` if not yet matched.
 
 ### Game flow (per round)
+- **FR-GAME-0**: Each player's board is **3 rows × 3 cols (9 slots)**. Bench is 8 slots (separate). Lane = column 0..2. Row 0 = front row (closest to enemy), row 1 = middle row, row 2 = back row.
 - **FR-GAME-1**: Each round begins with a 40 s merged shop+place phase.
 - **FR-GAME-2**: Server emits shop offers at phase start (5 cards, server-side seeded RNG).
 - **FR-GAME-3**: Player can `buy`, `sell`, `refresh`, `fuse`, `place`, and click `Ready` during the phase.

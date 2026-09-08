@@ -131,7 +131,9 @@ Sent to both clients when roster changes (purchase, sell, place).
   round: number;
   yourSide: 'p1' | 'p2';
   roster: {
-    board: Array<{ instanceId: string; unitId: string; star: 0|1|2; hp: number; maxHp: number } | null>; // 6 slots
+    // Board slot indexing: row-major order, slot 0..2 = row 0 (front), 3..5 = row 1 (middle), 6..8 = row 2 (back)
+    //   col = slot % 3, row = floor(slot / 3)
+    board: Array<{ instanceId: string; unitId: string; star: 0|1|2; hp: number; maxHp: number } | null>; // 9 slots (3 rows × 3 cols)
     bench:  Array<...>;                                                                           // 8 slots
     gold: number;
     hp: number;
@@ -139,7 +141,7 @@ Sent to both clients when roster changes (purchase, sell, place).
   opponent: {
     gold: number;
     hp: number;
-    boardSummary: Array<{ unitId: string; star: 0|1|2 } | null>;  // 6 slots, no HP detail
+    boardSummary: Array<{ unitId: string; star: 0|1|2 } | null>;  // 9 slots, no HP detail
   };
   readyCount: 0 | 1 | 2;
 }
@@ -219,7 +221,7 @@ End-of-round.
 
 #### `game:shop:sell`
 ```ts
-{ round: number; source: 'board' | 'bench'; slot: number /* 0..5 board, 0..7 bench */; clientActionId: string }
+{ round: number; source: 'board' | 'bench'; slot: number /* 0..8 board, 0..7 bench */; clientActionId: string }
 ```
 
 #### `game:shop:refresh`
@@ -238,7 +240,7 @@ End-of-round.
   round: number;
   unitInstanceId: string;
   target: 'board' | 'bench';
-  slot: number;          // 0..5 board, 0..7 bench
+  slot: number;          // 0..8 board, 0..7 bench
   clientActionId: string;
 }
 ```

@@ -264,9 +264,11 @@ If a task is ambiguous and involves combat, **always re-read `docs/05-combat-spe
 ### Combat (planned, in `docs/05-combat-spec.md`)
 
 - Cycle = 100 ticks. Per unit: `cooldown = 100 - SPD`, `acts = floor(100 / cooldown)` per cycle.
-- Targeting: front-row first → same-lane → fall back across lanes.
+- **Board is 3 rows × 3 cols per player (9 slots)**. Row 0 = front (closest to enemy), row 1 = middle, row 2 = back.
+- Targeting: front-row first → middle-row → back-row, within same lane; fall back across lanes (col 0 → 1 → 2).
 - Tank 2★ = **Prioritize** (not absolute). Falls back when Tank dead.
 - Ranger 2★ = global lowest HP. Tank 2★ rule affects enemies of Tank; doesn't change targeting of Tank's allies.
+- Ranger 1★ Pierce: only hits the adjacent row behind target (`row + 1`); does not skip rows.
 - Healer heals own team's lowest HP (any lane). 1★ = slow. 2★ = heal two.
 - All RNG seeds from `matchSeed`.
 - Wipe damage: 5, 10, 15, 20, 25 (cap). Tie = 5 to both, no wipe counter advance.

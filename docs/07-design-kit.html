@@ -1,0 +1,838 @@
+<title>Auto Chess Arena Kit</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@500;600;700&family=IBM+Plex+Sans+Thai:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
+<style>
+:root{
+  --void:#0A0B12; --deep:#10121C; --panel:#171A27; --panel-hi:#1E2231;
+  --etch:#232739; --edge:#2E3346;
+  --ink:#E9EAF4; --ink-dim:#A2A6BF; --ink-faint:#6E7391;
+  --ally:#7C8CFF; --ally-deep:#3E48A8; --ally-glow:rgba(124,140,255,.35);
+  --enemy:#FF8A4C; --enemy-deep:#8C3E14; --enemy-glow:rgba(255,138,76,.3);
+  --gold:#F5C542; --gold-deep:#7A5E10; --gold-glow:rgba(245,197,66,.35);
+  --live:#6BD98F; --crit:#FF5A5A;
+  --bevel: polygon(12px 0, 100% 0, 100% calc(100% - 12px), calc(100% - 12px) 100%, 0 100%, 0 12px);
+}
+*{box-sizing:border-box;}
+html{-webkit-text-size-adjust:100%;}
+body{
+  margin:0; background:var(--void); color:var(--ink);
+  font-family:'IBM Plex Sans Thai','IBM Plex Sans',system-ui,sans-serif;
+  /* arena atmosphere: horizon glow + vignette, like TFT/Dota2 lobby lighting — one world, not scattered blobs */
+  background-image:
+    radial-gradient(70% 45% at 50% 6%, rgba(124,140,255,.18), transparent 68%),
+    radial-gradient(130% 85% at 50% 45%, transparent 42%, rgba(4,5,9,.62) 100%),
+    radial-gradient(600px 400px at 92% 88%, rgba(245,197,66,.07), transparent 60%),
+    linear-gradient(rgba(124,140,255,.025) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(124,140,255,.025) 1px, transparent 1px);
+  background-size:auto, auto, auto, 56px 56px, 56px 56px;
+  background-repeat:no-repeat, no-repeat, no-repeat, repeat, repeat;
+  background-attachment:fixed, fixed, fixed, scroll, scroll;
+}
+::selection{ background:var(--gold); color:#1A1400; }
+:focus-visible{ outline:2px solid var(--gold); outline-offset:3px; }
+h1,h2,h3{margin:0; text-wrap:balance; font-family:'Chakra Petch',sans-serif; font-weight:700;}
+.mono{ font-family:'IBM Plex Mono',monospace; }
+.disp{ font-family:'Chakra Petch',sans-serif; }
+
+.shell{ max-width:1140px; margin:0 auto; padding:0 20px 96px; }
+
+/* ---------- HUD chrome ---------- */
+.tag{
+  display:inline-flex; align-items:center; gap:8px; font-family:'IBM Plex Mono',monospace;
+  font-size:11px; letter-spacing:.16em; text-transform:uppercase; color:var(--gold);
+}
+.tag::before{ content:''; width:18px; height:1px; background:var(--gold); }
+.panel{
+  background:linear-gradient(160deg,var(--panel) 0%, var(--deep) 100%);
+  border:1px solid var(--edge); clip-path:var(--bevel); padding:22px;
+}
+.panel-lite{ background:var(--deep); border:1px solid var(--etch); clip-path:var(--bevel); }
+.rule{ height:1px; background:linear-gradient(90deg,var(--edge),transparent); margin:0; border:0; }
+
+/* ---------- masthead ---------- */
+.top{ padding:44px 0 8px; display:flex; flex-wrap:wrap; gap:24px; align-items:flex-end; justify-content:space-between; }
+.brandmark{ display:flex; align-items:center; gap:14px; }
+.sigil-mark{
+  width:52px; height:52px; background:linear-gradient(150deg,var(--ally),var(--ally-deep));
+  clip-path:polygon(50% 0,100% 25%,100% 75%,50% 100%,0 75%,0 25%);
+  display:flex; align-items:center; justify-content:center; font-size:24px; color:#0A0B12;
+  box-shadow:0 0 32px var(--ally-glow);
+}
+h1.title{ font-size:clamp(28px,4.4vw,44px); line-height:1; letter-spacing:.01em; }
+h1.title span{ color:var(--ink-faint); font-weight:500; }
+.top .stamp{ font-family:'IBM Plex Mono',monospace; font-size:11px; color:var(--ink-faint); text-align:right; line-height:1.9; }
+.top .stamp b{ color:var(--gold); font-weight:500; }
+
+/* ---------- hero teardown ---------- */
+.hero{ display:grid; grid-template-columns:1fr 268px 1fr; gap:20px; align-items:center; padding:34px 0 12px; }
+.callouts{ display:flex; flex-direction:column; gap:14px; }
+.callouts.right{ align-items:flex-start; }
+.callouts.left{ align-items:flex-end; text-align:right; }
+.callout{ max-width:250px; }
+.callout .cl-k{ font-family:'IBM Plex Mono',monospace; font-size:10px; letter-spacing:.14em; text-transform:uppercase; }
+.callout .cl-v{ font-size:13px; color:var(--ink-dim); line-height:1.5; margin-top:3px; }
+.callout.p0 .cl-k{ color:var(--crit); }
+.callout.p1 .cl-k{ color:var(--gold); }
+.callout.p2 .cl-k{ color:var(--ally); }
+.callout .line{ height:1px; background:linear-gradient(90deg,transparent,var(--edge)); margin-top:8px; }
+.callouts.right .callout .line{ background:linear-gradient(90deg,var(--edge),transparent); }
+
+/* ---------- phone ---------- */
+.device{
+  width:268px; background:var(--void); border:1px solid var(--edge);
+  clip-path:polygon(16px 0,100% 0,100% calc(100% - 16px),calc(100% - 16px) 100%,0 100%,0 16px);
+  padding:10px; box-shadow:0 0 0 1px rgba(124,140,255,.08), 0 26px 60px rgba(0,0,0,.6);
+}
+.screen{ height:544px; background:
+    radial-gradient(75% 38% at 50% 4%, rgba(124,140,255,.22), transparent 68%),
+    radial-gradient(140% 90% at 50% 50%, transparent 40%, rgba(4,5,9,.55) 100%),
+    radial-gradient(70% 50% at 85% 92%, rgba(245,197,66,.08), transparent 62%),
+    var(--deep);
+  display:flex; flex-direction:column; overflow:hidden; }
+.screen.sm{ height:400px; }
+.sysbar{ display:flex; justify-content:space-between; padding:8px 12px 0; font-family:'IBM Plex Mono',monospace; font-size:8.5px; color:var(--ink-faint); }
+.scr-body{ flex:1; padding:10px 12px 12px; display:flex; flex-direction:column; gap:9px; min-height:0; }
+
+/* HUD bits inside phone */
+.hp{ flex:1; }
+.hp .hp-top{ display:flex; justify-content:space-between; font-family:'IBM Plex Mono',monospace; font-size:9px; color:var(--ink-dim); margin-bottom:3px; }
+.hp .hp-track{ height:6px; background:#0B0D15; border:1px solid var(--etch); position:relative; }
+.hp .hp-fill{ height:100%; }
+.hp .hp-ghost{ position:absolute; top:0; height:100%; background:rgba(255,90,90,.35); }
+.timer{
+  width:44px; height:44px; flex:0 0 44px; border-radius:50%; display:grid; place-items:center;
+  font-family:'Chakra Petch',sans-serif; font-weight:700; font-size:15px;
+  background:conic-gradient(var(--gold) 0 58%, #1A1E2B 58% 100%);
+}
+.timer i{ width:36px; height:36px; border-radius:50%; background:var(--deep); display:grid; place-items:center; font-style:normal; }
+
+.lane-head{ display:flex; justify-content:space-between; font-family:'IBM Plex Mono',monospace; font-size:8px;
+  letter-spacing:.12em; text-transform:uppercase; color:var(--ink-faint); }
+.grid3{ display:grid; grid-template-columns:repeat(3,1fr); gap:5px; }
+.tile{
+  aspect-ratio:1; background:#151928; border:1px solid var(--etch); display:grid; place-items:center;
+  clip-path:polygon(6px 0,100% 0,100% calc(100% - 6px),calc(100% - 6px) 100%,0 100%,0 6px);
+  box-shadow:inset 0 1px 0 rgba(124,140,255,.06);
+}
+.tile.foe{ border-color:rgba(255,138,76,.3); background:#241A16; }
+.tile.drop{ border-color:var(--ally); background:rgba(124,140,255,.14); box-shadow:inset 0 0 14px var(--ally-glow); }
+
+/* unit sigils — round portrait chip (TFT-style token), geometric glyph inside as placeholder art */
+.sig{
+  position:relative; display:grid; place-items:center; border-radius:50%;
+  background:radial-gradient(circle at 32% 28%, #1B2033, #0A0C14 72%);
+  border:2px solid var(--edge); box-sizing:border-box;
+}
+.sig .core{ background:var(--ally); }
+.sig.foe .core{ background:var(--enemy); }
+.sig.foe{ border-color:rgba(255,138,76,.4); }
+.sig-fighter .core{ width:50%; height:50%; border-radius:50%; }
+.sig-tank .core{ width:52%; height:52%; clip-path:polygon(50% 0,100% 28%,100% 72%,50% 100%,0 72%,0 28%); }
+.sig-ranger .core{ width:54%; height:54%; clip-path:polygon(50% 0,100% 100%,0 100%); }
+.sig-healer .core{ width:54%; height:54%; clip-path:polygon(38% 0,62% 0,62% 38%,100% 38%,100% 62%,62% 62%,62% 100%,38% 100%,38% 62%,0 62%,0 38%,38% 38%); }
+.sig.t1{ border-color:var(--ally); box-shadow:0 0 0 3px rgba(124,140,255,.12); }
+.sig.t1 .core{ box-shadow:0 0 8px var(--ally-glow); }
+.sig.t2{ border-color:var(--gold); box-shadow:0 0 0 3px rgba(245,197,66,.16), 0 0 14px var(--gold-glow); }
+.sig.t2 .core{ background:var(--gold); box-shadow:0 0 12px var(--gold-glow); }
+.sig .pip{
+  position:absolute; bottom:-3px; left:50%; transform:translateX(-50%);
+  font-family:'IBM Plex Mono',monospace; font-size:7px; color:#0A0B12; letter-spacing:-1px;
+  background:var(--gold); border-radius:5px; padding:0 3px; line-height:1.4;
+}
+
+/* board — 3×3, own board full-size, opponent collapsed to a scout strip.
+   Rendered as a lit "platform" tray so it separates from the atmosphere behind it (TFT/Underlords do this
+   with a glowing hex floor — here it's a raised panel with an inner rim light). */
+.board9{
+  display:grid; grid-template-columns:repeat(3,1fr); gap:4px;
+  background:linear-gradient(160deg,#181D2E,#0D0F18); border:1px solid rgba(124,140,255,.2);
+  border-radius:2px; padding:6px; box-shadow:inset 0 0 22px rgba(124,140,255,.06), 0 8px 18px rgba(0,0,0,.4);
+}
+.board9.mini{
+  grid-template-columns:repeat(3,27px); grid-auto-rows:27px; gap:4px; justify-content:center;
+  background:linear-gradient(160deg,#181D2E,#0D0F18); border:1px solid rgba(124,140,255,.2);
+  border-radius:2px; padding:7px; box-shadow:inset 0 0 18px rgba(124,140,255,.07), 0 6px 14px rgba(0,0,0,.4);
+}
+.board9.mini .mtile{ background:#1A2032; border:1px solid rgba(124,140,255,.16); display:grid; place-items:center;
+  clip-path:polygon(4px 0,100% 0,100% calc(100% - 4px),calc(100% - 4px) 100%,0 100%,0 4px); }
+.board9.mini .mtile.foe{ background:#291D18; border-color:rgba(255,138,76,.32); }
+.dot-unit{ width:13px; height:13px; border-radius:3px; background:var(--ally); box-shadow:0 0 5px var(--ally-glow); }
+.dot-unit.foe{ background:var(--enemy); box-shadow:0 0 5px var(--enemy-glow); }
+.dot-unit.t2{ background:var(--gold); box-shadow:0 0 7px var(--gold-glow); }
+
+.scout{
+  display:flex; align-items:center; gap:8px; padding:7px 9px; background:#0D101A;
+  border:1px solid var(--etch); clip-path:polygon(6px 0,100% 0,100% calc(100% - 6px),calc(100% - 6px) 100%,0 100%,0 6px);
+}
+.scout .sl{ font-family:'IBM Plex Mono',monospace; font-size:8.5px; color:var(--ink-faint); flex:0 0 auto; }
+.scout .sicons{ display:flex; gap:3px; }
+.scout .sicons .dot-unit{ width:9px; height:9px; }
+.scout .schev{ margin-left:auto; color:var(--ink-faint); font-size:11px; }
+
+.tray{
+  display:flex; align-items:center; gap:8px; padding:6px 9px; background:#0D101A;
+  border:1px dashed var(--edge); clip-path:polygon(6px 0,100% 0,100% calc(100% - 6px),calc(100% - 6px) 100%,0 100%,0 6px);
+}
+.tray .tl-label{ font-family:'IBM Plex Mono',monospace; font-size:8.5px; color:var(--ink-faint); flex:0 0 auto; }
+.tray .ticons{ display:flex; gap:4px; }
+.tray .ticons .dot-unit{ width:12px; height:12px; }
+.tray .tchev{ margin-left:auto; color:var(--ink-faint); font-size:11px; }
+
+.shopstrip{ display:grid; grid-template-columns:repeat(5,1fr); gap:5px; }
+.shopcard{ background:#0D101A; border:1px solid var(--etch); padding:6px 3px 4px; text-align:center;
+  clip-path:polygon(5px 0,100% 0,100% calc(100% - 5px),calc(100% - 5px) 100%,0 100%,0 5px); }
+.shopcard .sig{ width:100%; aspect-ratio:1; }
+.shopcard .cost{ font-family:'IBM Plex Mono',monospace; font-size:8.5px; color:var(--gold); margin-top:3px; }
+.shopcard.fuse{ border-color:var(--gold); box-shadow:0 0 14px rgba(245,197,66,.18) inset; }
+.shopcard.broke{ opacity:.38; }
+.shopcard.broke .cost{ color:var(--crit); }
+
+.actionbar{ display:flex; align-items:center; justify-content:space-between; gap:8px; margin-top:auto; }
+.purse{
+  display:inline-flex; align-items:center; gap:6px; padding:7px 13px; border-radius:999px;
+  background:#0D101A; border:1px solid rgba(245,197,66,.3);
+  font-family:'Chakra Petch',sans-serif; font-weight:700; font-size:14px; color:var(--gold);
+}
+.purse::before{ content:''; width:8px; height:8px; border-radius:50%; background:var(--gold); box-shadow:0 0 6px var(--gold-glow); }
+
+.statpill{
+  display:inline-flex; align-items:center; gap:5px; padding:4px 10px; border-radius:999px;
+  font-family:'IBM Plex Mono',monospace; font-weight:600; font-size:10.5px;
+  background:#0D101A; border:1px solid var(--etch); color:var(--ink-dim);
+}
+.statpill.win{ color:var(--live); border-color:rgba(107,217,143,.35); background:rgba(107,217,143,.08); }
+.statpill.loss{ color:var(--crit); border-color:rgba(255,90,90,.35); background:rgba(255,90,90,.08); }
+.btn{ font-family:'Chakra Petch',sans-serif; font-weight:600; font-size:13px; border:none; cursor:default;
+  padding:10px 18px; color:#0A0B12; background:var(--ally);
+  clip-path:polygon(7px 0,100% 0,100% calc(100% - 7px),calc(100% - 7px) 100%,0 100%,0 7px); }
+.btn.gold{ background:var(--gold); }
+.btn.ghost{ background:transparent; color:var(--ally); border:1px solid var(--edge); }
+.btn.danger{ background:var(--crit); color:#160000; }
+.btn.wide{ width:100%; text-align:center; }
+.btn[disabled]{ background:#252A3A; color:var(--ink-faint); }
+
+/* technique strip */
+.techstrip{ display:grid; grid-template-columns:repeat(auto-fit,minmax(210px,1fr)); gap:1px;
+  background:var(--edge); border:1px solid var(--edge); margin-top:36px; }
+.tcard{ background:var(--deep); padding:16px 18px; }
+.tcard .tn{ font-family:'IBM Plex Mono',monospace; font-size:9.5px; color:var(--gold); letter-spacing:.1em; }
+.tcard h4{ font-family:'Chakra Petch',sans-serif; font-size:14.5px; font-weight:600; margin:6px 0 5px; }
+.tcard p{ margin:0; font-size:11.5px; line-height:1.55; color:var(--ink-faint); }
+
+/* ---------- sections ---------- */
+section{ padding-top:74px; }
+.sec-head{ display:flex; align-items:baseline; justify-content:space-between; gap:16px; flex-wrap:wrap; margin-bottom:20px; }
+.sec-head h2{ font-size:24px; letter-spacing:.01em; }
+.sec-head p{ margin:6px 0 0; color:var(--ink-dim); font-size:14px; max-width:62ch; line-height:1.6; }
+.sec-idx{ font-family:'IBM Plex Mono',monospace; font-size:11px; color:var(--ink-faint); letter-spacing:.2em; }
+
+/* palette */
+.pal{ display:grid; grid-template-columns:repeat(auto-fit,minmax(168px,1fr)); gap:12px; }
+.chip{ border:1px solid var(--edge); background:var(--deep); clip-path:var(--bevel); overflow:hidden; }
+.chip .cap{ height:70px; position:relative; }
+.chip .cap span{ position:absolute; left:12px; bottom:8px; font-family:'IBM Plex Mono',monospace;
+  font-size:10px; color:#0A0B12; font-weight:600; }
+.chip .meta{ padding:11px 12px 13px; }
+.chip .nm{ font-family:'Chakra Petch',sans-serif; font-weight:600; font-size:14px; }
+.chip .us{ font-size:11.5px; color:var(--ink-faint); margin-top:3px; line-height:1.45; }
+
+/* roster */
+.roster{ display:grid; grid-template-columns:repeat(auto-fit,minmax(230px,1fr)); gap:14px; }
+.unit{ border:1px solid var(--edge); background:linear-gradient(165deg,var(--panel),var(--deep)); clip-path:var(--bevel); padding:16px; }
+.unit .u-top{ display:flex; align-items:center; gap:12px; }
+.unit .u-sig{ width:46px; height:46px; flex:0 0 46px; background:#0D101A; border:1px solid var(--etch); display:grid; place-items:center; }
+.unit .u-name{ font-family:'Chakra Petch',sans-serif; font-weight:700; font-size:17px; }
+.unit .u-role{ font-size:11.5px; color:var(--ink-faint); }
+.unit .u-cost{ margin-left:auto; font-family:'IBM Plex Mono',monospace; font-size:12px; color:var(--gold); }
+.statline{ display:grid; grid-template-columns:repeat(3,1fr); gap:8px; margin-top:14px; }
+.statline div{ background:#0C0F18; border:1px solid var(--etch); padding:6px 8px; }
+.statline .sk{ font-family:'IBM Plex Mono',monospace; font-size:8.5px; letter-spacing:.1em; color:var(--ink-faint); }
+.statline .sv{ font-family:'Chakra Petch',sans-serif; font-weight:700; font-size:15px; }
+.tiers{ margin-top:12px; font-size:11.5px; line-height:1.55; color:var(--ink-dim); }
+.tiers b{ color:var(--gold); font-family:'IBM Plex Mono',monospace; font-size:10px; letter-spacing:.08em; }
+
+/* type */
+.typespec{ display:grid; gap:0; }
+.tline{ display:grid; grid-template-columns:150px 1fr; gap:18px; padding:15px 0; border-bottom:1px solid var(--etch); align-items:baseline; }
+.tline:last-child{ border-bottom:none; }
+.tline .tk{ font-family:'IBM Plex Mono',monospace; font-size:10.5px; color:var(--ink-faint); line-height:1.7; }
+.tline .tk b{ display:block; color:var(--ink-dim); }
+
+/* timeline */
+.tl{ border:1px solid var(--edge); background:var(--deep); clip-path:var(--bevel); padding:20px; }
+.tl-track{ display:flex; gap:2px; align-items:flex-end; height:96px; margin:16px 0 10px; }
+.tl-track i{ flex:1; display:block; background:var(--ally); opacity:.75; }
+.tl-legend{ display:flex; flex-wrap:wrap; gap:16px; font-size:11.5px; color:var(--ink-dim); }
+.tl-legend span{ display:inline-flex; align-items:center; gap:6px; }
+.tl-legend b{ width:10px; height:10px; display:inline-block; }
+.durs{ display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:10px; margin-top:22px; }
+.dur{ border:1px solid var(--etch); background:#0C0F18; padding:10px 12px; }
+.dur .dn{ font-family:'IBM Plex Mono',monospace; font-size:11px; color:var(--gold); }
+.dur .db{ height:4px; background:var(--ally); margin:8px 0 6px; }
+.dur .dd{ font-size:11px; color:var(--ink-faint); }
+
+/* screens rail */
+.rail{ display:flex; gap:18px; overflow-x:auto; padding-bottom:14px; }
+.rail .device{ flex:0 0 auto; }
+.rail .cap{ font-family:'IBM Plex Mono',monospace; font-size:10.5px; color:var(--ink-faint); margin-bottom:8px;
+  display:flex; justify-content:space-between; }
+.rail .cap b{ color:var(--ally); font-weight:500; }
+
+/* rules */
+.rules{ display:grid; grid-template-columns:repeat(auto-fit,minmax(250px,1fr)); gap:12px; }
+.rule-card{ border:1px solid var(--edge); background:var(--deep); clip-path:var(--bevel); padding:16px; }
+.rule-card .rn{ font-family:'IBM Plex Mono',monospace; font-size:10px; letter-spacing:.14em; color:var(--crit); }
+.rule-card p{ margin:8px 0 0; font-size:13px; line-height:1.6; color:var(--ink-dim); }
+.rule-card p b{ color:var(--ink); font-weight:600; }
+
+footer{ margin-top:80px; border-top:1px solid var(--etch); padding-top:22px;
+  font-size:12px; color:var(--ink-faint); line-height:1.8; font-family:'IBM Plex Mono',monospace; }
+footer b{ color:var(--ink-dim); font-weight:500; }
+
+@media (max-width:900px){
+  .hero{ grid-template-columns:1fr; justify-items:center; }
+  .callouts.left,.callouts.right{ align-items:flex-start; text-align:left; width:100%; max-width:520px; }
+  .callouts.left .callout .line{ background:linear-gradient(90deg,var(--edge),transparent); }
+}
+@media (max-width:560px){ .tline{ grid-template-columns:1fr; gap:4px; } }
+@media (prefers-reduced-motion:reduce){ *{ animation:none !important; } }
+</style>
+
+<div class="shell">
+
+  <div class="top">
+    <div class="brandmark">
+      <div class="sigil-mark">♟</div>
+      <div>
+        <div class="tag">arena ui kit — v0.1</div>
+        <h1 class="title">AUTO CHESS <span>/ ชุดออกแบบ</span></h1>
+      </div>
+    </div>
+    <div class="stamp">
+      docs/07-design-spec.md<br>
+      issue <b>#106</b> · P0-FE-00<br>
+      1v1 · <b>9 ช่อง (3×3)</b> · 40 วินาที/รอบ
+    </div>
+  </div>
+
+  <div class="tag" style="margin-top:6px">v0.4 — บอร์ดเป็น platform เรืองแสงแยกจากพื้นหลัง (TFT/Dota2) · replay bar เดี่ยวแทนแท่งสีมั่ว · atmosphere เดียวกันทุกจอ</div>
+
+  <!-- HERO TEARDOWN -->
+  <div class="hero">
+    <div class="callouts left">
+      <div class="callout p0">
+        <div class="cl-k">P0 · HUD แถบเดียว</div>
+        <div class="cl-v">HP สองฝั่งขนาบนาฬิกากลาง แถวเดียวจบ — ไม่ใช่แถบ HP แล้วมีแถวเวลาแยกอีกบรรทัด (สไตล์ TFT: stage/round/timer รวมแถบเดียว)</div>
+        <div class="line"></div>
+      </div>
+      <div class="callout p1">
+        <div class="cl-k">คู่แข่ง = scout strip ไม่ใช่กระดานคู่</div>
+        <div class="cl-v">ตอนวางแผน เห็นศัตรูแค่แถบไอคอนบรรทัดเดียว แตะเพื่อดูเต็ม — พื้นที่ที่กระดานคู่เดิมกินไป ยกให้กระดานเรา 9 ช่องแทน</div>
+        <div class="line"></div>
+      </div>
+      <div class="callout p2">
+        <div class="cl-k">รายละเอียดซ่อนหลัง long-press</div>
+        <div class="cl-v">ช่องบนกระดานโชว์แค่รูปทรง+ดาว ไม่มีเลข ATK/SPD ค้างตลอดเวลา — กดค้างเปิดชีทสเตตัสเต็ม (แบบ trait tooltip ของ TFT)</div>
+        <div class="line"></div>
+      </div>
+    </div>
+
+    <div class="device">
+      <div class="screen">
+        <div class="sysbar"><span>9:41</span><span>ROUND 3</span></div>
+        <div class="scr-body" style="gap:6px">
+          <div style="display:flex;align-items:center;gap:8px">
+            <div class="hp">
+              <div class="hp-top"><span>bob</span><span>62</span></div>
+              <div class="hp-track"><div class="hp-fill" style="width:62%;background:var(--enemy)"></div></div>
+            </div>
+            <div class="timer" style="width:38px;height:38px;flex:0 0 38px;font-size:13px"><i style="width:30px;height:30px">23</i></div>
+            <div class="hp">
+              <div class="hp-top"><span>78</span><span>คุณ</span></div>
+              <div class="hp-track"><div class="hp-fill" style="width:78%;background:var(--ally)"></div>
+                <div class="hp-ghost" style="left:78%;width:6%"></div></div>
+            </div>
+          </div>
+
+          <div class="scout">
+            <span class="sl">SCOUT · bob</span>
+            <div class="sicons">
+              <div class="dot-unit foe"></div><div class="dot-unit foe t2"></div><div class="dot-unit foe"></div>
+            </div>
+            <span class="schev">›</span>
+          </div>
+
+          <div class="lane-head" style="color:var(--ally)"><span>ทีมของคุณ</span><span>6/9 · หลัง→หน้า</span></div>
+          <div class="board9">
+            <div class="tile"></div>
+            <div class="tile"><div class="sig sig-healer" style="width:65%;aspect-ratio:1"><div class="core"></div></div></div>
+            <div class="tile"></div>
+            <div class="tile"><div class="sig sig-tank" style="width:65%;aspect-ratio:1"><div class="core"></div></div></div>
+            <div class="tile drop"></div>
+            <div class="tile"><div class="sig sig-healer" style="width:65%;aspect-ratio:1"><div class="core"></div></div></div>
+            <div class="tile"><div class="sig sig-fighter t1" style="width:65%;aspect-ratio:1"><div class="core"></div><span class="pip">★</span></div></div>
+            <div class="tile"><div class="sig sig-ranger t2" style="width:65%;aspect-ratio:1"><div class="core"></div><span class="pip">★★</span></div></div>
+            <div class="tile drop"></div>
+          </div>
+
+          <div class="tray">
+            <span class="tl-label">▾ ม้านั่ง</span>
+            <div class="ticons">
+              <div class="dot-unit"></div><div class="dot-unit"></div><div class="dot-unit t2"></div>
+            </div>
+            <span class="tl-label" style="color:var(--ink-faint)">3/8</span>
+            <span class="tchev">›</span>
+          </div>
+
+          <div class="shopstrip">
+            <div class="shopcard"><div class="sig sig-fighter"><div class="core"></div></div><div class="cost">1g</div></div>
+            <div class="shopcard fuse"><div class="sig sig-ranger"><div class="core"></div></div><div class="cost">รวม</div></div>
+            <div class="shopcard"><div class="sig sig-healer"><div class="core"></div></div><div class="cost">1g</div></div>
+            <div class="shopcard broke"><div class="sig sig-tank"><div class="core"></div></div><div class="cost">2g</div></div>
+            <div class="shopcard"><div class="sig sig-fighter"><div class="core"></div></div><div class="cost">1g</div></div>
+          </div>
+
+          <div class="actionbar">
+            <div class="purse">8</div>
+            <button class="btn">พร้อม</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="callouts right">
+      <div class="callout p1">
+        <div class="cl-k">แหวนทอง แทนป้ายข้อความ</div>
+        <div class="cl-v">การ์ดในร้านที่รวมได้/มีอยู่แล้ว ขึ้นแหวนทองรอบการ์ด — ไม่ต้องเพิ่มบรรทัดข้อความ (Auto Chess Mobile ทำแบบนี้กับยูนิตที่ผู้เล่นถืออยู่แล้ว)</div>
+        <div class="line"></div>
+      </div>
+      <div class="callout p1">
+        <div class="cl-k">ทองไม่พอ = หรี่ทันที</div>
+        <div class="cl-v">การ์ดซื้อไม่ไหวหรี่ 38% ราคาขึ้นสีเตือน — กันกดพลาดตั้งแต่ต้น ไม่ต้องรอ error เด้งกลับ</div>
+        <div class="line"></div>
+      </div>
+      <div class="callout p0">
+        <div class="cl-k">ม้านั่งยุบเป็น tray</div>
+        <div class="cl-v">ค่าเริ่มต้นยุบเหลือแถบเดียว + ตัวนับ — พื้นที่แนวตั้งที่ประหยัดได้คือสิ่งที่ทำให้กระดาน 9 ช่องพอดีจอโดยไม่ต้องสกอลล์</div>
+        <div class="line"></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="techstrip">
+    <div class="tcard"><div class="tn">TECHNIQUE 01</div><h4>ยุบสิ่งที่ไม่ได้กำลังสั่งการ</h4>
+      <p>TFT รวม stage/round/timer เหลือแถบเดียว แทนที่จะกางทุกอย่างพร้อมกัน — ที่นี่คู่แข่งยุบเหลือแถบ scout ตอนวางแผน</p></div>
+    <div class="tcard"><div class="tn">TECHNIQUE 02</div><h4>สถานะเป็นแสง ไม่ใช่ป้าย</h4>
+      <p>Auto Chess Mobile ใช้แอนิเมชันพื้นหลังบอกว่า “มีอยู่แล้ว/อัปได้” แทนตัวหนังสือ — ที่นี่คือแหวนทองรอบการ์ด</p></div>
+    <div class="tcard"><div class="tn">TECHNIQUE 03</div><h4>รายละเอียดอยู่หลังการกระทำ</h4>
+      <p>ไอคอนสกิล/trait ของ TFT เรียบตอนย่อ เต็มตอนกดดู — ช่องบอร์ดที่นี่โชว์แค่รูปทรง+ดาว กดค้างเพื่อดูสเตตัส</p></div>
+    <div class="tcard"><div class="tn">TECHNIQUE 04</div><h4>งบพื้นที่แนวตั้งมีจำกัด</h4>
+      <p>มือถือบังคับ layout แนวตั้ง+โซนนิ้ว — ทุกพื้นที่ที่ยุบได้ (คู่แข่ง, ม้านั่ง) ต้องยุบ ก่อนกระดานที่ใหญ่ขึ้นจะไม่พอจอ</p></div>
+  </div>
+
+  <!-- PALETTE -->
+  <section>
+    <div class="sec-head">
+      <div>
+        <div class="tag">01 — palette</div>
+        <h2 style="margin-top:10px">สองฝ่าย หนึ่งเหรียญ สามระดับเลือด</h2>
+        <p>สีทั้งชุดงอกจากเมล็ดเดียว (indigo #3F51B5) ผ่าน <span class="mono" style="color:var(--gold)">ColorScheme.fromSeed()</span> ส่วนสีที่ Material ไม่มีบทบาทให้ — ฝ่ายเรา/ฝ่ายศัตรู/ทอง/ระดับเลือด — อยู่ใน <span class="mono" style="color:var(--gold)">ThemeExtension&lt;GameTheme&gt;</span> ตัวเดียว</p>
+      </div>
+      <div class="sec-idx">6 CORE / 12 SEMANTIC</div>
+    </div>
+
+    <div class="pal">
+      <div class="chip"><div class="cap" style="background:linear-gradient(140deg,#7C8CFF,#3E48A8)"><span>#4A5AC0 / #B9C3FF</span></div>
+        <div class="meta"><div class="nm">ally</div><div class="us">ยูนิตเรา · HP เรา · ปุ่มหลัก</div></div></div>
+      <div class="chip"><div class="cap" style="background:linear-gradient(140deg,#FF8A4C,#8C3E14)"><span>#B3541E / #FFB68C</span></div>
+        <div class="meta"><div class="nm">enemy</div><div class="us">ยูนิตศัตรู · HP ฝั่งตรงข้าม</div></div></div>
+      <div class="chip"><div class="cap" style="background:linear-gradient(140deg,#F5C542,#7A5E10)"><span>#7A5A00 / #F5C542</span></div>
+        <div class="meta"><div class="nm">gold</div><div class="us">ทอง · ราคา · เรืองแสง 2★</div></div></div>
+      <div class="chip"><div class="cap" style="background:linear-gradient(140deg,#6BD98F,#1D3320)"><span>#256C2E / #8BD98F</span></div>
+        <div class="meta"><div class="nm">state.success</div><div class="us">ชนะ · hp.high (&gt;50%)</div></div></div>
+      <div class="chip"><div class="cap" style="background:linear-gradient(140deg,#FF5A5A,#5C1512)"><span>#BA1A1A / #FFB4AB</span></div>
+        <div class="meta"><div class="nm">state.danger</div><div class="us">แพ้ · hp.low (&lt;20%) · error</div></div></div>
+      <div class="chip"><div class="cap" style="background:linear-gradient(140deg,#171A27,#0A0B12)"><span style="color:#E9EAF4">#131318 surface</span></div>
+        <div class="meta"><div class="nm">arena ground</div><div class="us">หน้าแมตช์บังคับโทนมืดเสมอ ห้ามดำสนิท</div></div></div>
+    </div>
+  </section>
+
+  <!-- ROSTER -->
+  <section>
+    <div class="sec-head">
+      <div>
+        <div class="tag">02 — roster</div>
+        <h2 style="margin-top:10px">สี่ยูนิต สามระดับดาว หนึ่งรูปทรงต่อหนึ่งตัว</h2>
+        <p>รูปทรงคือตัวระบุ ไม่ใช่สี — ฝ่ายเรา/ศัตรูเปลี่ยนแค่โทน แต่วงกลม/หกเหลี่ยม/สามเหลี่ยม/กากบาทยังบอกได้ว่าใครเป็นใครแม้จอขาวดำ สเตตัสตรงกับ <span class="mono" style="color:var(--gold)">01-game-design.md</span></p>
+      </div>
+      <div class="sec-idx">MVP = รูปทรง ไม่ใช่สไปรท์</div>
+    </div>
+
+    <div class="roster">
+      <div class="unit">
+        <div class="u-top">
+          <div class="u-sig"><div class="sig sig-fighter" style="width:100%;aspect-ratio:1"><div class="core"></div></div></div>
+          <div><div class="u-name">Fighter</div><div class="u-role">ตัวยืนระยะประชิด</div></div>
+          <div class="u-cost">1g</div>
+        </div>
+        <div class="statline">
+          <div><div class="sk">HP</div><div class="sv">100</div></div>
+          <div><div class="sk">ATK</div><div class="sv">15</div></div>
+          <div><div class="sk">SPD</div><div class="sv">20</div></div>
+        </div>
+        <div class="tiers"><b>1★</b> ดูดเลือด 5% &nbsp;·&nbsp; <b>2★</b> ดูดเลือด 10%</div>
+      </div>
+
+      <div class="unit">
+        <div class="u-top">
+          <div class="u-sig"><div class="sig sig-healer" style="width:100%;aspect-ratio:1"><div class="core"></div></div></div>
+          <div><div class="u-name">Healer</div><div class="u-role">สายพยุงทีม</div></div>
+          <div class="u-cost">1g</div>
+        </div>
+        <div class="statline">
+          <div><div class="sk">HP</div><div class="sv">70</div></div>
+          <div><div class="sk">ATK</div><div class="sv">6</div></div>
+          <div><div class="sk">SPD</div><div class="sv">50</div></div>
+        </div>
+        <div class="tiers"><b>1★</b> ฮีลเพื่อนเลือดน้อยสุด &nbsp;·&nbsp; <b>2★</b> ฮีลแรงขึ้น</div>
+      </div>
+
+      <div class="unit">
+        <div class="u-top">
+          <div class="u-sig"><div class="sig sig-ranger t2" style="width:100%;aspect-ratio:1"><div class="core"></div></div></div>
+          <div><div class="u-name">Ranger</div><div class="u-role">ตัวทำดาเมจหลัก</div></div>
+          <div class="u-cost">2g</div>
+        </div>
+        <div class="statline">
+          <div><div class="sk">HP</div><div class="sv">60</div></div>
+          <div><div class="sk">ATK</div><div class="sv">12</div></div>
+          <div><div class="sk">SPD</div><div class="sv">90</div></div>
+        </div>
+        <div class="tiers"><b>1★</b> ทะลุ 10% ไปตัวหลัง &nbsp;·&nbsp; <b>2★</b> เล็งเลือดน้อยสุดทั้งกระดาน</div>
+      </div>
+
+      <div class="unit">
+        <div class="u-top">
+          <div class="u-sig"><div class="sig sig-tank" style="width:100%;aspect-ratio:1"><div class="core"></div></div></div>
+          <div><div class="u-name">Tank</div><div class="u-role">กำแพงแถวหน้า</div></div>
+          <div class="u-cost">2g</div>
+        </div>
+        <div class="statline">
+          <div><div class="sk">HP</div><div class="sv">150</div></div>
+          <div><div class="sk">ATK</div><div class="sv">8</div></div>
+          <div><div class="sk">SPD</div><div class="sv">0</div></div>
+        </div>
+        <div class="tiers"><b>1★</b> ฟื้นคืนชีพ 50% รอบละครั้ง &nbsp;·&nbsp; <b>2★</b> ดึงเป้าหมายเข้าตัว</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- TYPE -->
+  <section>
+    <div class="sec-head">
+      <div>
+        <div class="tag">03 — typography</div>
+        <h2 style="margin-top:10px">Chakra Petch พูดเสียงเกม · IBM Plex Sans Thai พูดเสียงระบบ</h2>
+        <p>หัวข้อและตัวเลขใช้หน้าเหลี่ยมคมของ Chakra Petch (ไทย+ละตินชุดเดียวกัน) ส่วนข้อความยาวใช้ Plex Sans Thai ที่ line-height ≥ 1.4 เพื่อไม่ให้สระบน-ล่างชนกัน ตัวเลขทุกตัวเป็น tabular</p>
+      </div>
+      <div class="sec-idx">MIN 16sp IN MATCH</div>
+    </div>
+
+    <div class="panel-lite" style="padding:8px 22px">
+      <div class="typespec">
+        <div class="tline"><div class="tk">displaySmall<b>Chakra 36 / 700</b></div><div class="disp" style="font-size:36px">ชนะ! · 62 HP</div></div>
+        <div class="tline"><div class="tk">headlineMedium<b>Chakra 28 / 700</b></div><div class="disp" style="font-size:28px">ประวัติการแข่งขัน</div></div>
+        <div class="tline"><div class="tk">titleMedium<b>Chakra 16 / 600</b></div><div class="disp" style="font-size:16px;font-weight:600">Ranger 2★ · เรนเจอร์</div></div>
+        <div class="tline"><div class="tk">bodyLarge<b>Plex Thai 16 / 400</b></div><div style="font-size:16px;line-height:1.55;max-width:44ch;color:var(--ink-dim)">ทองไม่พอ ต้องการ 2 ทอง — ขายยูนิตในม้านั่งเพื่อเปิดที่ว่างก่อน</div></div>
+        <div class="tline"><div class="tk">mono / data<b>Plex Mono 500</b></div><div class="mono" style="font-size:18px;color:var(--gold)">ROUND 03 · 00:23 · 8g · 78/100</div></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- COMBAT TIMELINE -->
+  <section>
+    <div class="sec-head">
+      <div>
+        <div class="tag">04 — combat replay</div>
+        <h2 style="margin-top:10px">เซิร์ฟเวอร์คิดจบแล้วส่งมาเป็นก้อนเดียว เราแค่เล่นให้ดู</h2>
+        <p>หนึ่งการต่อสู้ = <span class="mono" style="color:var(--gold)">CombatEvent[]</span> 100–2000 ชิ้น ยิงมาครั้งเดียว ไคลเอนต์เล่นเป็นไทม์ไลน์แล้ว ack กลับ ห้ามคำนวณดาเมจเอง และถ้าเล่นไม่ทัน ให้ <b style="color:var(--ink)">ย่นเวลาต่อ event</b> ไม่ใช่ตัด event ทิ้ง</p>
+      </div>
+      <div class="sec-idx">≤ 30 CYCLES × 100 TICKS</div>
+    </div>
+
+    <div class="tl">
+      <div style="display:flex;justify-content:space-between;font-family:'IBM Plex Mono',monospace;font-size:10px;color:var(--ink-faint)">
+        <span>CYCLE 01</span><span>CYCLE 12</span><span>BATTLE_END</span>
+      </div>
+      <div class="tl-track">
+        <i style="height:30%"></i><i style="height:44%"></i><i style="height:30%;background:var(--live)"></i><i style="height:52%"></i>
+        <i style="height:38%"></i><i style="height:66%;background:var(--enemy)"></i><i style="height:30%"></i><i style="height:48%"></i>
+        <i style="height:72%;background:var(--gold)"></i><i style="height:34%"></i><i style="height:56%"></i><i style="height:40%;background:var(--live)"></i>
+        <i style="height:62%"></i><i style="height:88%;background:var(--enemy)"></i><i style="height:36%"></i><i style="height:50%"></i>
+        <i style="height:44%"></i><i style="height:70%;background:var(--gold)"></i><i style="height:30%"></i><i style="height:58%"></i>
+        <i style="height:46%"></i><i style="height:34%;background:var(--live)"></i><i style="height:64%"></i><i style="height:96%;background:var(--crit)"></i>
+      </div>
+      <div class="tl-legend">
+        <span><b style="background:var(--ally)"></b> attack — เลขดาเมจลอยขึ้น 24dp จางใน 300ms</span>
+        <span><b style="background:var(--live)"></b> heal / lifesteal — เลขเขียว</span>
+        <span><b style="background:var(--enemy)"></b> pierce — เลขรองบนตัวหลัง 60%</span>
+        <span><b style="background:var(--gold)"></b> revive — แฟลชขาว 150ms</span>
+        <span><b style="background:var(--crit)"></b> death — จางเป็นเทา 200ms แล้วจมลง 8dp</span>
+      </div>
+
+      <div class="durs">
+        <div class="dur"><div class="dn">short2 · 100ms</div><div class="db" style="width:12%"></div><div class="dd">ริปเปิล ปุ่มเปลี่ยนสี</div></div>
+        <div class="dur"><div class="dn">short4 · 200ms</div><div class="db" style="width:25%"></div><div class="dd">แถบเลือดวิ่ง</div></div>
+        <div class="dur"><div class="dn">medium2 · 300ms</div><div class="db" style="width:37%"></div><div class="dd">เปลี่ยนหน้า · toast</div></div>
+        <div class="dur"><div class="dn">medium4 · 400ms</div><div class="db" style="width:50%"></div><div class="dd">โมดัลเข้า</div></div>
+        <div class="dur"><div class="dn">long2 · 500ms</div><div class="db" style="width:62%"></div><div class="dd">สลับเฟส</div></div>
+        <div class="dur"><div class="dn">extraLong2 · 800ms</div><div class="db" style="width:100%"></div><div class="dd">จบแมตช์ (ข้ามได้)</div></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- SCREEN RAIL -->
+  <section>
+    <div class="sec-head">
+      <div>
+        <div class="tag">05 — screens</div>
+        <h2 style="margin-top:10px">หกเส้นทาง สี่สถานะต่อหน้า</h2>
+        <p>ในนี้วาดเฉพาะสถานะ success — โครง loading (skeleton) / empty / error ที่มีทางออก อยู่ครบใน <span class="mono" style="color:var(--gold)">07-design-spec.md §4</span></p>
+      </div>
+      <div class="sec-idx">SWIPE →</div>
+    </div>
+
+    <div class="rail">
+
+      <div>
+        <div class="cap"><b>/login</b><span>P0-FE-03</span></div>
+        <div class="device"><div class="screen sm">
+          <div class="sysbar"><span>9:41</span><span></span></div>
+          <div class="scr-body" style="justify-content:center;align-items:center;text-align:center;gap:12px">
+            <div class="sigil-mark" style="width:44px;height:44px;font-size:20px">♟</div>
+            <div class="disp" style="font-size:20px">AUTO CHESS</div>
+            <div style="font-size:11px;color:var(--ink-faint);margin-top:-6px">เข้าสู่ระบบเพื่อเล่น</div>
+            <div style="width:100%;text-align:left">
+              <div class="mono" style="font-size:9px;color:var(--ink-faint)">อีเมล</div>
+              <div style="border:1px solid var(--edge);background:#0C0F18;padding:9px;font-size:11px;color:var(--ink-dim)">alice@example.com</div>
+            </div>
+            <div style="width:100%;text-align:left">
+              <div class="mono" style="font-size:9px;color:var(--ink-faint)">รหัสผ่าน</div>
+              <div style="border:1px solid var(--edge);background:#0C0F18;padding:9px;font-size:11px;color:var(--ink-dim);display:flex;justify-content:space-between">••••••••<span>👁</span></div>
+            </div>
+            <button class="btn wide">เข้าสู่ระบบ</button>
+            <div style="font-size:10.5px;color:var(--ink-faint)">ยังไม่มีบัญชี? <span style="color:var(--ally)">สมัครสมาชิก</span></div>
+          </div>
+        </div></div>
+      </div>
+
+      <div>
+        <div class="cap"><b>/lobby</b><span>P0-FE-04</span></div>
+        <div class="device"><div class="screen sm">
+          <div class="sysbar"><span>9:41</span><span>● ONLINE</span></div>
+          <div class="scr-body">
+            <div style="display:flex;justify-content:space-between;align-items:center">
+              <div class="disp" style="font-size:15px">AUTO CHESS</div>
+              <div style="font-size:11px;color:var(--ink-faint)">🕘 👤</div>
+            </div>
+            <div class="panel-lite" style="padding:12px">
+              <div style="display:flex;align-items:center;gap:11px">
+                <div style="width:44px;height:44px;flex:0 0 44px;border-radius:50%;position:relative;
+                     background:conic-gradient(var(--gold) 0 67%, #23273A 67% 100%)">
+                  <div style="position:absolute;inset:3px;border-radius:50%;background:var(--deep);
+                       display:grid;place-items:center;font-family:'Chakra Petch';font-weight:700;font-size:12px">AL</div>
+                </div>
+                <div>
+                  <div class="disp" style="font-size:16px">alice</div>
+                  <div style="font-size:10.5px;color:var(--ink-faint);margin-top:1px">เรตติ้ง 1000 · อัตราชนะ 67%</div>
+                </div>
+              </div>
+              <div style="display:flex;gap:4px;margin-top:10px">
+                <i style="flex:1;height:3px;background:var(--live)"></i><i style="flex:1;height:3px;background:var(--live)"></i>
+                <i style="flex:1;height:3px;background:var(--crit)"></i><i style="flex:1;height:3px;background:var(--live)"></i>
+                <i style="flex:1;height:3px;background:var(--live)"></i><i style="flex:1;height:3px;background:var(--crit)"></i>
+              </div>
+            </div>
+            <div style="flex:1;border:1px solid var(--etch);background:
+                linear-gradient(rgba(124,140,255,.07) 1px,transparent 1px),
+                linear-gradient(90deg,rgba(124,140,255,.07) 1px,transparent 1px);
+                background-size:26px 26px;display:grid;place-items:center">
+              <div class="mono" style="font-size:9px;color:var(--ink-faint);letter-spacing:.2em">ARENA STANDBY</div>
+            </div>
+            <button class="btn gold wide">ค้นหาคู่แข่ง</button>
+          </div>
+        </div></div>
+      </div>
+
+      <div>
+        <div class="cap"><b>match · battle</b><span>P0-FE-05</span></div>
+        <div class="device"><div class="screen sm">
+          <div class="sysbar"><span>9:41</span><span>ROUND 3</span></div>
+          <div class="scr-body" style="align-items:center">
+            <div class="mono" style="font-size:9px;color:var(--crit);letter-spacing:.16em;align-self:flex-start">⚔ กำลังต่อสู้ — ทั้งสองกระดานเต็ม</div>
+
+            <div class="board9 mini">
+              <div class="mtile foe"><div class="dot-unit foe"></div></div>
+              <div class="mtile foe"><div class="dot-unit foe t2"></div></div>
+              <div class="mtile foe"></div>
+              <div class="mtile foe"></div>
+              <div class="mtile foe"><div class="dot-unit foe"></div></div>
+              <div class="mtile foe"></div>
+              <div class="mtile foe"><div class="dot-unit foe"></div></div>
+              <div class="mtile foe"></div>
+              <div class="mtile foe"><div class="dot-unit foe"></div></div>
+            </div>
+
+            <div style="text-align:center;font-family:'Chakra Petch';font-weight:700;font-size:22px;color:var(--crit)">−15</div>
+
+            <div class="board9 mini">
+              <div class="mtile"><div class="dot-unit"></div></div>
+              <div class="mtile"><div class="dot-unit t2"></div></div>
+              <div class="mtile"></div>
+              <div class="mtile"><div class="dot-unit"></div></div>
+              <div class="mtile"></div>
+              <div class="mtile"><div class="dot-unit"></div></div>
+              <div class="mtile"><div class="dot-unit"></div></div>
+              <div class="mtile"><div class="dot-unit t2"></div></div>
+              <div class="mtile"></div>
+            </div>
+
+            <div style="width:100%;margin-top:auto">
+              <div style="display:flex;justify-content:space-between;margin-bottom:4px" class="mono">
+                <span style="font-size:8px;color:var(--ink-faint)">EVENT 14/22</span>
+                <span style="font-size:8px;color:var(--ink-faint)">CYCLE 3</span>
+              </div>
+              <div style="height:5px;border-radius:3px;background:#1A1E2B;overflow:hidden">
+                <div style="height:100%;width:64%;border-radius:3px;background:linear-gradient(90deg,var(--ally),var(--gold))"></div>
+              </div>
+              <div style="display:flex;gap:6px;margin-top:9px">
+                <button class="btn ghost" style="flex:1;padding:7px 0;font-size:10.5px">1x</button>
+                <button class="btn ghost" style="flex:1;padding:7px 0;font-size:10.5px">2x</button>
+                <button class="btn" style="flex:2;padding:7px 0;font-size:10.5px">ข้าม</button>
+              </div>
+            </div>
+          </div>
+        </div></div>
+      </div>
+
+      <div>
+        <div class="cap"><b>result</b><span>overlay</span></div>
+        <div class="device"><div class="screen sm">
+          <div class="sysbar"><span>9:41</span><span>MATCH END</span></div>
+          <div class="scr-body" style="justify-content:center;align-items:center;text-align:center;gap:12px">
+            <div style="font-size:30px">🏆</div>
+            <div class="disp" style="font-size:38px;color:var(--live);line-height:1">ชนะ!</div>
+            <div style="font-size:11px;color:var(--ink-faint)">ชนะ bob · 7 รอบ · 4:12</div>
+            <div style="display:flex;gap:6px">
+              <div class="u-sig" style="width:34px;height:34px;background:#0D101A;border:1px solid var(--etch);display:grid;place-items:center">
+                <div class="sig sig-fighter t1" style="width:100%;aspect-ratio:1"><div class="core"></div></div></div>
+              <div class="u-sig" style="width:34px;height:34px;background:#0D101A;border:1px solid var(--etch);display:grid;place-items:center">
+                <div class="sig sig-ranger t2" style="width:100%;aspect-ratio:1"><div class="core"></div></div></div>
+              <div class="u-sig" style="width:34px;height:34px;background:#0D101A;border:1px solid var(--etch);display:grid;place-items:center">
+                <div class="sig sig-tank" style="width:100%;aspect-ratio:1"><div class="core"></div></div></div>
+            </div>
+            <div class="hp" style="width:80%;flex:none">
+              <div class="hp-top"><span>HP สุดท้าย</span><span>32/100</span></div>
+              <div class="hp-track"><div class="hp-fill" style="width:32%;background:var(--crit)"></div></div>
+            </div>
+            <button class="btn gold wide">เล่นอีกครั้ง</button>
+            <button class="btn ghost wide">กลับหน้าหลัก</button>
+          </div>
+        </div></div>
+      </div>
+
+      <div>
+        <div class="cap"><b>/history</b><span>P2-FE</span></div>
+        <div class="device"><div class="screen sm">
+          <div class="sysbar"><span>9:41</span><span></span></div>
+          <div class="scr-body" style="gap:0">
+            <div class="disp" style="font-size:15px;margin-bottom:10px">ประวัติการแข่งขัน</div>
+            <div style="display:flex;gap:14px;border-bottom:1px solid var(--etch);margin-bottom:8px">
+              <span class="mono" style="font-size:10px;color:var(--gold);border-bottom:2px solid var(--gold);padding-bottom:6px">ทั้งหมด</span>
+              <span class="mono" style="font-size:10px;color:var(--ink-faint);padding-bottom:6px">ชนะ</span>
+              <span class="mono" style="font-size:10px;color:var(--ink-faint);padding-bottom:6px">แพ้</span>
+            </div>
+            <div style="display:flex;gap:8px;align-items:center;padding:9px 0;border-bottom:1px solid #191C28">
+              <i style="width:3px;align-self:stretch;background:var(--live)"></i>
+              <div style="flex:1"><div style="font-size:11.5px">vs bob</div><div style="font-size:9px;color:var(--ink-faint)">7 รอบ · 2 ชม.ที่แล้ว</div></div>
+              <span class="statpill win">✔ ชนะ</span></div>
+            <div style="display:flex;gap:8px;align-items:center;padding:9px 0;border-bottom:1px solid #191C28">
+              <i style="width:3px;align-self:stretch;background:var(--crit)"></i>
+              <div style="flex:1"><div style="font-size:11.5px">vs carol</div><div style="font-size:9px;color:var(--ink-faint)">5 รอบ · 1 วันที่แล้ว</div></div>
+              <span class="statpill loss">✘ แพ้</span></div>
+            <div style="display:flex;gap:8px;align-items:center;padding:9px 0;border-bottom:1px solid #191C28">
+              <i style="width:3px;align-self:stretch;background:var(--live)"></i>
+              <div style="flex:1"><div style="font-size:11.5px">vs dan</div><div style="font-size:9px;color:var(--ink-faint)">9 รอบ · 2 วันที่แล้ว</div></div>
+              <span class="statpill win">✔ ชนะ</span></div>
+            <div style="display:flex;gap:8px;align-items:center;padding:11px 0">
+              <i style="width:3px;align-self:stretch;background:#1E2231"></i>
+              <div style="flex:1"><div style="height:9px;background:#1B1F2C;width:64%"></div>
+                <div style="height:7px;background:#161A25;width:38%;margin-top:5px"></div></div></div>
+          </div>
+        </div></div>
+      </div>
+
+      <div>
+        <div class="cap"><b>/profile</b><span>P2-FE</span></div>
+        <div class="device"><div class="screen sm">
+          <div class="sysbar"><span>9:41</span><span></span></div>
+          <div class="scr-body">
+            <div style="display:flex;align-items:center;gap:10px">
+              <div style="width:40px;height:40px;flex:0 0 40px;border-radius:50%;position:relative;
+                   background:conic-gradient(var(--gold) 0 67%, #23273A 67% 100%)">
+                <div style="position:absolute;inset:3px;border-radius:50%;background:var(--deep);
+                     display:grid;place-items:center;font-family:'Chakra Petch';font-weight:700;font-size:12px">AL</div>
+              </div>
+              <div><div class="disp" style="font-size:16px">alice</div><div style="font-size:10px;color:var(--ink-faint)">เรตติ้ง 1000</div></div>
+            </div>
+            <button class="btn ghost wide" style="font-size:11px;padding:8px 0">แก้ไขชื่อผู้ใช้</button>
+            <hr class="rule">
+            <div style="display:flex;justify-content:space-between;font-size:11px"><span>ธีม</span><span style="color:var(--ink-faint)">ระบบ ▾</span></div>
+            <div style="display:flex;justify-content:space-between;font-size:11px"><span>เสียง / สั่น</span><span style="color:var(--live)">เปิด</span></div>
+            <div style="display:flex;justify-content:space-between;font-size:11px"><span>ลดการเคลื่อนไหว</span><span style="color:var(--ink-faint)">ปิด</span></div>
+            <hr class="rule">
+            <div class="mono" style="display:flex;justify-content:space-between;font-size:9.5px;color:var(--ink-faint)">
+              <span>SERVER</span><span style="color:var(--live)">● ปกติ</span></div>
+            <div class="mono" style="display:flex;justify-content:space-between;font-size:9.5px;color:var(--ink-faint)">
+              <span>BUILD</span><span>0.1.0+1</span></div>
+            <button class="btn danger wide" style="margin-top:auto">ออกจากระบบ</button>
+          </div>
+        </div></div>
+      </div>
+
+    </div>
+  </section>
+
+  <!-- HARD RULES -->
+  <section>
+    <div class="sec-head">
+      <div>
+        <div class="tag">06 — กฎที่ reviewer เช็ก</div>
+        <h2 style="margin-top:10px">ห้าข้อที่ทำให้ PR ตก</h2>
+        <p>รายการเต็มอยู่ใน §9.2 ของสเปก ห้าข้อนี้คือที่พลาดบ่อยสุดตอนเขียนหน้าเกม</p>
+      </div>
+      <div class="sec-idx">PR CHECKLIST</div>
+    </div>
+
+    <div class="rules">
+      <div class="rule-card"><div class="rn">01 · NO MAGIC NUMBERS</div>
+        <p>ห้าม <b>Colors.*</b> · <b>fontSize:</b> · padding นอกสเกล 4dp · <b>Duration()</b> ดิบ ใน <b>features/**</b> ทุกค่าดึงจาก token</p></div>
+      <div class="rule-card"><div class="rn">02 · เวลาต้องไม่โกหก</div>
+        <p>นับถอยหลังจาก <b>deadline</b> ที่คำนวณจาก server เสมอ ห้าม <b>Timer.periodic</b> ลบวินาทีเอง และคำนวณใหม่ทุกครั้งที่แอปกลับจาก background</p></div>
+      <div class="rule-card"><div class="rn">03 · เดาได้เฉพาะที่อนุญาต</div>
+        <p>optimistic ได้แค่ ซื้อ/ขาย/รีเฟรช/รวม/วาง/พร้อม + ต้อง rollback ได้ <b>ห้ามเดาผลการต่อสู้หรือดาเมจ</b> เด็ดขาด</p></div>
+      <div class="rule-card"><div class="rn">04 · สีอย่างเดียวไม่พอ</div>
+        <p>ฝ่าย · ระดับเลือด · แพ้ชนะ ต้องมี <b>รูปทรง ไอคอน หรือตำแหน่ง</b> กำกับเสมอ และมีทางเลือกแตะวางแทนการลาก</p></div>
+      <div class="rule-card"><div class="rn">05 · สี่สถานะทุกหน้า</div>
+        <p>loading เป็น <b>skeleton</b> ตามรูปทรงจริง · empty มีทางไปต่อ · error มีทางออก · ปุ่ม submit กันกดซ้ำและบอกเหตุผลตอน disabled</p></div>
+    </div>
+  </section>
+
+  <footer>
+    BOARD <b>3×3 (9 ช่อง)</b> — อัปเดตจาก 2×3 เดิม; แก้พร้อมกันใน <b>01-game-design.md</b> §2 · <b>04-api-contracts.md</b> (slot 0..8) · <b>05-combat-spec.md</b> §2 (targeting แถว 0→1→2)<br>
+    SPEC <b>docs/07-design-spec.md</b> §4.4.0 — เหตุผลของเลย์เอาต์นี้ + งานวิจัย TFT/mobile auto-chess ที่อ้างอิง (§9.4)<br>
+    RULES <b>.claude/skills/ux-ui-design/SKILL.md</b> — โหลดอัตโนมัติเวลา AI แตะไฟล์ UI<br>
+    SOURCE <b>docs/01-game-design.md</b> · <b>02-requirements.md</b> · <b>04-api-contracts.md</b> · <b>05-combat-spec.md</b>
+  </footer>
+
+</div>
