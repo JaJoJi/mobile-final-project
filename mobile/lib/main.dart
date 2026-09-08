@@ -1,8 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'core/api/api_client.dart';
+import 'core/theme/app_theme.dart';
 import 'features/auth/login_screen.dart';
 import 'features/auth/register_screen.dart';
+import 'features/dev/widget_gallery_screen.dart';
 import 'features/health/health_screen.dart';
 
 /// App entry. Auth-aware routing:
@@ -25,15 +26,17 @@ class AutoChessApp extends StatelessWidget {
     return MaterialApp(
       title: 'Auto Chess',
       debugShowCheckedModeBanner: false,
-      theme: ThemeData(
-        colorScheme: ColorScheme.fromSeed(seedColor: Colors.indigo),
-        useMaterial3: true,
-      ),
+      // Design tokens live in core/theme (design spec §2). Both themes are
+      // defined now; the user-facing toggle ships with P1-FE-02.
+      theme: buildTheme(Brightness.light),
+      darkTheme: buildTheme(Brightness.dark),
+      themeMode: ThemeMode.system,
       initialRoute: '/login',
       routes: {
         '/login': (ctx) => const LoginScreen(),
         '/register': (ctx) => const RegisterScreen(),
         '/home': (ctx) => const HealthScreen(),
+        '/dev/gallery': (ctx) => const WidgetGalleryScreen(),
       },
     );
   }
