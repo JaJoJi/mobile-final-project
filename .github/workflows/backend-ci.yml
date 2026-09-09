@@ -4,11 +4,12 @@ name: backend-ci
 #   backend             — fast gate on every PR: typecheck + build + unit tests.
 #                         No DB/Redis, no coverage gate. Unchanged from before.
 #   backend-integration — the slow gate (P3-DO-08): real Postgres + Redis
-#                         service containers, migrations, the *.smoke.ts
-#                         integration suite (matchmaking, round-orchestrator,
-#                         shop, ws) and the `test:cov` coverage gate that used
-#                         to run only locally. Coverage is uploaded as an
-#                         artifact.
+#                         service containers + three real Nest instances
+#                         (nest-1/2/3, as in docker-compose), migrations,
+#                         the *.smoke.ts integration suite (matchmaking,
+#                         round-orchestrator, shop, ws) and the `test:cov`
+#                         coverage gate that used to run only locally.
+#                         Coverage is uploaded as an artifact.
 
 on:
   pull_request:
@@ -99,10 +100,40 @@ jobs:
       - name: Run migrations
         run: npm run migration:run
 
+      # The round-orchestrator integration smoke enqueues a *real* BullMQ
+      # PHASE_TIMER job and asserts that one of several running Nest
+      # workers consumes it, wins the combat lock and persists exactly one
+      # round — Postgres + Redis alone are not enough. Boot three Nest
+      # instances (matching docker-compose's nest-1/2/3), sharing this
+      # job's DB + Redis, on ports 3000/3001/3002. ws.smoke.ts then
+      # targets nest-1 on :3000. Migrations already ran, so RUN_MIGRATIONS
+      # stays false on all three.
+      - name: Start 3 Nest instances (background)
+        run: |
+          mkdir -p nest-logs
+          : > nest-logs/pids
+          for n in 1 2 3; do
+            port=$((2999 + n))
+            HOSTNAME="nest-$n" NEST_PORT="$port" RUN_MIGRATIONS=false \
+              node dist/main.js > "nest-logs/nest-$n.log" 2>&1 &
+            echo $! >> nest-logs/pids
+          done
+          for n in 1 2 3; do
+            port=$((2999 + n))
+            ready=
+            for i in $(seq 1 45); do
+              if curl -sf "http://localhost:$port/health/ready" > /dev/null; then
+                echo "nest-$n ready on :$port after ${i}s"; ready=1; break
+              fi
+              sleep 1
+            done
+            if [ -z "$ready" ]; then
+              echo "nest-$n did not become ready in 45s"; cat "nest-logs/nest-$n.log"; exit 1
+            fi
+          done
+
       # ── Integration smoke suite ───────────────────────────────────────
-      # matchmaking is fake-backed (no infra) but cheap; the rest need the
-      # real Postgres + Redis wired above. Each script exits non-zero on a
-      # failed assertion, which fails the step.
+      # Each script exits non-zero on a failed assertion, failing the step.
       - name: Smoke — matchmaking
         run: npm run smoke:matchmaking
 
@@ -112,31 +143,18 @@ jobs:
       - name: Smoke — shop (integration)
         run: npm run smoke:shop:integration
 
-      # ws.smoke.ts drives a *running* Nest instance over socket.io, so
-      # boot one in the background and wait for /health/ready before the
-      # smoke connects. RUN_MIGRATIONS is unset — migrations already ran.
-      - name: Start Nest (background, for ws smoke)
-        run: |
-          node dist/main.js > nest.log 2>&1 &
-          echo $! > nest.pid
-          for i in $(seq 1 30); do
-            if curl -sf http://localhost:3000/health/ready > /dev/null; then
-              echo "Nest ready after ${i}s"; exit 0
-            fi
-            sleep 1
-          done
-          echo "Nest did not become ready in 30s"; cat nest.log; exit 1
-
       - name: Smoke — ws
         run: npm run smoke:ws
         env:
           HTTP_BASE: http://localhost:3000
 
-      - name: Stop Nest
+      - name: Stop Nest instances
         if: always()
         run: |
-          if [ -f nest.pid ]; then kill "$(cat nest.pid)" || true; fi
-          echo "--- nest.log ---"; cat nest.log || true
+          [ -f nest-logs/pids ] && xargs kill < nest-logs/pids 2>/dev/null || true
+          for n in 1 2 3; do
+            echo "--- nest-$n.log ---"; cat "nest-logs/nest-$n.log" 2>/dev/null || true
+          done
 
       # ── Coverage gate ────────────────────────────────────────────────
       # Same jest config as local: the src/game >=90% line-coverage
