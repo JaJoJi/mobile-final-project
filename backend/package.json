@@ -12,6 +12,7 @@
     "smoke:round-orchestrator": "node dist/runtime/round-orchestrator.smoke.js",
     "smoke:round-orchestrator:integration": "node dist/runtime/round-orchestrator.integration.smoke.js",
     "smoke:shop:integration": "node dist/shop/shop.integration.smoke.js",
+    "smoke:ws": "node dist/ws/ws.smoke.js",
     "start": "node dist/main.js",
     "start:dev": "ts-node -T src/main.ts",
     "typeorm": "typeorm-ts-node-commonjs",

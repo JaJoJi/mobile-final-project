@@ -1,4 +1,4 @@
-import { Logger } from '@nestjs/common';
+import { Logger, UseFilters } from '@nestjs/common';
 import {
   ConnectedSocket,
   MessageBody,
@@ -11,8 +11,24 @@ import {
   WsException,
 } from '@nestjs/websockets';
 import type { Server, Socket } from 'socket.io';
+import { MatchService } from '../match/match.service';
+import { MatchmakingService } from '../matchmaking/matchmaking.service';
+import { MatchRuntimeAdapter, RuntimeActionType } from '../runtime/match.runtime.adapter';
 import { PubsubBridge } from '../runtime/pubsub.bridge';
 import { WsAuthGuard } from './guards/ws-auth.guard';
+import {
+  MatchCombatDoneDto,
+  MatchPlaceDto,
+  MatchReadyDto,
+  MatchmakingJoinDto,
+  MatchmakingLeaveDto,
+  ShopBuyDto,
+  ShopFuseDto,
+  ShopRefreshDto,
+  ShopSellDto,
+} from './ws.dto';
+import { toGameError, WsGameExceptionFilter } from './ws-exception.filter';
+import { WsValidationPipe } from './ws.pipes';
 
 interface SocketUser {
   sub: string;
@@ -42,17 +58,16 @@ interface SocketUser {
  * the per-user dedup here, a client can move between replicas mid-match
  * without missing events.
  *
- * Out of scope here, lands in later tickets:
- *   - `@SubscribeMessage` handlers → P0-BE-10 (game:matchmaking:join,
- *     game:shop:buy, game:match:place, …). When those handlers exist,
- *     they call `subscribeToMatch(client, matchId)` so the client starts
- *     receiving that match's events.
+ * P0-BE-10 wires every incoming `game:*` event below. The bridge observes the
+ * first phase event from matchmaking and attaches both players' sockets to the
+ * new match before fan-out, including when they are on different replicas.
  */
 @WebSocketGateway({
   namespace: '/game',
   cors: { origin: '*' },
   transports: ['websocket', 'polling'],
 })
+@UseFilters(WsGameExceptionFilter)
 export class WsGateway implements OnGatewayConnection, OnGatewayDisconnect, OnGatewayInit {
   private readonly logger = new Logger(WsGateway.name);
 
@@ -68,6 +83,9 @@ export class WsGateway implements OnGatewayConnection, OnGatewayDisconnect, OnGa
   constructor(
     private readonly pubsubBridge: PubsubBridge,
     private readonly wsAuthGuard: WsAuthGuard,
+    private readonly matchmaking: MatchmakingService,
+    private readonly runtime: MatchRuntimeAdapter,
+    private readonly matches: MatchService,
   ) {}
 
   /**
@@ -93,6 +111,8 @@ export class WsGateway implements OnGatewayConnection, OnGatewayDisconnect, OnGa
       this.connectedSockets.set(userId, bucket);
     }
     bucket.add(client);
+    this.pubsubBridge.registerUserSocket(userId, client.id);
+    void this.resumeActiveMatch(client, userId);
 
     this.logger.log(
       `WS connected: user=${userId} socket=${client.id} ` +
@@ -110,6 +130,7 @@ export class WsGateway implements OnGatewayConnection, OnGatewayDisconnect, OnGa
       bucket.delete(client);
       if (bucket.size === 0) this.connectedSockets.delete(user.sub);
     }
+    this.pubsubBridge.unregisterUserSocket(user.sub, client.id);
 
     // Clean up per-match fan-out subscriptions so a closed socket can't
     // keep receiving events forever (race R14 — the 60 s cache covers
@@ -124,12 +145,19 @@ export class WsGateway implements OnGatewayConnection, OnGatewayDisconnect, OnGa
     }
 
     this.logger.log(`WS disconnected: user=${user.sub} socket=${client.id}`);
+    if (client.data.superseded !== true) {
+      void this.handleClientDisconnect(user.sub).catch((error: unknown) => {
+        this.logger.error(
+          `disconnect handling failed: user=${user.sub} error=${error instanceof Error ? error.message : String(error)}`,
+        );
+      });
+    }
   }
 
   /**
    * Register `client` to receive server→client events for `matchId`.
-   * Called from P0-BE-10 message handlers (e.g. `game:matchmaking:join`
-   * once a match is created) and from the P0-BE-05 smoke harness.
+   * Called when an existing match is resumed. New matches are subscribed by
+   * PubsubBridge when their first phase event identifies both players.
    *
    * Idempotent. The socket may be subscribed to many matches; this is
    * tracked in `socketMatches` so `handleDisconnect` can clean up.
@@ -155,25 +183,60 @@ export class WsGateway implements OnGatewayConnection, OnGatewayDisconnect, OnGa
     this.socketMatches.get(client.id)?.delete(matchId);
   }
 
-  /**
-   * TEST-ONLY — `debug:subscribe-match` lets the P0-BE-05 smoke harness
-   * register a socket for a match without a real `game:matchmaking:join`
-   * handler (those land in P0-BE-10). Removed in P0-BE-10 when the real
-   * `@SubscribeMessage` handlers replace this entry point.
-   *
-   * Body: `{ matchId: string }` — empty/missing matchId is silently dropped.
-   */
-  @SubscribeMessage('debug:subscribe-match')
-  debugSubscribeMatch(
-    @MessageBody() body: { matchId?: string },
+  @SubscribeMessage('game:matchmaking:join')
+  onMatchmakingJoin(
+    @MessageBody(WsValidationPipe) _dto: MatchmakingJoinDto,
     @ConnectedSocket() client: Socket,
-  ): { ok: true } | { ok: false; reason: string } {
-    const matchId = body?.matchId;
-    if (!matchId || typeof matchId !== 'string') {
-      return { ok: false, reason: 'matchId required' };
-    }
-    this.subscribeToMatch(client, matchId);
-    return { ok: true };
+  ) {
+    return this.runHandler(client, undefined, 'matchmaking.join_failed', () =>
+      this.matchmaking.joinQueue(this.userId(client)));
+  }
+
+  @SubscribeMessage('game:matchmaking:leave')
+  onMatchmakingLeave(
+    @MessageBody(WsValidationPipe) _dto: MatchmakingLeaveDto,
+    @ConnectedSocket() client: Socket,
+  ) {
+    return this.runHandler(client, undefined, 'matchmaking.leave_failed', () =>
+      this.matchmaking.leaveQueue(this.userId(client)));
+  }
+
+  @SubscribeMessage('game:shop:buy')
+  onShopBuy(@MessageBody(WsValidationPipe) dto: ShopBuyDto, @ConnectedSocket() client: Socket) {
+    return this.runRuntimeAction(client, 'shop:buy', dto);
+  }
+
+  @SubscribeMessage('game:shop:sell')
+  onShopSell(@MessageBody(WsValidationPipe) dto: ShopSellDto, @ConnectedSocket() client: Socket) {
+    return this.runRuntimeAction(client, 'shop:sell', dto);
+  }
+
+  @SubscribeMessage('game:shop:refresh')
+  onShopRefresh(@MessageBody(WsValidationPipe) dto: ShopRefreshDto, @ConnectedSocket() client: Socket) {
+    return this.runRuntimeAction(client, 'shop:refresh', dto);
+  }
+
+  @SubscribeMessage('game:shop:fuse')
+  onShopFuse(@MessageBody(WsValidationPipe) dto: ShopFuseDto, @ConnectedSocket() client: Socket) {
+    return this.runRuntimeAction(client, 'shop:fuse', dto);
+  }
+
+  @SubscribeMessage('game:match:place')
+  onMatchPlace(@MessageBody(WsValidationPipe) dto: MatchPlaceDto, @ConnectedSocket() client: Socket) {
+    return this.runRuntimeAction(client, 'match:place', dto);
+  }
+
+  @SubscribeMessage('game:match:ready')
+  onMatchReady(@MessageBody(WsValidationPipe) dto: MatchReadyDto, @ConnectedSocket() client: Socket) {
+    return this.runRuntimeAction(client, 'match:ready', dto);
+  }
+
+  @SubscribeMessage('game:match:combat_done')
+  onMatchCombatDone(
+    @MessageBody(WsValidationPipe) dto: MatchCombatDoneDto,
+    @ConnectedSocket() client: Socket,
+  ) {
+    return this.runRuntimeAction(client, 'match:combat_done', dto);
   }
 
   /**
@@ -206,7 +269,57 @@ export class WsGateway implements OnGatewayConnection, OnGatewayDisconnect, OnGa
     for (const old of existing) {
       if (old.id === current.id) continue;
       this.logger.log(`dedup: kicking old socket=${old.id} for user=${userId}`);
+      old.data.superseded = true;
       old.disconnect(true);
     }
+  }
+
+  private userId(client: Socket): string {
+    return (client.data.user as SocketUser).sub;
+  }
+
+  private runRuntimeAction(
+    client: Socket,
+    action: RuntimeActionType,
+    dto: { clientActionId: string; round: number },
+  ) {
+    return this.runHandler(client, dto.clientActionId, `${action}.failed`, () =>
+      this.runtime.handleAction(this.userId(client), action, dto));
+  }
+
+  private async runHandler<T>(
+    client: Socket,
+    clientActionId: string | undefined,
+    fallbackCode: string,
+    operation: () => Promise<T>,
+  ): Promise<T | undefined> {
+    try {
+      return await operation();
+    } catch (error: unknown) {
+      const envelope = toGameError(error, fallbackCode, clientActionId);
+      if (envelope.code === 'internal') {
+        this.logger.error(
+          `WS handler failed: code=${fallbackCode} error=${error instanceof Error ? error.stack : String(error)}`,
+        );
+      }
+      client.emit('game:error', envelope);
+      return undefined;
+    }
+  }
+
+  private async resumeActiveMatch(client: Socket, userId: string): Promise<void> {
+    try {
+      const match = await this.matches.findActiveByUserId(userId);
+      if (match && client.connected) this.subscribeToMatch(client, match.id);
+    } catch (error: unknown) {
+      this.logger.error(
+        `active-match resume failed: user=${userId} error=${error instanceof Error ? error.message : String(error)}`,
+      );
+    }
+  }
+
+  private async handleClientDisconnect(userId: string): Promise<void> {
+    await this.matchmaking.leaveQueue(userId);
+    await this.runtime.handleDisconnect(userId);
   }
 }

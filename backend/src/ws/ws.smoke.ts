@@ -18,6 +18,7 @@
  *   HTTP_BASE=http://localhost:3000 npx ts-node -T src/ws/ws.smoke.ts
  */
 import { io, Socket } from 'socket.io-client';
+import { randomUUID } from 'crypto';
 
 interface AuthResponse {
   userId: string;
@@ -27,6 +28,7 @@ interface AuthResponse {
 
 interface ErrorEnvelope {
   code?: string;
+  message?: string;
 }
 
 interface TestResult {
@@ -108,6 +110,26 @@ function connect(opts: { token?: string; timeoutMs?: number } = {}): Promise<{
     });
 
     setTimeout(finish, timeoutMs);
+  });
+}
+
+function once<T>(socket: Socket, event: string, timeoutMs = TIMEOUT_MS): Promise<T> {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error(`${event} timeout`)), timeoutMs);
+    socket.once(event, (payload: T) => {
+      clearTimeout(timer);
+      resolve(payload);
+    });
+  });
+}
+
+function emitWithAck<T>(socket: Socket, event: string, payload: unknown): Promise<T> {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error(`${event} ack timeout`)), TIMEOUT_MS);
+    socket.emit(event, payload, (ack: T) => {
+      clearTimeout(timer);
+      resolve(ack);
+    });
   });
 }
 
@@ -230,6 +252,136 @@ async function run(): Promise<void> {
         disconnected &&
         disconnectReason === 'io server disconnect',
       detail: `connectOk=${connectOk} errorCode=${errorPayload?.code ?? '∅'} disconnected=${disconnected} reason=${disconnectReason}`,
+    });
+  }
+
+  // 6. Invalid DTO is converted by the gateway filter to game:error.
+  {
+    const connection = await connect({ token: reg.accessToken });
+    const error = once<ErrorEnvelope>(connection.socket, 'game:error');
+    connection.socket.emit('game:shop:buy', { round: 'three' });
+    const payload = await error;
+    connection.socket.close();
+    results.push({
+      name: '6. invalid handler payload',
+      passed: connection.connectOk && payload.code === 'invalid_payload',
+      detail: `connectOk=${connection.connectOk} errorCode=${payload.code ?? '∅'}`,
+    });
+  }
+
+  // 7. A valid handler delegates to matchmaking and returns its result.
+  {
+    const connection = await connect({ token: reg.accessToken });
+    const joined = await emitWithAck<{ queued: boolean }>(
+      connection.socket,
+      'game:matchmaking:join',
+      {},
+    );
+    const left = await emitWithAck<boolean>(
+      connection.socket,
+      'game:matchmaking:leave',
+      {},
+    );
+    connection.socket.close();
+    results.push({
+      name: '7. valid matchmaking handlers',
+      passed: joined?.queued === true && left === true,
+      detail: `queued=${joined?.queued} left=${left}`,
+    });
+  }
+
+  // 8. Two real sockets may land on different Nest replicas; both must be
+  // auto-subscribed by the first phase event and receive only their own shop.
+  {
+    const reg2 = await http<AuthResponse>('/auth/register', {
+      method: 'POST',
+      body: JSON.stringify({
+        email: randomEmail(),
+        password,
+        username: `smoke${(Date.now() + 1).toString(36)}`.slice(0, 20),
+      }),
+    });
+    const [first, second] = await Promise.all([
+      connect({ token: reg.accessToken }),
+      connect({ token: reg2.accessToken }),
+    ]);
+    const phase1 = once<{ matchId: string; players: Array<{ id: string }> }>(
+      first.socket,
+      'game:match:phase',
+    );
+    const phase2 = once<{ matchId: string; players: Array<{ id: string }> }>(
+      second.socket,
+      'game:match:phase',
+    );
+    const offer1 = once<{ matchId: string; offers: unknown[] }>(
+      first.socket,
+      'game:shop:offer',
+    );
+    const offer2 = once<{ matchId: string; offers: unknown[] }>(
+      second.socket,
+      'game:shop:offer',
+    );
+    await Promise.all([
+      emitWithAck(first.socket, 'game:matchmaking:join', {}),
+      emitWithAck(second.socket, 'game:matchmaking:join', {}),
+    ]);
+    const [p1, p2, s1, s2] = await Promise.all([phase1, phase2, offer1, offer2]);
+    const sameMatch = p1.matchId === p2.matchId && p1.matchId === s1.matchId && p1.matchId === s2.matchId;
+    const bothPlayers = [reg.userId, reg2.userId].every((id) =>
+      p1.players.some((player) => player.id === id));
+
+    const boughtStatePromise = once<{
+      roster: { board: Array<{ instanceId: string } | null>; bench: Array<{ instanceId: string } | null> };
+    }>(first.socket, 'game:match:state');
+    const bought = await emitWithAck<{ duplicate: boolean }>(first.socket, 'game:shop:buy', {
+      round: 1,
+      offerIndex: 0,
+      clientActionId: randomUUID(),
+    });
+    const boughtState = await boughtStatePromise;
+    const unit = boughtState.roster.bench.find((entry) => entry !== null);
+
+    const placedStatePromise = once<{
+      roster: { board: Array<{ instanceId: string } | null> };
+    }>(first.socket, 'game:match:state');
+    const placed = await emitWithAck<{ duplicate: boolean }>(first.socket, 'game:match:place', {
+      round: 1,
+      unitInstanceId: unit?.instanceId,
+      target: 'board',
+      slot: 0,
+      clientActionId: randomUUID(),
+    });
+    const placedState = await placedStatePromise;
+
+    const battle1 = once<{ phase: string }>(first.socket, 'game:match:phase');
+    const battle2 = once<{ phase: string }>(second.socket, 'game:match:phase');
+    await emitWithAck(first.socket, 'game:match:ready', {
+      round: 1,
+      clientActionId: randomUUID(),
+    });
+    await emitWithAck(second.socket, 'game:match:ready', {
+      round: 1,
+      clientActionId: randomUUID(),
+    });
+    const [battlePhase1, battlePhase2] = await Promise.all([battle1, battle2]);
+    first.socket.close();
+    second.socket.close();
+    const actionFlow =
+      bought?.duplicate === false &&
+      placed?.duplicate === false &&
+      Boolean(unit) &&
+      placedState.roster.board[0]?.instanceId === unit?.instanceId &&
+      battlePhase1.phase === 'battle' &&
+      battlePhase2.phase === 'battle';
+    results.push({
+      name: '8. cross-instance match start fan-out',
+      passed:
+        sameMatch &&
+        bothPlayers &&
+        s1.offers.length === 5 &&
+        s2.offers.length === 5 &&
+        actionFlow,
+      detail: `sameMatch=${sameMatch} bothPlayers=${bothPlayers} offers=${s1.offers.length}/${s2.offers.length} actionFlow=${actionFlow}`,
     });
   }
 

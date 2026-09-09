@@ -52,6 +52,8 @@ export class PubsubBridge implements OnModuleInit, OnModuleDestroy {
   private subscriber: Redis | null = null;
   /** matchId → socketId/userId pairs on THIS replica that want its events */
   private readonly localSubscribers = new Map<string, Map<string, string | null>>();
+  /** userId → live socketIds, used to attach newly-paired players to a match. */
+  private readonly localUserSockets = new Map<string, Set<string>>();
   /** socket.io server for emitting, set by `WsGateway.afterInit` */
   private server: Server | null = null;
 
@@ -94,6 +96,22 @@ export class PubsubBridge implements OnModuleInit, OnModuleDestroy {
    */
   setServer(server: Server): void {
     this.server = server;
+  }
+
+  registerUserSocket(userId: string, socketId: string): void {
+    let sockets = this.localUserSockets.get(userId);
+    if (!sockets) {
+      sockets = new Set<string>();
+      this.localUserSockets.set(userId, sockets);
+    }
+    sockets.add(socketId);
+  }
+
+  unregisterUserSocket(userId: string, socketId: string): void {
+    const sockets = this.localUserSockets.get(userId);
+    if (!sockets) return;
+    sockets.delete(socketId);
+    if (sockets.size === 0) this.localUserSockets.delete(userId);
   }
 
   // ─── Local fan-out registration ────────────────────────────────────────
@@ -205,10 +223,6 @@ export class PubsubBridge implements OnModuleInit, OnModuleDestroy {
       this.logger.warn(`ignoring unexpected channel: ${channel}`);
       return;
     }
-    const matchId = parts[1];
-    const bucket = this.localSubscribers.get(matchId);
-    if (!bucket || bucket.size === 0) return;
-
     let envelope: PubSubEnvelope;
     try {
       envelope = JSON.parse(payload) as PubSubEnvelope;
@@ -217,6 +231,21 @@ export class PubsubBridge implements OnModuleInit, OnModuleDestroy {
       return;
     }
     if (!envelope?.type) return;
+
+    const matchId = parts[1];
+    // The first phase event is what tells a connected, queued player which
+    // match they joined. Register those sockets before fan-out so neither the
+    // phase nor the immediately-following private shop offer is lost.
+    if (envelope.type === 'game:match:phase') {
+      for (const userId of playerIdsFromPhase(envelope.payload)) {
+        for (const socketId of this.localUserSockets.get(userId) ?? []) {
+          this.subscribe(matchId, socketId, userId);
+        }
+      }
+    }
+
+    const bucket = this.localSubscribers.get(matchId);
+    if (!bucket || bucket.size === 0) return;
 
     if (!this.server) {
       // Bridge got a message before the gateway injected the server (shouldn't
@@ -234,4 +263,15 @@ export class PubsubBridge implements OnModuleInit, OnModuleDestroy {
       this.server.to(sid).emit(envelope.type, envelope.payload);
     }
   }
+}
+
+function playerIdsFromPhase(payload: unknown): string[] {
+  if (typeof payload !== 'object' || payload === null) return [];
+  const players = (payload as { players?: unknown }).players;
+  if (!Array.isArray(players)) return [];
+  return players.flatMap((player) => {
+    if (typeof player !== 'object' || player === null) return [];
+    const id = (player as { id?: unknown }).id;
+    return typeof id === 'string' ? [id] : [];
+  });
 }

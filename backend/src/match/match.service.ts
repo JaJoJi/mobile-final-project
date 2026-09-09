@@ -35,6 +35,11 @@ export class MatchService {
     return match;
   }
 
+  /** Resolve the caller's live match for WS actions that omit matchId. */
+  findActiveByUserId(userId: string): Promise<Match | null> {
+    return this.matches.findActiveByUserId(userId);
+  }
+
   async updateState(
     matchId: string,
     side: 'p1' | 'p2',
