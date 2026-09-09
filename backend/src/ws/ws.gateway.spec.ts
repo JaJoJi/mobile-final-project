@@ -9,8 +9,9 @@ jest.mock('../runtime/match.runtime.adapter', () => ({
 }));
 jest.mock('../runtime/pubsub.bridge', () => ({ PubsubBridge: class PubsubBridge {} }));
 
+import { WsException } from '@nestjs/websockets';
 import { WsGateway } from './ws.gateway';
-import { toGameError } from './ws-exception.filter';
+import { toGameError, WsGameExceptionFilter } from './ws-exception.filter';
 
 function harness() {
   const pubsub = {
@@ -132,6 +133,55 @@ describe('WS error envelope', () => {
       clientActionId: 'action-1',
     });
     expect(toGameError(new Error('database password leaked'), 'internal')).toEqual({
+      code: 'internal',
+      message: 'unexpected error',
+    });
+  });
+
+  it('maps a WsValidationPipe failure (WsException) to invalid_payload', () => {
+    expect(
+      toGameError(
+        new WsException({ code: 'invalid_payload', message: 'round must be an integer' }),
+      ),
+    ).toEqual({ code: 'invalid_payload', message: 'round must be an integer' });
+  });
+});
+
+describe('WsGameExceptionFilter → game:error (P1-BE-02)', () => {
+  function hostFor(socket: unknown, data: unknown) {
+    return {
+      switchToWs: () => ({
+        getClient: () => socket,
+        getData: () => data,
+      }),
+    } as any;
+  }
+
+  it('emits game:error{code:invalid_payload} when the validation pipe rejects a payload', () => {
+    const filter = new WsGameExceptionFilter();
+    const socket = { emit: jest.fn() };
+    // What @MessageBody(WsValidationPipe) throws on a bad body:
+    const pipeError = new WsException({
+      code: 'invalid_payload',
+      message: 'round must be an integer',
+    });
+
+    filter.catch(pipeError, hostFor(socket, { round: 'three', clientActionId: 'act-9' }));
+
+    expect(socket.emit).toHaveBeenCalledWith('game:error', {
+      code: 'invalid_payload',
+      message: 'round must be an integer',
+      clientActionId: 'act-9',
+    });
+  });
+
+  it('masks an unexpected handler throw as game:error{code:internal}', () => {
+    const filter = new WsGameExceptionFilter();
+    const socket = { emit: jest.fn() };
+
+    filter.catch(new Error('redis url with password'), hostFor(socket, undefined));
+
+    expect(socket.emit).toHaveBeenCalledWith('game:error', {
       code: 'internal',
       message: 'unexpected error',
     });

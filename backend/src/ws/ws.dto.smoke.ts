@@ -17,6 +17,7 @@ import {
   MatchPlaceDto,
   MatchReadyDto,
   MatchmakingJoinDto,
+  MatchmakingLeaveDto,
   ShopBuyDto,
   ShopFuseDto,
   ShopRefreshDto,
@@ -53,12 +54,23 @@ const cases: Case[] = [
     payload: { matchId: UUID, round: 5, clientActionId: UUID } },
   { name: 'matchmaking:join empty', dto: MatchmakingJoinDto, expect: 'pass', payload: {} },
   { name: 'matchmaking:join undefined body', dto: MatchmakingJoinDto, expect: 'pass', payload: undefined },
+  { name: 'matchmaking:leave empty', dto: MatchmakingLeaveDto, expect: 'pass', payload: {} },
+  { name: 'shop:refresh valid', dto: ShopRefreshDto, expect: 'pass',
+    payload: { round: 4, clientActionId: UUID } },
+  // P1-BE-02 acceptance: a valid buy still passes the door.
+  { name: 'shop:buy valid (round 1, offerIndex 0)', dto: ShopBuyDto, expect: 'pass',
+    payload: { round: 1, offerIndex: 0, clientActionId: UUID } },
 
   // --- invalid ---
   { name: 'shop:buy round is string', dto: ShopBuyDto, expect: 'fail',
     payload: { round: 'three', offerIndex: 1, clientActionId: UUID } },
   { name: 'shop:buy offerIndex out of range', dto: ShopBuyDto, expect: 'fail',
     payload: { round: 1, offerIndex: 5, clientActionId: UUID } },
+  // P1-BE-02 acceptance: `{ round: 99, offerIndex: 100 }` — rejected on
+  // offerIndex (round has no static upper bound by design; the
+  // round-matches-server check is stateful, P0-BE-10..14).
+  { name: 'shop:buy offerIndex 100', dto: ShopBuyDto, expect: 'fail',
+    payload: { round: 99, offerIndex: 100, clientActionId: UUID } },
   { name: 'shop:buy missing clientActionId', dto: ShopBuyDto, expect: 'fail',
     payload: { round: 1, offerIndex: 0 } },
   { name: 'shop:buy clientActionId not a uuid', dto: ShopBuyDto, expect: 'fail',
