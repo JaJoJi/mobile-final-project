@@ -430,6 +430,11 @@ On boot, every NestJS instance calls `pubsubBridge.subscribe('match:*:events')`.
 
 - Maintains a local `Map<matchId, Set<socketId>>` of which sockets are interested in which matches.
 - Each WS connect/disconnect updates the map (per-instance, ephemeral).
+- Maintains a second local user/socket index. When the first
+  `game:match:phase` arrives after matchmaking, its `players` list attaches the
+  matching sockets to that match before the same event is forwarded. This
+  works even when the BullMQ pairing worker and the two sockets live on three
+  different Nest instances.
 - On `MESSAGE match:<id>:events payload`:
   - Look up sockets tracking this matchId in the local map.
   - `socket.emit('game:combat:events', JSON.parse(payload))` to each.
@@ -532,27 +537,31 @@ Each shop/place/ready/combat_done action carries a `clientActionId`. The runtime
 
 ```lua
 -- KEYS[1] = match:<id>:actionLog:<userId>
--- KEYS[2] = match:<id>:runtime                 (optional shop commit)
+-- KEYS[2] = match:<id>:runtime                 (optional runtime/shop commit)
 -- KEYS[3] = match:<id>:shop:<userId>           (optional shop commit)
 -- ARGV[1] = clientActionId
 -- Returns 1 if newly recorded, 0 if duplicate.
 if redis.call('HEXISTS', KEYS[1], ARGV[1]) == 1 then return 0 end
-if KEYS[2] and KEYS[3] then
+if KEYS[2] then
   if redis.call('HGET', KEYS[2], 'round') ~= ARGV[8] then return -2 end
   if redis.call('HGET', KEYS[2], 'phase') ~= ARGV[7] then return -1 end
 end
 redis.call('HSET', KEYS[1], ARGV[1], ARGV[2])    -- ARGV[2] = epoch ms
 redis.call('EXPIRE', KEYS[1], 120)
-if KEYS[2] and KEYS[3] then
+if KEYS[2] then
   redis.call('HSET', KEYS[2], ARGV[3], ARGV[4])  -- player state field + JSON
+end
+if KEYS[3] then
   redis.call('SET', KEYS[3], ARGV[5], 'EX', ARGV[6])
 end
 return 1
 ```
 
 For shop actions, the same script atomically records the action and commits the
-updated runtime/shop JSON. If a client retries on network failure, the second
-arrival is a no-op. Re-tries within 120 s are safe.
+updated runtime/shop JSON. Place and ready pass only the runtime key, so their
+runtime field is committed without rewriting shop state. If a client retries
+on network failure, the second arrival is a no-op. Re-tries within 120 s are
+safe.
 
 ## 16. Boot Order & Topology
 

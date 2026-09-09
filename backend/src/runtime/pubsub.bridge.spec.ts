@@ -1,6 +1,38 @@
 import { PubsubBridge } from './pubsub.bridge';
 
 describe('PubsubBridge targeted delivery', () => {
+  it('auto-subscribes queued user sockets from the first match phase event', async () => {
+    const deliveries: Array<{ socketId: string; type: string }> = [];
+    const bridge = new PubsubBridge({} as any);
+    bridge.setServer({
+      to: (socketId: string) => ({
+        emit: (type: string) => deliveries.push({ socketId, type }),
+      }),
+    } as any);
+    bridge.registerUserSocket('player-a', 'socket-a');
+
+    await (bridge as any).handleMessage(
+      'match:new-match:events',
+      JSON.stringify({
+        type: 'game:match:phase',
+        payload: { players: [{ id: 'player-a' }, { id: 'player-b' }] },
+      }),
+    );
+    await (bridge as any).handleMessage(
+      'match:new-match:events',
+      JSON.stringify({
+        type: 'game:shop:offer',
+        payload: { offers: [] },
+        targetUserId: 'player-a',
+      }),
+    );
+
+    expect(deliveries).toEqual([
+      { socketId: 'socket-a', type: 'game:match:phase' },
+      { socketId: 'socket-a', type: 'game:shop:offer' },
+    ]);
+  });
+
   it('broadcasts public events but keeps private shop offers player-scoped', async () => {
     const deliveries: Array<{ socketId: string; type: string; payload: unknown }> = [];
     const server = {

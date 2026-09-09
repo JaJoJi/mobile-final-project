@@ -1,4 +1,5 @@
 import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { randomUUID } from 'crypto';
 import type { Match } from '../match/match.entity';
 import { MatchService } from '../match/match.service';
 import { QueueService } from '../queue/queue.service';
@@ -22,6 +23,33 @@ const ROUND_GOLD = 5;
 const TIE_DAMAGE = 5;
 
 type BattleWinner = 'p1' | 'p2' | null;
+
+export type RuntimeActionType =
+  | 'shop:buy'
+  | 'shop:sell'
+  | 'shop:refresh'
+  | 'shop:fuse'
+  | 'match:place'
+  | 'match:ready'
+  | 'match:combat_done';
+
+export type RuntimeActionPayload = {
+  round: number;
+  clientActionId: string;
+  matchId?: string;
+  offerIndex?: number;
+  source?: 'board' | 'bench';
+  slot?: number;
+  unitId?: 'fighter' | 'healer' | 'ranger' | 'tank';
+  unitInstanceId?: string;
+  target?: 'board' | 'bench';
+};
+
+export interface RuntimeActionResult {
+  duplicate?: boolean;
+  readyCount?: number;
+  ackCount?: number;
+}
 
 @Injectable()
 export class MatchRuntimeAdapter {
@@ -76,6 +104,78 @@ export class MatchRuntimeAdapter {
     return runtime;
   }
 
+  /**
+   * Stable dispatch seam used by the WebSocket gateway. Most client actions
+   * intentionally omit matchId, so the server resolves it from the caller's
+   * active match instead of trusting a client-controlled identifier.
+   */
+  async handleAction(
+    userId: string,
+    action: RuntimeActionType,
+    payload: RuntimeActionPayload,
+  ): Promise<RuntimeActionResult> {
+    const matchId = action === 'match:combat_done'
+      ? payload.matchId
+      : (await this.matches.findActiveByUserId(userId))?.id;
+    if (!matchId) {
+      throw new NotFoundException({
+        code: 'match.not_found',
+        message: 'No active match was found for this player',
+      });
+    }
+
+    switch (action) {
+      case 'shop:buy':
+        return this.buy(
+          userId,
+          matchId,
+          payload.round,
+          payload.offerIndex!,
+          payload.clientActionId,
+        );
+      case 'shop:sell':
+        return this.sell(
+          userId,
+          matchId,
+          payload.round,
+          payload.source!,
+          payload.slot!,
+          payload.clientActionId,
+        );
+      case 'shop:refresh':
+        return this.refresh(userId, matchId, payload.round, payload.clientActionId);
+      case 'shop:fuse':
+        return this.fuse(
+          userId,
+          matchId,
+          payload.round,
+          payload.unitId!,
+          payload.clientActionId,
+        );
+      case 'match:place':
+        return this.place(
+          userId,
+          matchId,
+          payload.round,
+          payload.unitInstanceId!,
+          payload.target!,
+          payload.slot!,
+          payload.clientActionId,
+        );
+      case 'match:ready':
+        return this.markReadyAction(
+          userId,
+          matchId,
+          payload.round,
+          payload.clientActionId,
+        );
+      case 'match:combat_done': {
+        const ackCount = await this.handleCombatDone(userId, matchId, payload.round);
+        return { ackCount };
+      }
+    }
+  }
+
   /** Marks one participant ready and starts combat when both flags are set. */
   async markReady(userId: string, matchId: string, round: number): Promise<number> {
     const runtime = await this.requireActionPhase(matchId, round, 'shop_place');
@@ -126,6 +226,91 @@ export class MatchRuntimeAdapter {
     return this.shop.fuse(userId, matchId, round, unitId, clientActionId);
   }
 
+  /** Move a live roster instance between board/bench slots atomically. */
+  async place(
+    userId: string,
+    matchId: string,
+    round: number,
+    unitInstanceId: string,
+    target: 'board' | 'bench',
+    slot: number,
+    clientActionId: string,
+  ): Promise<RuntimeActionResult> {
+    return this.withPlayerActionLock(matchId, userId, async () => {
+      const logKey = actionLogKey(matchId, userId);
+      if (await this.redis.client.hexists(logKey, clientActionId)) {
+        return { duplicate: true };
+      }
+
+      const runtime = await this.requireActionPhase(matchId, round, 'shop_place');
+      const side = this.sideFor(runtime, userId);
+      const state = side === 'p1' ? runtime.p1State : runtime.p2State;
+      if (slot < 0 || slot >= state[target].length) {
+        throw new BadRequestException({
+          code: 'place.slot_out_of_range',
+          message: `Invalid ${target} slot`,
+        });
+      }
+
+      const source = findRosterUnit(state, unitInstanceId);
+      if (!source) {
+        throw new BadRequestException({
+          code: 'place.unit_not_owned',
+          message: 'The unit is not in this player roster',
+        });
+      }
+      const occupied = state[target][slot];
+      if (occupied && occupied.instanceId !== unitInstanceId) {
+        throw new BadRequestException({
+          code: 'place.slot_occupied',
+          message: `The ${target} slot is already occupied`,
+        });
+      }
+
+      if (source.source !== target || source.slot !== slot) {
+        state[source.source][source.slot] = null;
+        state[target][slot] = source.unit;
+      }
+      const recorded = await this.commitRuntimeAction(
+        runtime,
+        userId,
+        side === 'p1' ? 'p1State' : 'p2State',
+        JSON.stringify(state),
+        clientActionId,
+        'shop_place',
+      );
+      if (!recorded) return { duplicate: true };
+      await this.matches.updateState(matchId, side, state);
+      await this.publishState(runtime, side, state);
+      return { duplicate: false };
+    });
+  }
+
+  private async markReadyAction(
+    userId: string,
+    matchId: string,
+    round: number,
+    clientActionId: string,
+  ): Promise<RuntimeActionResult> {
+    const runtime = await this.requireActionPhase(matchId, round, 'shop_place');
+    const side = this.sideFor(runtime, userId);
+    const recorded = await this.commitRuntimeAction(
+      runtime,
+      userId,
+      side === 'p1' ? 'readyP1' : 'readyP2',
+      '1',
+      clientActionId,
+      'shop_place',
+    );
+    const updated = await this.getRuntime(matchId);
+    const readyCount = Number(updated.readyP1) + Number(updated.readyP2);
+    if (recorded) {
+      await this.publishState(updated, side, side === 'p1' ? updated.p1State : updated.p2State);
+      if (readyCount === 2) await this.tryStartCombat(matchId, round);
+    }
+    return { duplicate: !recorded, readyCount };
+  }
+
   /** CAS shop_place → battle; only the winner invokes the combat coordinator. */
   async tryStartCombat(matchId: string, round: number): Promise<boolean> {
     const runtime = await this.findRuntime(matchId);
@@ -162,8 +347,19 @@ export class MatchRuntimeAdapter {
     return Number(count);
   }
 
-  /** Stops the Redis runtime before finalizing a disconnect forfeit. */
-  async handleDisconnect(matchId: string, userId: string): Promise<boolean> {
+  /**
+   * Stops the Redis runtime before finalizing a disconnect forfeit. The
+   * one-argument form is used by WsGateway; workers keep the explicit
+   * `(matchId, userId)` form so delayed jobs cannot target a newer match.
+   */
+  async handleDisconnect(userId: string): Promise<boolean>;
+  async handleDisconnect(matchId: string, userId: string): Promise<boolean>;
+  async handleDisconnect(matchIdOrUserId: string, explicitUserId?: string): Promise<boolean> {
+    const userId = explicitUserId ?? matchIdOrUserId;
+    const matchId = explicitUserId
+      ? matchIdOrUserId
+      : (await this.matches.findActiveByUserId(userId))?.id;
+    if (!matchId) return false;
     const runtime = await this.findRuntime(matchId);
     if (!runtime) {
       return this.matches.forfeitDisconnectedPlayer(matchId, userId);
@@ -318,6 +514,96 @@ export class MatchRuntimeAdapter {
     return runtime;
   }
 
+  private async commitRuntimeAction(
+    runtime: MatchRuntimeState,
+    userId: string,
+    field: string,
+    value: string,
+    clientActionId: string,
+    expectedPhase: 'shop_place' | 'battle',
+  ): Promise<boolean> {
+    const result = Number(await this.redis.eval<number>(
+      'action_log',
+      [actionLogKey(runtime.matchId, userId), runtimeKey(runtime.matchId)],
+      [
+        clientActionId,
+        Date.now(),
+        field,
+        value,
+        '',
+        0,
+        expectedPhase,
+        runtime.round,
+      ],
+    ));
+    if (result === -2) {
+      throw new BadRequestException({
+        code: 'match.round_mismatch',
+        message: 'The match advanced before this action committed',
+      });
+    }
+    if (result === -1) {
+      throw new BadRequestException({
+        code: 'match.not_your_turn',
+        message: `The ${expectedPhase} phase ended before this action committed`,
+      });
+    }
+    return result === 1;
+  }
+
+  private async publishState(
+    runtime: MatchRuntimeState,
+    changedSide: 'p1' | 'p2',
+    changedState: RuntimePlayerState,
+  ): Promise<void> {
+    const p1 = changedSide === 'p1' ? changedState : runtime.p1State;
+    const p2 = changedSide === 'p2' ? changedState : runtime.p2State;
+    const readyCount = Number(runtime.readyP1) + Number(runtime.readyP2);
+    await Promise.all([
+      this.pubsub.publishToUser(
+        runtime.matchId,
+        runtime.player1Id,
+        'game:match:state',
+        runtimeStatePayload(runtime, 'p1', p1, p2, readyCount),
+      ),
+      this.pubsub.publishToUser(
+        runtime.matchId,
+        runtime.player2Id,
+        'game:match:state',
+        runtimeStatePayload(runtime, 'p2', p2, p1, readyCount),
+      ),
+    ]);
+  }
+
+  private async withPlayerActionLock<T>(
+    matchId: string,
+    userId: string,
+    action: () => Promise<T>,
+  ): Promise<T> {
+    const key = `match:${matchId}:shop-lock:${userId}`;
+    const owner = randomUUID();
+    for (let attempt = 0; attempt < 40; attempt += 1) {
+      const acquired = await this.redis.client.set(key, owner, 'PX', 5_000, 'NX');
+      if (acquired === 'OK') {
+        try {
+          return await action();
+        } finally {
+          await this.redis.client.eval(
+            "if redis.call('GET', KEYS[1]) == ARGV[1] then return redis.call('DEL', KEYS[1]) end return 0",
+            1,
+            key,
+            owner,
+          );
+        }
+      }
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    }
+    throw new BadRequestException({
+      code: 'match.action_busy',
+      message: 'Another roster action is still being processed',
+    });
+  }
+
   private async findRuntime(matchId: string): Promise<MatchRuntimeState | null> {
     return parseRuntimeHash(
       matchId,
@@ -329,7 +615,7 @@ export class MatchRuntimeAdapter {
     if (runtime.player1Id === userId) return 'p1';
     if (runtime.player2Id === userId) return 'p2';
     throw new BadRequestException({
-      code: 'match.not_participant',
+      code: 'match.not_your_match',
       message: 'User is not a participant in this match',
     });
   }
@@ -389,6 +675,50 @@ export class MatchRuntimeAdapter {
       ],
     };
   }
+}
+
+function actionLogKey(matchId: string, userId: string): string {
+  return `match:${matchId}:actionLog:${userId}`;
+}
+
+function findRosterUnit(state: RuntimePlayerState, instanceId: string): {
+  source: 'board' | 'bench';
+  slot: number;
+  unit: NonNullable<RuntimePlayerState['board'][number]>;
+} | null {
+  for (const source of ['board', 'bench'] as const) {
+    const slot = state[source].findIndex((unit) => unit?.instanceId === instanceId);
+    if (slot >= 0) return { source, slot, unit: state[source][slot]! };
+  }
+  return null;
+}
+
+function runtimeStatePayload(
+  runtime: MatchRuntimeState,
+  side: 'p1' | 'p2',
+  own: RuntimePlayerState,
+  opponent: RuntimePlayerState,
+  readyCount: number,
+) {
+  return {
+    matchId: runtime.matchId,
+    round: runtime.round,
+    yourSide: side,
+    roster: {
+      board: own.board,
+      bench: own.bench,
+      gold: own.gold,
+      hp: own.hp,
+    },
+    opponent: {
+      gold: opponent.gold,
+      hp: opponent.hp,
+      boardSummary: opponent.board.map((unit) => unit
+        ? { unitId: unit.unitId, star: unit.star }
+        : null),
+    },
+    readyCount,
+  };
 }
 
 function initialPlayerState(state: Record<string, unknown>): RuntimePlayerState {

@@ -2,7 +2,7 @@ import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { JwtAuthModule } from '../common/jwt-auth.module';
 import { UserModule } from '../user/user.module';
-import { WsModule } from '../ws/ws.module';
+import { PubsubModule } from '../runtime/pubsub.module';
 import { MatchController } from './match.controller';
 import { MatchRound } from './match-round.entity';
 import { Match } from './match.entity';
@@ -27,7 +27,7 @@ import { MatchService } from './match.service';
     TypeOrmModule.forFeature([Match, MatchRound]),
     JwtAuthModule,
     UserModule,
-    WsModule,
+    PubsubModule,
   ],
   controllers: [MatchController],
   providers: [MatchRepository, MatchService],

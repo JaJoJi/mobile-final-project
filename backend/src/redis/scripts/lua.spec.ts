@@ -94,6 +94,40 @@ describe('action_log.lua — idempotent action write (R7)', () => {
     expect(await redis.hget(key, 'act-A')).toBe('1000');
     expect(await redis.ttl(key)).toBeGreaterThan(0);
   });
+
+  it('atomically validates and commits a runtime-only action', async () => {
+    const runtime = 'match:m1:runtime';
+    await redis.hset(runtime, { phase: 'shop_place', round: '3', readyP1: '0' });
+    expect(await redis.eval(
+      src,
+      2,
+      key,
+      runtime,
+      'ready-action',
+      '1000',
+      'readyP1',
+      '1',
+      '',
+      '0',
+      'shop_place',
+      '3',
+    )).toBe(1);
+    expect(await redis.hget(runtime, 'readyP1')).toBe('1');
+    expect(await redis.eval(
+      src,
+      2,
+      key,
+      runtime,
+      'late-action',
+      '1001',
+      'readyP1',
+      '1',
+      '',
+      '0',
+      'battle',
+      '3',
+    )).toBe(-1);
+  });
 });
 
 describe('match_pair.lua — atomic FIFO pop (R4/R5)', () => {

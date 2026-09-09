@@ -14,7 +14,7 @@
 | `PATCH /user/me` | ✅ implemented | username only |
 | `GET /match/history` | ✅ implemented | JWT-guarded; latest 50 completed matches |
 | `GET /match/:matchId` | ✅ implemented | JWT-guarded; participants only |
-| WS gateway (`/socket.io`) | ⏳ planned | schema frozen in §2 |
+| WS gateway (`/socket.io`, namespace `/game`) | ✅ implemented | all 9 incoming events validated and routed |
 
 ## 1. REST Endpoints
 
@@ -288,6 +288,10 @@ Failure → `game:error` with an appropriate code.
 
 Every shop/match action carries a `clientActionId` (UUID generated client-side). Server stores last processed `clientActionId` per user and ignores duplicates. Re-tries after network failures are safe.
 
+`game:match:combat_done` is additionally deduplicated by player ID for the
+current battle, so retrying with a newly generated action ID still cannot count
+one player twice.
+
 ## 5. Error Codes
 
 | Code | Meaning |
@@ -296,6 +300,8 @@ Every shop/match action carries a `clientActionId` (UUID generated client-side).
 | `auth.expired` | Expired JWT |
 | `rate.limited` | Too many actions |
 | `match.not_found` | Unknown matchId |
+| `match.not_your_match` | Caller is not a participant in the requested match |
+| `match.round_mismatch` | Action round differs from the live server round |
 | `match.not_your_turn` | Wrong phase for action |
 | `shop.insufficient_gold` | Not enough gold |
 | `shop.invalid_offer_index` | offerIndex out of range |

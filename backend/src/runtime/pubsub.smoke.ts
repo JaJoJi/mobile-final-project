@@ -9,12 +9,11 @@
  *
  *   2. Cross-instance WS fan-out:
  *      - Open a WS client (lands on some replica via nginx `least_conn`).
- *      - Send `debug:subscribe-match { matchId: 'smoke-<id>' }` to register.
- *      - PUBLISH a message to `match:smoke-<id>:events` from a SEPARATE
+ *      - PUBLISH a first phase event containing that authenticated user from a SEPARATE
  *        ioredis connection (which is effectively "from another replica"
  *        — pub/sub is the shared bus).
  *      - The socket receives the event. That proves:
- *          bridge.subscribe → localSubscribers → pmessage → io.to(socketId).emit.
+ *          user socket discovery → localSubscribers → pmessage → socket emit.
  *
  *   3. 60 s late-subscriber cache (race R14):
  *      - writeCombatResult → getCombatResult returns the cached events.
@@ -127,9 +126,10 @@ async function run(): Promise<void> {
   }
 
   // ─── Test 2: Cross-instance WS fan-out ─────────────────────────────────
-  // We open a socket on this replica, register it for the smoke matchId,
-  // then PUBLISH on a separate connection (effectively "from another
-  // replica"). The socket must receive the event.
+  // We open a queued player's socket, then publish the first phase event on
+  // a separate connection (effectively "from another replica"). The bridge
+  // discovers that player in the phase payload, subscribes the socket to the
+  // new match, and delivers the same event without a debug-only WS command.
   let socket: Socket | null = null;
   try {
     socket = io(`${HTTP_BASE}/game`, {
@@ -140,22 +140,13 @@ async function run(): Promise<void> {
     });
     await once<unknown>(socket, 'connect', TIMEOUT_MS);
 
-    const subAck = await new Promise<{ ok: boolean; reason?: string }>((resolve, reject) => {
-      const t = setTimeout(() => reject(new Error('debug:subscribe-match ack timeout')), TIMEOUT_MS);
-      socket!.emit(
-        'debug:subscribe-match',
-        { matchId: MATCH_ID },
-        (ack: { ok: boolean; reason?: string }) => {
-          clearTimeout(t);
-          resolve(ack);
-        },
-      );
-    });
-
-    if (!subAck.ok) throw new Error(`subscribe ack not ok: ${subAck.reason}`);
-
     const expectedEvent = 'game:match:phase';
-    const expectedPayload = { phase: 'battle', round: 42, smoke: true };
+    const expectedPayload = {
+      phase: 'battle',
+      round: 42,
+      smoke: true,
+      players: [{ id: reg.userId }],
+    };
     const received = once<unknown>(socket, expectedEvent, TIMEOUT_MS);
 
     // Publish from a separate Redis connection (mimics another replica).
@@ -164,7 +155,12 @@ async function run(): Promise<void> {
       JSON.stringify({ type: expectedEvent, payload: expectedPayload }),
     );
 
-    const got = (await received) as { phase: string; round: number; smoke: boolean };
+    const got = (await received) as {
+      phase: string;
+      round: number;
+      smoke: boolean;
+      players: Array<{ id: string }>;
+    };
     const match =
       got?.phase === expectedPayload.phase &&
       got?.round === expectedPayload.round &&
