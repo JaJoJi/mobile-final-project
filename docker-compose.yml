@@ -178,7 +178,80 @@ services:
       - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
     restart: unless-stopped
 
+  # ─────────────────────────────────────────────────────────────────────
+  # Observability stack — P3-DO-03 (#138)
+  #
+  # SCAFFOLDING ONLY. The compose services + their config are wired here
+  # so the stack comes up with `docker compose up`, but the backend does
+  # NOT expose `/metrics` yet (no @willsoto/nestjs-prometheus, no pino ->
+  # Promtail). Until the backend part of #138 lands:
+  #   - Prometheus runs, but the `nestjs` scrape targets show as DOWN.
+  #   - Promtail ships raw container stdout to Loki (works today).
+  #   - Grafana has both datasources provisioned; the dashboard is a stub.
+  # Do not close #138 on the strength of this — see the issue's "Done
+  # when" checklist.
+  # ─────────────────────────────────────────────────────────────────────
+
+  prometheus:
+    image: prom/prometheus:v2.55.1
+    container_name: ac-prometheus
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.retention.time=15d"
+    volumes:
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./prometheus/rules:/etc/prometheus/rules:ro
+      - prometheus_data:/prometheus
+    ports:
+      - "9090:9090"
+    restart: unless-stopped
+
+  loki:
+    image: grafana/loki:3.2.1
+    container_name: ac-loki
+    command: ["-config.file=/etc/loki/loki-config.yml"]
+    volumes:
+      - ./loki/loki-config.yml:/etc/loki/loki-config.yml:ro
+      - loki_data:/loki
+    ports:
+      - "3100:3100"
+    restart: unless-stopped
+
+  promtail:
+    image: grafana/promtail:3.2.1
+    container_name: ac-promtail
+    command: ["-config.file=/etc/promtail/promtail.yml"]
+    volumes:
+      - ./promtail/promtail.yml:/etc/promtail/promtail.yml:ro
+      # Read the Docker engine's container logs + metadata (read-only).
+      - /var/lib/docker/containers:/var/lib/docker/containers:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    depends_on:
+      - loki
+    restart: unless-stopped
+
+  grafana:
+    image: grafana/grafana:11.3.0
+    container_name: ac-grafana
+    environment:
+      GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER:-admin}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-admin}
+      GF_USERS_ALLOW_SIGN_UP: "false"
+    volumes:
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - grafana_data:/var/lib/grafana
+    ports:
+      - "3001:3000"
+    depends_on:
+      - prometheus
+      - loki
+    restart: unless-stopped
+
 volumes:
   pg_primary_data:
   pg_replica_data:
   pgadmin_data:
+  prometheus_data:
+  loki_data:
+  grafana_data:

@@ -1,0 +1,27 @@
+# Prometheus config — P3-DO-03 (#138), scaffolding.
+#
+# The `nestjs` job targets nest-1/2/3 on the compose network. Those
+# targets stay DOWN until the backend exposes `/metrics`
+# (@willsoto/nestjs-prometheus) — that half of #138 is not done yet.
+
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+rule_files:
+  - /etc/prometheus/rules/*.yml
+
+scrape_configs:
+  - job_name: prometheus
+    static_configs:
+      - targets: ["localhost:9090"]
+
+  - job_name: nestjs
+    metrics_path: /metrics
+    static_configs:
+      - targets:
+          - nest-1:3000
+          - nest-2:3000
+          - nest-3:3000
+        labels:
+          app: auto-chess-backend

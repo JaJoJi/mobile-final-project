@@ -1,0 +1,38 @@
+# Alert rules — P3-DO-03 (#138).
+#
+# NFR-14: combat resolution p95 must stay under 500 ms. This rule fires
+# once the backend emits `combat_duration_seconds` (histogram). Until
+# then it simply never fires (no series to evaluate).
+
+groups:
+  - name: auto-chess-latency
+    rules:
+      - alert: CombatP95TooHigh
+        expr: >
+          histogram_quantile(
+            0.95,
+            sum by (le) (rate(combat_duration_seconds_bucket[5m]))
+          ) > 0.5
+        for: 10m
+        labels:
+          severity: warning
+          nfr: "14"
+        annotations:
+          summary: "Combat p95 latency over 500 ms"
+          description: >
+            Combat resolution p95 has been above the NFR-14 budget
+            (500 ms) for 10 minutes. Current value:
+            {{ $value | humanizeDuration }}.
+
+      - alert: MatchDurationP99Degraded
+        expr: >
+          histogram_quantile(
+            0.99,
+            sum by (le) (rate(match_duration_seconds_bucket[10m]))
+          ) > 1800
+        for: 15m
+        labels:
+          severity: info
+        annotations:
+          summary: "Match p99 duration unusually high"
+          description: "Match p99 over 30 min for 15 min — investigate stalls."

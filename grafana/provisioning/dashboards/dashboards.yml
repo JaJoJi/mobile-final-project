@@ -1,0 +1,16 @@
+# Grafana dashboard provisioning — P3-DO-03 (#138).
+# Loads every *.json under /var/lib/grafana/dashboards (bind-mounted from
+# ./grafana/dashboards).
+apiVersion: 1
+
+providers:
+  - name: auto-chess
+    orgId: 1
+    folder: Auto Chess
+    type: file
+    disableDeletion: false
+    updateIntervalSeconds: 30
+    allowUiUpdates: true
+    options:
+      path: /var/lib/grafana/dashboards
+      foldersFromFilesStructure: false
