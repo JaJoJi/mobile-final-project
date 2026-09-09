@@ -1,9 +1,14 @@
 name: backend-ci
 
-# Deliberately minimal while the codebase is moving fast: typecheck +
-# build + unit tests, nothing else. No DB/Redis services, no coverage
-# gate in CI, no artifacts. `npm run test:cov` still runs the >=90%
-# src/game gate locally.
+# Two jobs:
+#   backend             — fast gate on every PR: typecheck + build + unit tests.
+#                         No DB/Redis, no coverage gate. Unchanged from before.
+#   backend-integration — the slow gate (P3-DO-08): real Postgres + Redis
+#                         service containers, migrations, the *.smoke.ts
+#                         integration suite (matchmaking, round-orchestrator,
+#                         shop, ws) and the `test:cov` coverage gate that used
+#                         to run only locally. Coverage is uploaded as an
+#                         artifact.
 
 on:
   pull_request:
@@ -41,3 +46,108 @@ jobs:
         run: npm run build
       - name: Test
         run: npm test
+
+  backend-integration:
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: auto_chess
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d auto_chess"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      # Service containers are reachable on localhost from the job runner.
+      DATABASE_URL: postgres://postgres:postgres@localhost:5432/auto_chess
+      REDIS_URL: redis://localhost:6379
+      JWT_SECRET: ci_jwt_secret_not_a_real_secret_0123456789abcdef
+      JWT_ACCESS_TTL: 7d
+      JWT_REFRESH_TTL: 30d
+      NEST_PORT: '3000'
+      NODE_ENV: test
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: backend/package-lock.json
+      - run: npm ci
+
+      - name: Build
+        run: npm run build
+
+      - name: Run migrations
+        run: npm run migration:run
+
+      # ── Integration smoke suite ───────────────────────────────────────
+      # matchmaking is fake-backed (no infra) but cheap; the rest need the
+      # real Postgres + Redis wired above. Each script exits non-zero on a
+      # failed assertion, which fails the step.
+      - name: Smoke — matchmaking
+        run: npm run smoke:matchmaking
+
+      - name: Smoke — round-orchestrator (integration)
+        run: npm run smoke:round-orchestrator:integration
+
+      - name: Smoke — shop (integration)
+        run: npm run smoke:shop:integration
+
+      # ws.smoke.ts drives a *running* Nest instance over socket.io, so
+      # boot one in the background and wait for /health/ready before the
+      # smoke connects. RUN_MIGRATIONS is unset — migrations already ran.
+      - name: Start Nest (background, for ws smoke)
+        run: |
+          node dist/main.js > nest.log 2>&1 &
+          echo $! > nest.pid
+          for i in $(seq 1 30); do
+            if curl -sf http://localhost:3000/health/ready > /dev/null; then
+              echo "Nest ready after ${i}s"; exit 0
+            fi
+            sleep 1
+          done
+          echo "Nest did not become ready in 30s"; cat nest.log; exit 1
+
+      - name: Smoke — ws
+        run: npm run smoke:ws
+        env:
+          HTTP_BASE: http://localhost:3000
+
+      - name: Stop Nest
+        if: always()
+        run: |
+          if [ -f nest.pid ]; then kill "$(cat nest.pid)" || true; fi
+          echo "--- nest.log ---"; cat nest.log || true
+
+      # ── Coverage gate ────────────────────────────────────────────────
+      # Same jest config as local: the src/game >=90% line-coverage
+      # threshold (NFR-9) fails this step in CI just like it does locally.
+      - name: Coverage (test:cov)
+        run: npm run test:cov
+
+      - name: Upload coverage report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: backend-coverage
+          path: backend/coverage/
+          if-no-files-found: warn
