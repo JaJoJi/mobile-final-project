@@ -9,6 +9,7 @@
     "smoke:matchmaking": "node dist/matchmaking/matchmaking.smoke.js",
     "smoke:match-lifecycle": "node dist/match/match-lifecycle.smoke.js",
     "smoke:match-lifecycle:integration": "node dist/match/match-lifecycle.integration.smoke.js",
+    "smoke:matchmaking-2client": "node dist/matchmaking/matchmaking.2client.smoke.js",
     "smoke:round-orchestrator": "node dist/runtime/round-orchestrator.smoke.js",
     "smoke:round-orchestrator:integration": "node dist/runtime/round-orchestrator.integration.smoke.js",
     "smoke:shop:integration": "node dist/shop/shop.integration.smoke.js",
