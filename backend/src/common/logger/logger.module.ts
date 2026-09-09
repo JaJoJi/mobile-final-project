@@ -23,6 +23,10 @@ import { LoggerModule as PinoLoggerModule } from 'nestjs-pino';
  */
 
 const isProd = process.env.NODE_ENV === 'production';
+// pino-pretty is a devDependency and a worker thread — only opt in when
+// explicitly developing locally, so `test` / prod / an unset NODE_ENV all
+// emit raw JSON and never need the module resolvable.
+const usePretty = process.env.NODE_ENV === 'development';
 
 @Module({
   imports: [
@@ -72,13 +76,14 @@ const isProd = process.env.NODE_ENV === 'production';
           censor: '[redacted]',
         },
 
-        // Human-readable in dev; raw JSON in prod (Promtail -> Loki, #138).
-        transport: isProd
-          ? undefined
-          : {
+        // Human-readable only when NODE_ENV=development; raw JSON
+        // everywhere else (Promtail -> Loki, #138).
+        transport: usePretty
+          ? {
               target: 'pino-pretty',
               options: { singleLine: true, translateTime: 'SYS:standard' },
-            },
+            }
+          : undefined,
       },
       // Health checks are noise — one per few seconds per instance.
       exclude: [
