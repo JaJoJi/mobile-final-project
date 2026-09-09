@@ -1,0 +1,86 @@
+name: load-test
+
+# k6 load test — P3-DO-05 (#140).
+#
+# NOT part of PR CI: a 50-VU / 5-minute run is too slow and too noisy for
+# every push. Runs weekly + on manual dispatch. Uploads the k6 summary +
+# HTML report as artifacts.
+#
+# GitHub-hosted runners are noisy neighbours — the numbers here are a
+# regression signal, not a true capacity baseline. For a real baseline,
+# run k6/load.js against the staging VM from #193.
+
+on:
+  workflow_dispatch:
+    inputs:
+      vus:
+        description: 'Concurrent virtual users'
+        default: '50'
+      duration:
+        description: 'Test duration (k6 syntax, e.g. 5m)'
+        default: '5m'
+  schedule:
+    - cron: '0 4 * * 1' # Mondays 04:00 UTC
+
+concurrency:
+  group: load-test
+  cancel-in-progress: false
+
+jobs:
+  k6:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Bring up the stack
+        run: |
+          cp .env.example .env
+          docker compose up -d --build
+
+      - name: Wait for /health/ready
+        run: |
+          for i in $(seq 1 60); do
+            if curl -sf http://localhost/health/ready > /dev/null; then
+              echo "stack ready after ${i}s"; exit 0
+            fi
+            sleep 2
+          done
+          echo "stack did not become ready"; docker compose ps; docker compose logs --tail=100; exit 1
+
+      - name: Run k6
+        run: |
+          mkdir -p k6-out
+          docker run --rm -i --network host \
+            -e BASE_URL=http://localhost \
+            -e WS_URL=ws://localhost \
+            -e VUS="${{ github.event.inputs.vus || '50' }}" \
+            -e DURATION="${{ github.event.inputs.duration || '5m' }}" \
+            -v "$PWD/k6-out:/out" \
+            grafana/k6 run \
+              --summary-export=/out/k6-summary.json \
+              --out "web-dashboard=export=/out/k6-report.html" \
+              - < k6/load.js
+
+      - name: Upload k6 artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: k6-load-test
+          path: k6-out/
+          if-no-files-found: warn
+
+      - name: Server logs (on failure)
+        if: failure()
+        run: docker compose logs --tail=300
+
+      - name: Clean up load-test users
+        if: always()
+        run: |
+          docker compose exec -T postgres-primary \
+            psql -U "${POSTGRES_USER:-postgres}" -d "${POSTGRES_DB:-auto_chess}" \
+            -c "DELETE FROM users WHERE email LIKE 'k6\_%@load.local';" || true
+
+      - name: Tear down
+        if: always()
+        run: docker compose down -v
