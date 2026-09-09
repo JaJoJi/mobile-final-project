@@ -4,6 +4,7 @@ import { MatchModule } from '../match/match.module';
 import { MatchmakingModule } from '../matchmaking/matchmaking.module';
 import { RuntimeModule } from '../runtime/match.runtime.module';
 import { PubsubModule } from '../runtime/pubsub.module';
+import { WsThrottleGuard } from '../common/throttle/ws-throttle.guard';
 import { WsAuthGuard } from './guards/ws-auth.guard';
 import { WsGameExceptionFilter } from './ws-exception.filter';
 import { WsGateway } from './ws.gateway';
@@ -31,7 +32,7 @@ import { WsValidationPipe } from './ws.pipes';
  */
 @Module({
   imports: [JwtAuthModule, PubsubModule, MatchModule, RuntimeModule, MatchmakingModule],
-  providers: [WsAuthGuard, WsValidationPipe, WsGameExceptionFilter, WsGateway],
+  providers: [WsAuthGuard, WsThrottleGuard, WsValidationPipe, WsGameExceptionFilter, WsGateway],
   exports: [WsGateway, WsValidationPipe],
 })
 export class WsModule {}

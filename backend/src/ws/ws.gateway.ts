@@ -1,4 +1,4 @@
-import { Logger, UseFilters } from '@nestjs/common';
+import { Logger, UseFilters, UseGuards } from '@nestjs/common';
 import {
   ConnectedSocket,
   MessageBody,
@@ -29,6 +29,7 @@ import {
 } from './ws.dto';
 import { toGameError, WsGameExceptionFilter } from './ws-exception.filter';
 import { WsValidationPipe } from './ws.pipes';
+import { WsThrottleGuard } from '../common/throttle/ws-throttle.guard';
 
 interface SocketUser {
   sub: string;
@@ -68,6 +69,10 @@ interface SocketUser {
   transports: ['websocket', 'polling'],
 })
 @UseFilters(WsGameExceptionFilter)
+// Per-user > WS_MSG_PER_SEC (default 30) msg/s -> game:error{code:'rate.limited'}
+// on the message handlers (P1-BE-01 / #113). Not on handleConnection —
+// socket.io doesn't run @UseGuards for the lifecycle hooks.
+@UseGuards(WsThrottleGuard)
 export class WsGateway implements OnGatewayConnection, OnGatewayDisconnect, OnGatewayInit {
   private readonly logger = new Logger(WsGateway.name);
 
