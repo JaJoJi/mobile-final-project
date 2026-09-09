@@ -250,6 +250,9 @@ Press `r` in the Flutter terminal to hot-reload UI changes. Press `q` to quit.
 
 ## 7. Troubleshooting
 
+> For deploy, rollback, backup/restore, secret rotation, and incident
+> response, see [`docs/08-runbook.md`](./docs/08-runbook.md).
+
 ### `docker compose ps` shows containers restarting or unhealthy
 
 ```powershell
