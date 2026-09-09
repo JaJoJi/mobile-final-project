@@ -1,0 +1,83 @@
+name: mobile-release
+
+# Android APK release artifact — P3-DO-10 (#194).
+#
+# On a vX.Y.Z tag: build a release APK and attach it to the GitHub
+# Release for that tag, so there is an installable artifact instead of
+# the mobile pipeline stopping at `flutter test`.
+#
+# Scope / not-done notes:
+#   - DEBUG-SIGNED. No Play Store keystore (fine for a course project;
+#     install via "unknown sources"). Real signing = a later change.
+#   - --dart-define API_BASE_URL / WS_BASE_URL come from repo VARIABLES
+#     (Settings -> Secrets and variables -> Actions -> Variables). If
+#     unset they fall back to http://localhost, i.e. the APK can't reach
+#     a backend. Set them to the #193 staging URL once that VM is live.
+#   - `mobile/android/` was scaffolded with `flutter create --platforms=android`.
+
+on:
+  push:
+    tags: ['v*.*.*']
+
+concurrency:
+  group: mobile-release-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: write # create/update the GitHub Release + upload the asset
+
+defaults:
+  run:
+    working-directory: mobile
+
+jobs:
+  apk:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Derive version from tag
+        run: |
+          v="${GITHUB_REF_NAME#v}"           # v1.2.3 -> 1.2.3
+          build="${GITHUB_RUN_NUMBER}"
+          echo "Setting pubspec version to ${v}+${build}"
+          sed -i -E "s/^version:.*/version: ${v}+${build}/" pubspec.yaml
+          grep '^version:' pubspec.yaml
+
+      - run: flutter pub get
+
+      - name: Build release APK
+        run: |
+          flutter build apk --release \
+            --dart-define=API_BASE_URL="${{ vars.API_BASE_URL || 'http://localhost' }}" \
+            --dart-define=WS_BASE_URL="${{ vars.WS_BASE_URL || 'ws://localhost' }}"
+
+      - name: Rename artifact
+        run: |
+          mkdir -p dist
+          cp build/app/outputs/flutter-apk/app-release.apk \
+             "dist/auto_chess_mobile-${GITHUB_REF_NAME}.apk"
+
+      - name: Upload to GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: mobile/dist/auto_chess_mobile-${{ github.ref_name }}.apk
+          fail_on_unmatched_files: true
+
+      - name: Upload workflow artifact (fallback)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-apk
+          path: mobile/dist/*.apk
+          if-no-files-found: warn
