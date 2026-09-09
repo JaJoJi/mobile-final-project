@@ -1,0 +1,29 @@
+# gitleaks config — P3-DO-07
+# Start from the maintained default ruleset, then allowlist the handful of
+# dev-only placeholder values checked into this repo on purpose.
+
+title = "auto-chess gitleaks config"
+
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Dev-only placeholders and example files — not real secrets."
+paths = [
+  # Committed example env: every value is a documented dev default and is
+  # replaced from a secret manager in production (see P3-DO-04 / #139).
+  '''\.env\.example$''',
+  # Lockfiles: integrity hashes trip entropy rules, never hold secrets.
+  '''package-lock\.json$''',
+  '''pubspec\.lock$''',
+]
+regexes = [
+  # The dev JWT secret placeholder shipped in .env.example and compose.
+  '''dev_jwt_secret_change_me_32_random_bytes_xxxxxxxxxxx''',
+  # Local Postgres / pgAdmin dev credentials (postgres/postgres, admin).
+  '''POSTGRES_PASSWORD=postgres''',
+  '''PGADMIN_PASSWORD=admin''',
+  '''replicator_secret''',
+  # The CI-only JWT secret literal in backend-ci.yml — not a real secret.
+  '''ci_jwt_secret_not_a_real_secret_0123456789abcdef''',
+]

@@ -1,0 +1,54 @@
+name: codeql
+
+# Static analysis (SAST) for the backend TypeScript (P3-DO-07).
+#
+# Dart is not a CodeQL-supported language, so the mobile app is not
+# analysed here — it relies on `flutter analyze` + `dart format` in
+# mobile-ci.yml. Only `backend/**` changes trigger this workflow.
+
+on:
+  pull_request:
+    paths:
+      - 'backend/**'
+      - '.github/workflows/codeql.yml'
+  push:
+    branches: [dev, main]
+    paths:
+      - 'backend/**'
+      - '.github/workflows/codeql.yml'
+  schedule:
+    # Weekly full scan so newly-published CodeQL queries catch existing code.
+    - cron: '17 3 * * 1'
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  analyze:
+    name: Analyze (javascript-typescript)
+    runs-on: ubuntu-latest
+    permissions:
+      actions: read
+      contents: read
+      security-events: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v3
+        with:
+          languages: javascript-typescript
+          # `security-and-quality` is broader than the default `security`
+          # pack; drop to `security-extended` if quality noise is high.
+          queries: security-and-quality
+          source-root: backend
+
+      # The JS/TS analysis does not need a build; CodeQL reads the source
+      # directly. No autobuild step required.
+
+      - name: Perform CodeQL analysis
+        uses: github/codeql-action/analyze@v3
+        with:
+          category: /language:javascript-typescript

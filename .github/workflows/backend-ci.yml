@@ -35,6 +35,11 @@ jobs:
           cache: npm
           cache-dependency-path: backend/package-lock.json
       - run: npm ci
+      - name: Audit (npm audit --audit-level=high)
+        # P3-DO-07: fail the build on a known HIGH/CRITICAL advisory in the
+        # backend dependency tree. Dependabot (#141) opens PRs to fix these;
+        # this makes an unpatched one block merge instead of sitting open.
+        run: npm audit --audit-level=high
       - name: Lint (typecheck)
         run: npm run lint
       - name: Build

@@ -1,18 +1,21 @@
 name: release
 
-# Builds + pushes the backend image to GHCR:
+# Builds, scans, then pushes the backend image to GHCR:
 #   - every push to `main`             -> :latest + :main-<short-sha>
 #   - every `vX.Y.Z` tag (release-please, see release-please.yml)
 #                                       -> :vX.Y.Z + :X.Y
 #
 # amd64 only for now (MVP — see design notes on #137). No deploy step:
 # there is no server to deploy to yet (tracked in #193); this workflow
-# stops at "image is in GHCR", same as the issue's own design note says
-# for MVP ("just build + push, manual deploy").
+# stops at "image is in GHCR".
+#
+# P3-DO-07 (#191): a Trivy image scan runs *between* build and push. Any
+# HIGH/CRITICAL vulnerability with a fix available fails the job, so a
+# vulnerable image never reaches GHCR. Accepted findings are listed in
+# `.trivyignore` with a one-line reason each.
 #
 # Uses the workflow-scoped GITHUB_TOKEN (packages: write below) — no
-# personal access token needed, unlike the setup steps originally
-# sketched in #137 (that PAT step doesn't apply to this login method).
+# personal access token needed.
 
 on:
   push:
@@ -27,7 +30,7 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  build-and-push:
+  build-scan-push:
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -53,7 +56,44 @@ jobs:
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
 
-      - uses: docker/build-push-action@v5
+      # 1. Build only — load into the local docker daemon, do NOT push yet.
+      - name: Build image (no push)
+        uses: docker/build-push-action@v5
+        with:
+          context: ./backend
+          file: ./backend/Dockerfile
+          platforms: linux/amd64
+          push: false
+          load: true
+          # Real registry tags + one fixed local tag Trivy can always
+          # reference (the registry tag set varies: `latest` on main,
+          # `vX.Y.Z` on a release tag).
+          tags: |
+            ${{ steps.meta.outputs.tags }}
+            localbuild/auto_chess-backend:scan
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      # 2. Scan the freshly-built image. Fail on fixable HIGH/CRITICAL.
+      - name: Trivy image scan (gate)
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          image-ref: localbuild/auto_chess-backend:scan
+          format: table
+          exit-code: '1'
+          severity: HIGH,CRITICAL
+          ignore-unfixed: true
+          trivyignores: .trivyignore
+        env:
+          # Pull the DB from GHCR's mirror to dodge the anonymous
+          # ghcr.io/aquasecurity rate limit on public runners.
+          TRIVY_DB_REPOSITORY: public.ecr.aws/aquasecurity/trivy-db
+
+      # 3. Only now push. Re-invokes build-push-action; the layers are
+      #    already in the gha cache so this is effectively just an upload.
+      - name: Push image
+        uses: docker/build-push-action@v5
         with:
           context: ./backend
           file: ./backend/Dockerfile
@@ -62,8 +102,3 @@ jobs:
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
-          cache-to: type=gha,mode=max
-
-      # TODO (#191): Trivy scan on the built image before it's trusted,
-      # once that issue lands — block on HIGH/CRITICAL rather than
-      # scanning post-hoc.

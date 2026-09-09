@@ -1,0 +1,37 @@
+name: gitleaks
+
+# Secret scanning (P3-DO-07).
+#
+# On a PR: scans only the commits the PR adds (fast, no false noise from
+# history). On push to dev/main: same. A full-history baseline scan was
+# run once when this workflow was added — see
+# docs/security/gitleaks-baseline.md.
+#
+# Accepted findings / false positives live in .gitleaks.toml under
+# [allowlist] with a one-line reason each.
+
+on:
+  pull_request:
+  push:
+    branches: [dev, main]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # gitleaks-action needs full history to diff a PR range.
+          fetch-depth: 0
+
+      - name: Gitleaks
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Config is the repo's .gitleaks.toml (picked up automatically).
+          GITLEAKS_ENABLE_UPLOAD_ARTIFACT: 'true'
+          GITLEAKS_ENABLE_SUMMARY: 'true'

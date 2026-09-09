@@ -1,0 +1,14 @@
+# Trivy ignore file — P3-DO-07 (#191)
+#
+# Each entry MUST have a one-line reason and, ideally, a review date.
+# Format: one CVE id per line. Only add a CVE here after confirming it is
+# not exploitable in this image (not reachable, no fix available, or
+# accepted risk signed off in the PR that adds it).
+#
+# Empty for now: the release workflow uses `ignore-unfixed: true`, so
+# vulnerabilities with no upstream fix do not block the build and do not
+# need listing here. Add fixable HIGH/CRITICAL CVEs here only with a
+# documented reason.
+#
+# Example:
+# CVE-2024-00000  # base-image glibc; not reachable from the Node runtime, upstream fix pending — review 2026-12

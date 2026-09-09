@@ -129,13 +129,16 @@ pipeline {
       }
     }
 
-    // ── Security (P3-DO-07, parked pending tool choice) ───────────────
+    // ── Security · dependency audit + secret scan (P3-DO-07) ──────────
+    // Source-level checks; no image needed, so they run before the build.
+    // The GitHub side is the real gate (codeql.yml, gitleaks.yml,
+    // backend-ci.yml `npm audit`); this mirrors it for the parked Jenkins
+    // pipeline (#190) so the two don't drift.
 
-    stage('Security scan') {
-      when { expression { return false } } // TODO: flip on once Trivy/CodeQL are wired
+    stage('Security · audit + secrets') {
       steps {
         dir('backend') { sh 'npm audit --audit-level=high' }
-        sh "trivy image --exit-code 1 --severity HIGH,CRITICAL ${IMAGE_NAME}:${IMAGE_TAG}"
+        sh 'gitleaks detect --source . --config .gitleaks.toml --redact --exit-code 1'
       }
     }
 
@@ -146,6 +149,14 @@ pipeline {
         dir('backend') {
           sh "docker build -t ${IMAGE_NAME}:${IMAGE_TAG} ."
         }
+      }
+    }
+
+    // Image scan — after the build, before publish. Fixable HIGH/CRITICAL
+    // fails the pipeline so a vulnerable image is never pushed.
+    stage('Security · image scan') {
+      steps {
+        sh "trivy image --exit-code 1 --severity HIGH,CRITICAL --ignore-unfixed --ignorefile .trivyignore ${IMAGE_NAME}:${IMAGE_TAG}"
       }
     }
 
