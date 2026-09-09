@@ -259,6 +259,183 @@ If a task is ambiguous and involves combat, **always re-read `docs/05-combat-spe
 - Don't skip validation. Every public endpoint validates input.
 - Don't add a "magic" behavior that isn't in the spec. Add it to the spec first.
 
+## 11. Per-issue Workflow
+
+The 3-person team works one issue per agent in lockstep. The agent drives
+a tight loop: pick issue → plan → wait for `go` → implement → verify →
+commit → PR → next. **Never skip steps; the "check for teammate" step
+in particular catches a lot of duplicate work.**
+
+### 11.1 Pre-flight — check teammate work FIRST
+
+This is the #1 source of duplicate work. FiatThanapon shipped P0-BE-08,
+P0-BE-09, and P0-FE-01 while the author was working on other tickets.
+**Always** run these before starting:
+
+```bash
+# 1. Is the issue already done by a teammate?
+git branch -a | grep -iE "P0-(BE|FE)-<NN>\b"
+gh pr list --search "P0-BE-<NN> OR <NN>" --state all --json number,title,state,headRefName
+
+# 2. Is the issue closed in GitHub but not on the project board?
+gh issue view <NN> --json state,closedAt
+
+# 3. Project board status (GraphQL — the project is ProjectsV2 on org JaJoJi)
+gh api graphql -f query='{ node(id:"PVTI_lA..."){...} }' | grep name
+```
+
+If a teammate branch + PR exist with status MERGED, the work is done.
+**Don't redo it.** Reset your local branch to `origin/<id>`, run any
+smoke tests they wrote, and report back to the user. Move on to the
+next open issue.
+
+### 11.2 Plan mode
+
+Plan mode is **read-only** (no edits, no shell execution). The user must
+toggle it off before you can execute. The flow:
+
+1. Read the issue (`gh issue view <NN>`).
+2. Inspect the existing codebase to understand the current state
+   (always grep, read, check imports — never assume).
+3. Ask clarifying questions when there's a real ambiguity. Use the
+   `question` tool with concrete options. Mark the recommended option
+   with `(Recommended)` as the first entry.
+4. Present a final execution plan: files to add/modify, verify steps,
+   commit format, PR target.
+5. **Stop and wait.** Do not execute. The user toggles off plan mode and
+   says "go" to authorise.
+
+### 11.3 Branch conventions
+
+- **First issue of a session**: branch from `origin/dev` (or the most
+  recent `origin/P0-(BE|FE)-NN` if the prior ticket is still open).
+- **Chained subsequent issues**: each new ticket branches from the
+  previous ticket's tip, not from `dev`. This keeps the linear history
+  clean and means each PR can be diffed against its predecessor.
+  Example: P0-FE-03 was branched off `origin/P0-BE-09` (the prior
+  author's tip on dev), not off `origin/dev` directly.
+- **Naming**: exactly `<issue-id>` (e.g. `P0-BE-07`). No suffix.
+- **PR target**: always `dev`. Never merge to `main` from agent PRs —
+  `main` is reserved for release tags.
+
+### 11.4 Implementation discipline
+
+| Layer | Smoke / test convention |
+|---|---|
+| **Backend (NestJS)** | Every PR ships a smoke (or unit spec) that exercises the change. Smokes live next to the code as `*.smoke.ts` and are run via `npm run smoke:<name>`. Verify by running inside the Docker network: `docker compose exec -T nest-1 node dist/<path>/<file>.smoke.js` |
+| **Frontend (Flutter)** | Widget tests under `mobile/test/` using `flutter_test` + the `FakeWsTransport` from `mobile/test/core/ws/fake_ws_transport.dart`. The author can't run `flutter test` from WSL bash (CRLF scripts in `flutter/bin/` break); the user runs `flutter pub get && flutter analyze && flutter test` on their Windows host. CI (P3-DO-01) re-runs on the PR. |
+
+### 11.5 Commit + PR conventions
+
+**Commit message format** (see git log for canonical examples):
+
+```
+feat(be): P0-BE-NN Short imperative title
+
+- Bullet 1 (what + why, not just what)
+- Bullet 2 (file grouping when helpful)
+- Bullet 3 (verification notes)
+
+Refs #NNN
+```
+
+For frontend: `feat(fe):` prefix. For docs: `docs:`. The middle line is
+the imperative present ("Add", "Fix", "Replace") and ≤ 50 chars.
+
+**PR title format**: `<issue-id> — <Short description>`.
+
+**PR body** (every PR — keep it meaty):
+1. **Summary** — 1–3 sentences describing the change and why.
+2. **Changes** — `### New` then `### Modified` lists of files.
+3. **Out of scope (follow-ups)** — what was deliberately NOT done so
+   reviewers don't ask. Link each item to its ticket.
+4. **Acceptance checklist** — paste the issue's "Done when" with every
+   box ticked off + brief evidence.
+5. **Verification (live, this session)** — copy-paste of the actual
+   `docker compose` boot log, smoke output, regression table. Don't
+   summarise — show real output so the reviewer can spot anomalies.
+6. **Notes** — anything unusual (e.g. "this PR folds in a fix for
+   pre-existing bug X — happy to split if you'd rather").
+7. **Refs #NNN** at the bottom.
+
+### 11.6 Post-commit checks
+
+```bash
+git status                        # clean?
+git log -1 --oneline               # right commit message?
+git push -u origin <branch>        # does it push cleanly?
+gh pr create --base dev --head <branch> --title "..." --body "..."
+```
+
+If `git push` is rejected with "remote contains work you do not have",
+another agent pushed in parallel. Fetch their tip, rebase onto it, fix
+any conflicts, then push. The pattern that bit P0-BE-08: teammate
+already shipped their P0-BE-08 to a branch while we were still
+implementing locally.
+
+### 11.7 Project board card move
+
+The PAT used by the agent (`gh auth status`) is a **fine-grained
+personal access token** that lacks `project` scope. `updateProjectV2ItemFieldValue`
+fails with `FORBIDDEN — Resource not accessible by personal access token`.
+
+**Workaround**: tell the user to drag the card manually on
+https://github.com/users/JaJoJi/projects/1. Card IDs are
+`PVTI_lAHOCZxzvc4Biq5zzhhi...` (see graphql API).
+
+The GitHub project bot sometimes auto-flips cards when the PR is
+merged/closed — verify the column on the project board before manually
+dragging, otherwise you'll re-flip an already-Done card back to Review.
+
+### 11.8 Merge PRs to dev (batch)
+
+When the user says "let's do all PRs to dev first":
+
+1. `gh pr list --base dev --state open` — confirm which PRs are open.
+2. Sort merges by dependency order (foundation tickets first; PRs that
+   touch only independent code can go in any order).
+3. For each: `gh pr merge <N> --merge --delete-branch=false`.
+4. After each merge: `git fetch origin dev && git log --oneline
+   origin/dev -1` to confirm the new tip.
+5. After all merges: `git checkout dev && git pull origin dev` so the
+   local checkout tracks.
+6. Run cold-stack boot + every smoke for regression.
+
+Use **`--merge` (merge commit)** to match the existing convention — the
+merged PRs in dev history (`Merge pull request #X from ...`) are all
+merge commits, not squash.
+
+### 11.9 Known traps in this environment
+
+| Trap | Mitigation |
+|---|---|
+| **Flutter SDK on WSL bash**: `flutter` is a Windows binary; bash scripts in `bin/flutter/` have CRLF line endings that break `sh -c`. | Tell the user to run `flutter pub get && flutter analyze && flutter test` on their Windows host. CI runs on PR. |
+| **`dart analyze` from WSL**: package-resolution errors for everything outside `dart:*` because `.dart_tool/package_config.json` isn't built. | Use as a syntax + lint check only; real errors surface after `flutter pub get`. |
+| **NestJS runtime image is `npm ci --omit=dev`**: smokes that import `socket.io-client` (a devDep) fail with `Cannot find module`. | Inside the container, `NODE_ENV=development npm install --include=dev socket.io-client@^4.8.3` before running the smoke. |
+| **`pubspec.lock` drift from `flutter pub get`**: a fresh lockfile shows up as untracked diff. | `git checkout -- mobile/pubspec.lock` before staging — the lockfile drift is environment noise, not a real change. |
+| **`pubspec.yaml` / `package.json` dep drift from `npm install <pkg>`**: same problem on backend. | Revert before staging. |
+| **PAT scope**: fine-grained PAT started with no `contents:write` (push was 403). User granted it on the token. If push fails again with 403, ask user to check the token's repository permissions on github.com/settings/personal-access-tokens/active. |
+| **Smokes from inside the container**: `localhost` in a container is the container, not the host. Use `HTTP_BASE=http://nest-1:3000` or `http://nginx:80`, not `http://localhost`. |
+| **`io(...)` defaults to root namespace**: the `/game` namespace is **appended** to the URL — `io('http://host', ...)` connects to root, not `/game`. | Use `io(\`${HTTP_BASE}/game\`, ...)` to match the NestJS `@WebSocketGateway({ namespace: '/game' })`. |
+
+### 11.10 Discovered follow-ups (open TODOs from prior tickets)
+
+Track these so the next agent knows what's pending. Each one will
+probably become its own issue.
+
+- **P0-FE-03 / Lobby**:
+  - Resume-match flow (hide Find match if user has an active match). Needs `GET /match/active` REST endpoint — `MatchRepository.findActiveByUserId` exists (P0-BE-07), just no HTTP route yet.
+  - Disconnect cleanup: P0-BE-10's `OnGatewayDisconnect` removes the socket from dedup indexes but probably doesn't `ZREM` the user from `matchmaking:queue`. Survivable (worker pairs a phantom next tick; 60 s combat-done timeout fires; other player wins) but not great UX.
+  - Auto-retry on Find match if WS drops mid-search — user is stuck on "Searching…" until they tap Cancel + Find match again.
+  - ELO-based matchmaking — deliberately deferred per spec (display-only).
+
+- **WS lifecycle fix** (folded into P0-FE-03 as the red-banner bug):
+  - `_AutoChessAppState` now listens to `AuthGate` and calls
+    `wsClient.connect()` on sign-in, `disconnect()` on sign-out. If
+    you need to split the fix into its own PR for the project history,
+    the diff is `mobile/lib/main.dart` (add the listener) plus
+    `mobile/test/main_lifecycle_test.dart` (regression).
+
 ## 11. Top-of-mind Cheatsheet
 
 ### Combat (planned, in `docs/05-combat-spec.md`)
