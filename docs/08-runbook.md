@@ -19,8 +19,7 @@ dedicated on-call tooling — that's disproportionate for this project's size).
 
 ## 1. Deploy
 
-**Today**: there is no deployed environment. The only way to run the stack
-is local, from a clone:
+### Local (any machine)
 
 ```bash
 cp .env.example .env      # fill in real values for anything beyond local dev
@@ -28,43 +27,79 @@ docker compose up -d --build
 curl http://localhost/health/ready
 ```
 
-`nest-1` runs migrations on boot (`RUN_MIGRATIONS=true` in
-`docker-compose.yml`); `nest-2`/`nest-3` don't, to avoid three instances
-racing the same migration.
+`nest-1` runs migrations on boot (`RUN_MIGRATIONS=true`); `nest-2`/`nest-3`
+don't, to avoid three instances racing the same migration.
 
-**Not yet implemented**: a real staging/production target, `docker-compose.prod.yml`,
-and a deploy step in CI ([#193](https://github.com/JaJoJi/mobile-final-project/issues/193)).
-Once that lands, this section becomes: pull the tagged image, `docker compose
--f docker-compose.prod.yml pull && up -d`, then the post-deploy check below.
+### Staging VM — P3-DO-09 (#193), SCAFFOLDED, not yet live
 
-**Post-deploy check** (works today against local, will work against a real
-host once #193 exists):
+Model: a single Linux VM reachable over SSH, with this repo checked out at
+`$PROD_PATH` and a real `.env.production` beside `docker-compose.prod.yml`
+(from `.env.production.example`).
+
+`docker-compose.prod.yml` vs the dev file: GHCR image instead of a local
+build, no bind-mounts, `env_file: .env.production`, `restart: always`,
+only nginx publishes a port, no pgadmin.
+
+**One-time VM setup:**
 
 ```bash
-curl -f http://<host>/health/ready || echo "DEPLOY BAD — do not consider this live"
+# on the VM
+git clone https://github.com/JaJoJi/mobile-final-project.git "$PROD_PATH"
+cd "$PROD_PATH"
+cp .env.production.example .env.production   # then edit in real secrets
+docker login ghcr.io                          # PAT with read:packages
+```
+
+**Enable CI deploy:** set these repo secrets (Settings → Secrets → Actions),
+which the `deploy` job in `.github/workflows/release.yml` reads. Until
+`PROD_HOST` is set the job self-skips and `release` just builds + pushes.
+
+| Secret | Meaning |
+|---|---|
+| `PROD_HOST` | VM hostname / IP |
+| `PROD_USER` | SSH user |
+| `PROD_SSH_KEY` | private key for that user (no passphrase) |
+| `PROD_PATH` | dir on the VM holding the compose + env files |
+| `PROD_HEALTH_URL` | optional; defaults to `http://PROD_HOST/health/ready` |
+
+**What a `vX.Y.Z` tag then does:** build+push the image → SSH to the VM →
+`git checkout <tag>` → `IMAGE_TAG=<tag> docker compose -f docker-compose.prod.yml pull && up -d --remove-orphans`
+→ poll `/health/ready` for up to 300 s, fail the job otherwise.
+
+**Manual deploy** (same thing by hand):
+
+```bash
+ssh $PROD_USER@$PROD_HOST
+cd $PROD_PATH && git fetch --tags && git checkout vX.Y.Z
+export IMAGE_TAG=vX.Y.Z
+docker compose -f docker-compose.prod.yml pull
+docker compose -f docker-compose.prod.yml up -d --remove-orphans
+curl -f http://localhost/health/ready
 ```
 
 ## 2. Rollback
 
-**Not yet implemented** — no deployed environment to roll back yet. Designed
-mechanism, once [#137](https://github.com/JaJoJi/mobile-final-project/issues/137)
-(GHCR publish) and #193 (deploy target) exist:
+Scaffolded with #193; **not drilled against a real deploy yet** — do a real
+rollback drill the first time the VM is live and record what happened here.
 
-1. Identify the last-known-good tag: `git tag --sort=-creatordate | head -5`
-   or check the GHCR package page for the previous `vX.Y.Z`.
-2. On the host: `docker compose -f docker-compose.prod.yml pull
-   ghcr.io/jajoji/auto_chess-backend:<previous-tag>` then `up -d`.
-3. Re-run the post-deploy check above.
-4. If the bad deploy already ran a migration, rolling the *image* back does
-   **not** roll the schema back — `npm run migration:revert` must be run
-   manually before down-stepping the image, or the old code will hit a
-   schema it doesn't understand. There is currently no automated migration
-   rollback gate; treat every migrating deploy as effectively one-way until
-   one exists.
-
-This has not been drilled against a real deploy yet — do a real rollback
-drill the first time #193 lands, and update this section with what actually
-happened.
+1. Pick the last-known-good tag: `git tag --sort=-creatordate | head -5`, or
+   the previous `vX.Y.Z` on the GHCR package page.
+2. On the VM:
+   ```bash
+   cd $PROD_PATH && git checkout <previous-tag>
+   export IMAGE_TAG=<previous-tag>
+   docker compose -f docker-compose.prod.yml pull
+   docker compose -f docker-compose.prod.yml up -d --remove-orphans
+   ```
+3. `curl -f http://localhost/health/ready` — confirm it recovers.
+4. **Migrations do not roll back with the image.** If the bad release ran a
+   migration, roll it back manually *before* down-stepping the image, or the
+   old code hits a schema it doesn't understand:
+   ```bash
+   docker compose -f docker-compose.prod.yml run --rm nest-1 npm run migration:revert
+   ```
+   There is no automated migration-rollback gate — treat every migrating
+   deploy as effectively one-way until one exists.
 
 ## 3. Backup & Restore Drill
 

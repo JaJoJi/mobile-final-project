@@ -5,14 +5,20 @@ name: release
 #   - every `vX.Y.Z` tag (release-please, see release-please.yml)
 #                                       -> :vX.Y.Z + :X.Y
 #
-# amd64 only for now (MVP — see design notes on #137). No deploy step:
-# there is no server to deploy to yet (tracked in #193); this workflow
-# stops at "image is in GHCR", same as the issue's own design note says
-# for MVP ("just build + push, manual deploy").
+# amd64 only for now (MVP — see design notes on #137).
+#
+# `deploy` (P3-DO-09 / #193): on a vX.Y.Z tag, SSH to the staging VM and
+# `docker compose -f docker-compose.prod.yml pull && up -d`, then poll
+# /health/ready. It SELF-SKIPS when the PROD_HOST secret is unset, so
+# until the VM's secrets are configured this workflow still just builds
+# and pushes the image — same effective behaviour as before.
+#
+# Required repo secrets for deploy: PROD_HOST, PROD_USER, PROD_SSH_KEY,
+# PROD_PATH (dir on the VM holding docker-compose.prod.yml + .env.production),
+# optionally PROD_HEALTH_URL (defaults to http://PROD_HOST/health/ready).
 #
 # Uses the workflow-scoped GITHUB_TOKEN (packages: write below) — no
-# personal access token needed, unlike the setup steps originally
-# sketched in #137 (that PAT step doesn't apply to this login method).
+# personal access token needed.
 
 on:
   push:
@@ -20,6 +26,7 @@ on:
     tags: ['v*.*.*']
     paths:
       - 'backend/**'
+      - 'docker-compose.prod.yml'
       - '.github/workflows/release.yml'
 
 concurrency:
@@ -67,3 +74,65 @@ jobs:
       # TODO (#191): Trivy scan on the built image before it's trusted,
       # once that issue lands — block on HIGH/CRITICAL rather than
       # scanning post-hoc.
+
+  # ── Deploy to staging VM (P3-DO-09 / #193) ─────────────────────────────
+  # Tag builds only. Self-skips cleanly when PROD_HOST is not configured.
+  deploy:
+    needs: build-and-push
+    runs-on: ubuntu-latest
+    if: github.ref_type == 'tag'
+    environment: staging
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check deploy configuration
+        id: cfg
+        env:
+          PROD_HOST: ${{ secrets.PROD_HOST }}
+        run: |
+          if [ -z "$PROD_HOST" ]; then
+            echo "PROD_HOST secret not set — skipping deploy (scaffold only, #193)."
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Deploy over SSH
+        if: steps.cfg.outputs.ready == 'true'
+        env:
+          PROD_HOST: ${{ secrets.PROD_HOST }}
+          PROD_USER: ${{ secrets.PROD_USER }}
+          PROD_SSH_KEY: ${{ secrets.PROD_SSH_KEY }}
+          PROD_PATH: ${{ secrets.PROD_PATH }}
+          IMAGE_TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          key="$RUNNER_TEMP/deploy_key"
+          printf '%s\n' "$PROD_SSH_KEY" > "$key"
+          chmod 600 "$key"
+          ssh -o StrictHostKeyChecking=accept-new -i "$key" \
+            "$PROD_USER@$PROD_HOST" \
+            "set -e; cd '$PROD_PATH'; \
+             git fetch --tags origin && git checkout --quiet '$IMAGE_TAG'; \
+             export IMAGE_TAG='$IMAGE_TAG'; \
+             docker compose -f docker-compose.prod.yml pull; \
+             docker compose -f docker-compose.prod.yml up -d --remove-orphans; \
+             docker image prune -f"
+
+      - name: Post-deploy health check
+        if: steps.cfg.outputs.ready == 'true'
+        env:
+          PROD_HOST: ${{ secrets.PROD_HOST }}
+          PROD_HEALTH_URL: ${{ secrets.PROD_HEALTH_URL }}
+        run: |
+          url="${PROD_HEALTH_URL:-http://$PROD_HOST/health/ready}"
+          echo "Polling $url"
+          for i in $(seq 1 30); do
+            code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 5 "$url" || echo 000)
+            if [ "$code" = "200" ]; then
+              echo "healthy after $((i * 10))s"; exit 0
+            fi
+            echo "  attempt $i: HTTP $code"; sleep 10
+          done
+          echo "::error::/health/ready did not return 200 within 300s — see runbook for rollback"
+          exit 1

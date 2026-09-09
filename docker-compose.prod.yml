@@ -1,0 +1,166 @@
+name: auto_chess
+
+# Production / staging compose — P3-DO-09 (#193).
+#
+# Differs from docker-compose.yml (dev):
+#   - backend runs the GHCR image (${IMAGE_TAG}), not a local build
+#   - no source or config bind-mounts (nginx config is baked into its image)
+#   - env comes from .env.production on the host (see .env.production.example)
+#   - restart: always everywhere
+#   - only nginx publishes a host port; Postgres / Redis are internal-only
+#   - no pgadmin
+#
+# On the staging VM:
+#   export IMAGE_TAG=v1.2.3
+#   docker compose -f docker-compose.prod.yml pull
+#   docker compose -f docker-compose.prod.yml up -d --remove-orphans
+#
+# The release workflow's `deploy` job runs exactly that over SSH on a
+# vX.Y.Z tag, once the PROD_* secrets are set (until then it self-skips).
+
+services:
+  postgres-primary:
+    image: postgres:16-alpine
+    container_name: ac-postgres-primary
+    env_file: [.env.production]
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+      PGDATA: /var/lib/postgresql/data
+    command:
+      - "postgres"
+      - "-c"
+      - "wal_level=replica"
+      - "-c"
+      - "max_wal_senders=10"
+      - "-c"
+      - "max_replication_slots=10"
+      - "-c"
+      - "hot_standby=on"
+    volumes:
+      - pg_primary_data:/var/lib/postgresql/data
+      - ./postgres/init-primary.sh:/docker-entrypoint-initdb.d/01-replication.sh:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: always
+
+  postgres-replica:
+    image: postgres:16-alpine
+    container_name: ac-postgres-replica
+    env_file: [.env.production]
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+      PGPASSWORD: ${POSTGRES_REPLICATION_PASSWORD}
+    depends_on:
+      postgres-primary:
+        condition: service_healthy
+    command:
+      - bash
+      - -c
+      - |
+        set -e
+        until pg_isready -h postgres-primary -p 5432 -U ${POSTGRES_USER}; do
+          echo "[replica] Waiting for primary..."; sleep 2;
+        done
+        if [ ! -s /var/lib/postgresql/data/PG_VERSION ]; then
+          echo "[replica] Base backup from primary..."
+          rm -rf /var/lib/postgresql/data/*
+          pg_basebackup -h postgres-primary -D /var/lib/postgresql/data \
+                        -U replicator -P -Xs -R --checkpoint=fast
+          chown -R postgres:postgres /var/lib/postgresql/data
+        fi
+        exec docker-entrypoint.sh postgres
+    volumes:
+      - pg_replica_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: always
+
+  redis:
+    image: redis:7-alpine
+    container_name: ac-redis
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    restart: always
+
+  nest-1:
+    image: ghcr.io/jajoji/auto_chess-backend:${IMAGE_TAG:-latest}
+    container_name: ac-nest-1
+    env_file: [.env.production]
+    environment:
+      NODE_ENV: production
+      HOSTNAME: nest-1
+      NEST_PORT: 3000
+      RUN_MIGRATIONS: "true"
+      DATABASE_URL: postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres-primary:5432/${POSTGRES_DB}
+      REDIS_URL: redis://redis:6379
+    depends_on:
+      postgres-primary:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: always
+
+  nest-2:
+    image: ghcr.io/jajoji/auto_chess-backend:${IMAGE_TAG:-latest}
+    container_name: ac-nest-2
+    env_file: [.env.production]
+    environment:
+      NODE_ENV: production
+      HOSTNAME: nest-2
+      NEST_PORT: 3000
+      DATABASE_URL: postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres-primary:5432/${POSTGRES_DB}
+      REDIS_URL: redis://redis:6379
+    depends_on:
+      postgres-primary:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: always
+
+  nest-3:
+    image: ghcr.io/jajoji/auto_chess-backend:${IMAGE_TAG:-latest}
+    container_name: ac-nest-3
+    env_file: [.env.production]
+    environment:
+      NODE_ENV: production
+      HOSTNAME: nest-3
+      NEST_PORT: 3000
+      DATABASE_URL: postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres-primary:5432/${POSTGRES_DB}
+      REDIS_URL: redis://redis:6379
+    depends_on:
+      postgres-primary:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: always
+
+  nginx:
+    build:
+      context: ./nginx
+      dockerfile: Dockerfile
+    container_name: ac-nginx
+    depends_on:
+      - nest-1
+      - nest-2
+      - nest-3
+    ports:
+      - "80:80"
+      # 443 added by P3-DO-04 (#139) once certs are provisioned.
+    restart: always
+
+volumes:
+  pg_primary_data:
+  pg_replica_data:
