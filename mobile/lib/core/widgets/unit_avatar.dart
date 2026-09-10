@@ -112,13 +112,14 @@ class UnitAvatar extends StatelessWidget {
         UnitAvatarSize.lg => 88,
       };
 
-  double get _aspect => size == UnitAvatarSize.sm ? 1.0 : 64 / 96;
+  double get _aspect => variant == UnitAvatarVariant.shop ? 64 / 96 : 1.0;
 
   @override
   Widget build(BuildContext context) {
     final t = Theme.of(context);
     final game = t.extension<GameTheme>()!;
     final kind = unitKindFromId(unitId);
+    final isShop = variant == UnitAvatarVariant.shop;
 
     final tint = side == UnitSide.ally ? game.ally : game.enemy;
     final borderColor = switch (state) {
@@ -152,101 +153,115 @@ class UnitAvatar extends StatelessWidget {
         // HUD-like subtree, never a global override).
         child: MediaQuery.withClampedTextScaling(
           maxScaleFactor: 1.3,
-          child: Padding(
-            padding: const EdgeInsets.all(AppSpacing.xs),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    _StarBadge(star: star, color: game.starColor(star)),
-                    // At `sm` there's no name label, so keep the type glyph
-                    // for colour-blind readers (design spec §6).
-                    if (size == UnitAvatarSize.sm)
-                      Icon(kind.shape, size: 12, color: tint),
-                  ],
-                ),
-                Expanded(
-                  child: Center(
-                    child:
-                        _UnitArt(kind: kind, tint: tint, size: _width * 0.72),
-                  ),
-                ),
-                if (size != UnitAvatarSize.sm) ...[
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          child: isShop
+              ? Padding(
+                  padding: const EdgeInsets.all(AppSpacing.xs),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Flexible(
-                        child: Text(
-                          kind.label,
-                          overflow: TextOverflow.ellipsis,
-                          style: t.textTheme.titleMedium,
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          _StarBadge(star: star, color: game.starColor(star)),
+                        ],
+                      ),
+                      Expanded(
+                        child: Center(
+                          child: _UnitArt(
+                            kind: kind,
+                            tint: tint,
+                            size: _width * 0.72,
+                          ),
                         ),
                       ),
-                      if (variant == UnitAvatarVariant.shop && price != null)
-                        Flexible(
+                      Center(
+                        child: FittedBox(
+                          fit: BoxFit.scaleDown,
                           child: Text(
-                            '${price}g',
-                            overflow: TextOverflow.ellipsis,
-                            style: AppTypography.tabular(
-                              (t.textTheme.labelLarge ?? const TextStyle())
-                                  .copyWith(
+                            kind.label,
+                            maxLines: 1,
+                            style: t.textTheme.titleMedium,
+                          ),
+                        ),
+                      ),
+                      if (price != null)
+                        Center(
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(
+                                Icons.monetization_on,
+                                size: 14,
                                 color: state == UnitAvatarState.unaffordable
                                     ? t.colorScheme.error
                                     : game.gold,
                               ),
-                            ),
+                              const SizedBox(width: AppSpacing.xxs),
+                              Text(
+                                '$price',
+                                style: AppTypography.tabular(
+                                  (t.textTheme.labelLarge ?? const TextStyle())
+                                      .copyWith(
+                                    color: state == UnitAvatarState.unaffordable
+                                        ? t.colorScheme.error
+                                        : game.gold,
+                                  ),
+                                ),
+                              ),
+                            ],
                           ),
                         ),
                     ],
                   ),
-                  if (variant == UnitAvatarVariant.board &&
-                      hp != null &&
-                      maxHp != null)
+                )
+              : Stack(
+                  fit: StackFit.expand,
+                  children: [
                     Padding(
-                      padding: const EdgeInsets.only(top: AppSpacing.xxs),
-                      child: HealthBar(
-                        current: hp!,
-                        max: maxHp!,
-                        size: HealthBarSize.sm,
-                        showText: false,
+                      padding: const EdgeInsets.all(AppSpacing.xxs),
+                      child: _UnitArt(
+                        kind: kind,
+                        tint: tint,
+                        size: _width,
                       ),
                     ),
-                ],
-              ],
-            ),
-          ),
+                    if (star > 0)
+                      Positioned(
+                        left: AppSpacing.xxs,
+                        top: AppSpacing.xxs,
+                        child: DecoratedBox(
+                          decoration: BoxDecoration(
+                            color: Colors.black.withValues(alpha: 0.55),
+                            borderRadius: AppRadius.allFull,
+                          ),
+                          child: Padding(
+                            padding: const EdgeInsets.all(AppSpacing.xxs),
+                            child: _StarBadge(
+                              star: star,
+                              color: game.starColor(star),
+                            ),
+                          ),
+                        ),
+                      ),
+                    if (variant == UnitAvatarVariant.board &&
+                        hp != null &&
+                        maxHp != null)
+                      Positioned(
+                        left: AppSpacing.xxs,
+                        right: AppSpacing.xxs,
+                        bottom: AppSpacing.xxs,
+                        child: HealthBar(
+                          current: hp!,
+                          max: maxHp!,
+                          size: HealthBarSize.sm,
+                          showText: false,
+                        ),
+                      ),
+                  ],
+                ),
         ),
       ),
     );
-
-    if (state == UnitAvatarState.fusable) {
-      body = Stack(
-        children: [
-          body,
-          Positioned(
-            left: 0,
-            right: 0,
-            bottom: 0,
-            child: ColoredBox(
-              color: game.star2,
-              child: Padding(
-                padding: const EdgeInsets.symmetric(vertical: AppSpacing.xxs),
-                child: Text(
-                  'รวมได้',
-                  textAlign: TextAlign.center,
-                  overflow: TextOverflow.ellipsis,
-                  style: t.textTheme.labelSmall?.copyWith(
-                    color: t.colorScheme.surface,
-                  ),
-                ),
-              ),
-            ),
-          ),
-        ],
-      );
-    }
 
     if (state == UnitAvatarState.dragging) {
       body = Transform.scale(scale: 1.05, child: body);
@@ -290,7 +305,8 @@ class UnitAvatar extends StatelessWidget {
     return Semantics(
       button: onTap != null,
       label: '${kind.label} ${star > 0 ? '$star ดาว' : ''}'
-          '${price != null ? ' ราคา $price ทอง' : ''}',
+          '${price != null ? ' ราคา $price ทอง' : ''}'
+          '${state == UnitAvatarState.fusable ? ' รวมได้' : ''}',
       child: SizedBox(
         width: _width,
         child: InkWell(

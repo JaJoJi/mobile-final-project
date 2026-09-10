@@ -68,6 +68,7 @@ class WsClient {
   final StreamController<GameError> _errorController =
       StreamController<GameError>.broadcast();
   final Map<String, StreamController<Map<String, dynamic>>> _eventStreams = {};
+  final Map<String, Map<String, dynamic>> _latestEvents = {};
 
   WsConnectionState _state = WsConnectionState.disconnected;
   Completer<void>? _connectCompleter;
@@ -126,6 +127,34 @@ class WsClient {
     _transport.emit(event, data ?? const <String, dynamic>{});
   }
 
+  /// Send an event and wait until the server confirms that it handled it.
+  ///
+  /// Matchmaking uses this so the UI never claims to be searching when the
+  /// join packet was lost during a reconnect.
+  Future<Map<String, dynamic>> emitWithAck(
+    String event, [
+    Object? data,
+    Duration timeout = const Duration(seconds: 5),
+  ]) {
+    _throwIfDisposed();
+    if (!isConnected) {
+      return Future<Map<String, dynamic>>.error(
+        StateError('WebSocket is not connected'),
+      );
+    }
+
+    final completer = Completer<Map<String, dynamic>>();
+    _transport.emitWithAck(
+      event,
+      data ?? const <String, dynamic>{},
+      (response) {
+        if (completer.isCompleted) return;
+        completer.complete(_asMap(response) ?? const <String, dynamic>{});
+      },
+    );
+    return completer.future.timeout(timeout);
+  }
+
   /// The shared broadcast stream for server event [name]. Created on first
   /// call; every later call returns the same stream.
   Stream<Map<String, dynamic>> stream(String name) {
@@ -133,11 +162,28 @@ class WsClient {
     return _controllerFor(name).stream;
   }
 
+  /// Like [stream], but first replays the most recently received payload.
+  ///
+  /// Stateful game screens use this because matchmaking can publish the
+  /// initial phase, shop and roster before the route transition completes.
+  Stream<Map<String, dynamic>> streamLatest(String name) async* {
+    _throwIfDisposed();
+    final latest = _latestEvents[name];
+    if (latest != null) yield Map<String, dynamic>.unmodifiable(latest);
+    yield* stream(name);
+  }
+
   /// [stream] mapped through [parse]. A payload that fails to parse throws
   /// inside the listener's zone — parsers here are defensive and return a
   /// best-effort object instead.
   Stream<T> streamAs<T>(String name, T Function(Map<String, dynamic>) parse) =>
       stream(name).map(parse);
+
+  Stream<T> streamAsLatest<T>(
+    String name,
+    T Function(Map<String, dynamic>) parse,
+  ) =>
+      streamLatest(name).map(parse);
 
   /// Low-level: run [handler] for every [event] payload. Prefer [stream]
   /// / [streamAs] in widgets. Returns a subscription the caller cancels.
@@ -155,6 +201,7 @@ class WsClient {
       c.close();
     }
     _eventStreams.clear();
+    _latestEvents.clear();
     _stateController.close();
     _errorController.close();
     final pending = _connectCompleter;
@@ -197,9 +244,12 @@ class WsClient {
       }
     });
 
-    // Always observe errors, even with no external subscriber, so auth
-    // failures tear the connection down.
-    _controllerFor(GameEvents.error);
+    // Register every server event before the socket connects. Match creation
+    // publishes phase/shop/state in quick succession and the route may not be
+    // mounted yet; caching here prevents the first frame from missing them.
+    for (final event in GameEvents.all) {
+      _controllerFor(event);
+    }
   }
 
   StreamController<Map<String, dynamic>> _controllerFor(String name) {
@@ -208,6 +258,7 @@ class WsClient {
       _transport.on(name, (data) {
         final map = _asMap(data);
         if (map == null) return;
+        _latestEvents[name] = Map<String, dynamic>.from(map);
         if (!controller.isClosed) controller.add(map);
         if (name == GameEvents.error) _handleGameError(map);
       });

@@ -25,6 +25,13 @@ abstract class WsTransport {
   /// Send [data] under [event].
   void emit(String event, Object? data);
 
+  /// Send [data] and invoke [ack] with the server acknowledgement.
+  void emitWithAck(
+    String event,
+    Object? data,
+    void Function(dynamic response) ack,
+  );
+
   /// Register [handler] for server-sent [event]. At most one handler per
   /// event name (a second call replaces the first).
   void on(String event, void Function(dynamic data) handler);
@@ -99,6 +106,14 @@ class SocketIoTransport implements WsTransport {
 
   @override
   void emit(String event, Object? data) => _socket.emit(event, data);
+
+  @override
+  void emitWithAck(
+    String event,
+    Object? data,
+    void Function(dynamic response) ack,
+  ) =>
+      _socket.emitWithAck(event, data, ack: ack);
 
   @override
   void on(String event, void Function(dynamic data) handler) {

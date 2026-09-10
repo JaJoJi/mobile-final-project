@@ -1,6 +1,7 @@
 import 'package:auto_chess_mobile/core/auth/auth_gate.dart';
 import 'package:auto_chess_mobile/core/ws/ws_client.dart';
 import 'package:auto_chess_mobile/core/ws/ws_providers.dart';
+import 'package:auto_chess_mobile/features/lobby/profile_card.dart';
 import 'package:auto_chess_mobile/features/profile/settings_provider.dart';
 import 'package:auto_chess_mobile/main.dart';
 import 'package:flutter/material.dart';
@@ -28,7 +29,9 @@ void main() {
     // The auth gate is a process-wide singleton; reset it between tests
     // so sign-in / sign-out state never leaks.
     AuthGate.instance.reset();
-    installFakeSecureStorage({'access_token': 'jwt', 'refresh_token': 'r'});
+    // Keep SplashScreen offline in this lifecycle-only test. The auth state
+    // transitions below are driven explicitly through AuthGate.
+    installFakeSecureStorage();
     SharedPreferences.setMockInitialValues(<String, Object>{});
     transport = FakeWsTransport();
     wsClient = WsClient(
@@ -51,12 +54,22 @@ void main() {
     addTearDown(tester.view.reset);
 
     final prefs = await SharedPreferences.getInstance();
+    // Start on the signed-out route so Splash does not perform a real HTTP
+    // refresh in this WS-lifecycle test.
+    AuthGate.instance.signalSignedOut();
 
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
           sharedPreferencesProvider.overrideWithValue(prefs),
           wsClientProvider.overrideWithValue(wsClient),
+          currentUserProvider.overrideWith(
+            (ref) async => {
+              'id': 'u1',
+              'username': 'tester',
+              'rating': 1000,
+            },
+          ),
         ],
         child: const AutoChessApp(),
       ),
@@ -69,7 +82,7 @@ void main() {
     (tester) async {
       await pumpApp(tester);
 
-      // Initial frame: gate is unresolved → no WS activity.
+      // Initial signed-out frame → no WS activity.
       expect(transport.connectCalls, 0);
       expect(transport.disconnectCalls, 0);
 
@@ -112,6 +125,8 @@ void main() {
     AuthGate.instance.signalSignedIn();
     await tester.pump();
     expect(transport.connectCalls, 1);
+    transport.serverConnect();
+    await tester.pump();
 
     AuthGate.instance.signalSignedOut();
     await tester.pump();

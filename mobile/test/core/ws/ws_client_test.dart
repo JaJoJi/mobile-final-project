@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:auto_chess_mobile/core/ws/ws_client.dart';
 import 'package:auto_chess_mobile/shared/models/game_events.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -125,6 +127,19 @@ void main() {
   });
 
   group('event streams', () {
+    test('registers and caches game events before a screen subscribes',
+        () async {
+      expect(transport.hasHandlerFor(GameEvents.shopOffer), isTrue);
+      transport.emitFromServer(GameEvents.shopOffer, {
+        'matchId': 'm1',
+        'round': 1,
+        'offers': <Object?>[],
+      });
+
+      final replayed = await client.streamLatest(GameEvents.shopOffer).first;
+      expect(replayed['matchId'], 'm1');
+    });
+
     test('stream() fans one event out to multiple listeners', () async {
       final a = <int>[];
       final b = <int>[];
@@ -219,6 +234,44 @@ void main() {
     test('throws after dispose', () {
       client.dispose();
       expect(() => client.emit(GameActions.matchReady), throwsStateError);
+    });
+
+    test('emitWithAck returns the server acknowledgement', () async {
+      final connectFuture = client.connect();
+      transport.serverConnect();
+      await connectFuture;
+      transport.ackResponse = const <String, dynamic>{'queued': true};
+
+      final acknowledgement = await client.emitWithAck(
+        GameActions.matchmakingJoin,
+      );
+
+      expect(acknowledgement, const <String, dynamic>{'queued': true});
+      expect(transport.sent.single.event, GameActions.matchmakingJoin);
+    });
+
+    test('emitWithAck rejects while disconnected', () async {
+      await expectLater(
+        client.emitWithAck(GameActions.matchmakingJoin),
+        throwsStateError,
+      );
+      expect(transport.sent, isEmpty);
+    });
+
+    test('emitWithAck times out when the server does not answer', () async {
+      final connectFuture = client.connect();
+      transport.serverConnect();
+      await connectFuture;
+      transport.withholdAck = true;
+
+      await expectLater(
+        client.emitWithAck(
+          GameActions.matchmakingJoin,
+          const <String, dynamic>{},
+          const Duration(milliseconds: 10),
+        ),
+        throwsA(isA<TimeoutException>()),
+      );
     });
   });
 }

@@ -1,3 +1,4 @@
+import 'package:auto_chess_mobile/core/widgets/app_button.dart';
 import 'package:auto_chess_mobile/core/ws/ws_client.dart';
 import 'package:auto_chess_mobile/core/ws/ws_providers.dart';
 import 'package:auto_chess_mobile/features/lobby/find_match_button.dart';
@@ -42,7 +43,11 @@ void main() {
   /// Pump [LobbyScreen] inside a GoRouter so `context.go('/match/<id>')`
   /// in the screen is observable (we watch the router for the location
   /// change in test 4).
-  Future<void> pumpLobby(WidgetTester tester) async {
+  Future<GoRouter> pumpLobby(WidgetTester tester) async {
+    final connectFuture = wsClient.connect();
+    transport.serverConnect();
+    await connectFuture;
+
     tester.view.physicalSize = const Size(390, 844);
     tester.view.devicePixelRatio = 1.0;
     addTearDown(tester.view.reset);
@@ -59,7 +64,8 @@ void main() {
         ),
         GoRoute(
           path: '/login',
-          builder: (_, __) => const Scaffold(body: Center(child: Text('login'))),
+          builder: (_, __) =>
+              const Scaffold(body: Center(child: Text('login'))),
         ),
       ],
     );
@@ -78,6 +84,7 @@ void main() {
 
     // Let the FutureProvider + connection-state stream resolve one tick.
     await tester.pumpAndSettle();
+    return router;
   }
 
   testWidgets('renders profile, button + status, with no error',
@@ -106,6 +113,38 @@ void main() {
     expect(transport.sent.first.event, GameActions.matchmakingJoin);
   });
 
+  testWidgets('waits for the server ACK before showing Searching',
+      (tester) async {
+    await pumpLobby(tester);
+    transport.withholdAck = true;
+
+    await tester.tap(find.text('Find match'));
+    await tester.pump();
+
+    expect(find.text('Joining queue…'), findsWidgets);
+    expect(find.text('Searching…'), findsNothing);
+    expect(find.text('Cancel'), findsNothing);
+    expect(transport.sent.single.event, GameActions.matchmakingJoin);
+
+    // A missing ACK must not leave the button stuck forever.
+    await tester.pump(const Duration(seconds: 5));
+    await tester.pump();
+    expect(find.text('Find match'), findsOneWidget);
+    expect(find.text('Joining queue…'), findsNothing);
+  });
+
+  testWidgets('Find match stays disabled while WebSocket is disconnected',
+      (tester) async {
+    await pumpLobby(tester);
+    transport.serverDisconnect();
+    await tester.pumpAndSettle();
+
+    final button = tester.widget<AppButton>(find.byType(AppButton));
+    expect(button.onPressed, isNull);
+    expect(find.text('Searching\u2026'), findsNothing);
+    expect(transport.sent, isEmpty);
+  });
+
   testWidgets('tap Cancel → state idle + emit matchmaking:leave',
       (tester) async {
     await pumpLobby(tester);
@@ -124,7 +163,7 @@ void main() {
 
   testWidgets('game:match:phase event while searching → state matched + nav',
       (tester) async {
-    await pumpLobby(tester);
+    final router = await pumpLobby(tester);
     await tester.tap(find.text('Find match'));
     await tester.pump();
 
@@ -149,24 +188,35 @@ void main() {
     // observable side effect — verified above).
     // Verify via the provider container's exposed state would require a
     // ref handle; we infer from the visible UI.
+
+    // Returning after the game must clear the terminal matchmaking state.
+    router.go('/lobby');
+    await tester.pumpAndSettle();
+    expect(find.text('Find match'), findsOneWidget);
+    expect(find.text('Match found!'), findsNothing);
   });
 
-  testWidgets('LogoutButton tap shows confirmation dialog', (tester) async {
-    await pumpLobby(tester);
+  testWidgets(
+    'LogoutButton tap shows confirmation dialog',
+    (tester) async {
+      await pumpLobby(tester);
 
-    await tester.tap(find.byIcon(Icons.logout));
-    await tester.pumpAndSettle();
+      await tester.tap(find.byIcon(Icons.logout));
+      await tester.pumpAndSettle();
 
-    expect(find.text('Sign out?'), findsOneWidget);
-    expect(find.text("You'll have to sign in again to play."), findsOneWidget);
-    expect(find.text('Cancel'), findsWidgets);
-    expect(find.text('Sign out'), findsWidgets);
+      expect(find.text('Sign out?'), findsOneWidget);
+      expect(
+        find.text("You'll have to sign in again to play."),
+        findsOneWidget,
+      );
+      expect(find.text('ยกเลิก'), findsWidgets);
+      expect(find.text('Sign out'), findsWidgets);
 
-    // Cancel closes the dialog.
-    final cancelButtons = find.text('Cancel');
-    await tester.tap(cancelButtons.first);
-    await tester.pumpAndSettle();
-    expect(find.text('Sign out?'), findsNothing);
-  },
+      // Cancel closes the dialog.
+      final cancelButtons = find.text('ยกเลิก');
+      await tester.tap(cancelButtons.first);
+      await tester.pumpAndSettle();
+      expect(find.text('Sign out?'), findsNothing);
+    },
   );
 }
