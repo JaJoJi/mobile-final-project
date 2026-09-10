@@ -316,3 +316,26 @@ one player twice.
 | `combat.internal` | Combat engine bug (should never fire) |
 | `combat.not_in_battle` | `game:match:combat_done` sent when match is not in `battle` phase |
 | `combat.lock_held` | Another instance is running combat for this match (informational; clients should retry shortly) |
+
+### 5.1 REST error envelope (P1-BE-01)
+
+Every non-2xx REST response has the body:
+
+```json
+{ "code": "string", "message": "string", "details": {} }
+```
+
+- `details` is optional (present when the thrown error supplied it).
+- `429` responses additionally carry `"retryAfter": <seconds>` and a
+  matching `Retry-After` header.
+- Unhandled/unexpected errors are always `500 { "code": "internal",
+  "message": "internal server error" }` — internals are never leaked.
+- Generic codes when a handler didn't set its own: `bad_request`,
+  `unauthorized`, `forbidden`, `not_found`, `conflict`,
+  `unprocessable_entity`, `rate_limited`, `internal`.
+
+Structured logs (pino): every line is JSON with
+`{ level, time, msg, requestId?, instanceId, pid, context? }`; HTTP
+requests also get an `x-request-id` response header. Levels: `error` for
+unhandled exceptions, `warn` for 4xx / handled `game:error`, `info` for
+lifecycle + phase transitions, `debug` for the rest (`LOG_LEVEL=debug`).

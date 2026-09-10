@@ -1,9 +1,17 @@
 node_modules
 dist
+coverage
+.nyc_output
+*.tsbuildinfo
 .env
 .env.local
+.env.production
 *.log
 .git
+.gitignore
 .dockerignore
 Dockerfile
 README.md
+.vscode
+.idea
+**/*.spec.ts

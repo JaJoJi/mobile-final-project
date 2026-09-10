@@ -1,8 +1,11 @@
 import { Module } from '@nestjs/common';
+import { APP_FILTER } from '@nestjs/core';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { join } from 'path';
 import { AuthModule } from './auth/auth.module';
 import { HealthController } from './common/health.controller';
+import { AllExceptionsFilter } from './common/filters/all-exceptions.filter';
+import { LoggerModule } from './common/logger/logger.module';
 import { ENTITIES } from './database/entities';
 import { MatchModule } from './match/match.module';
 import { MatchmakingModule } from './matchmaking/matchmaking.module';
@@ -15,6 +18,7 @@ import { WsModule } from './ws/ws.module';
 
 @Module({
   imports: [
+    LoggerModule,
     TypeOrmModule.forRootAsync({
       useFactory: () => ({
         type: 'postgres',
@@ -43,7 +47,11 @@ import { WsModule } from './ws/ws.module';
     WsModule,
   ],
   controllers: [HealthController],
-  providers: [RedisService],
+  providers: [
+    RedisService,
+    // Global REST error envelope { code, message, details? } — P1-BE-01.
+    { provide: APP_FILTER, useClass: AllExceptionsFilter },
+  ],
 })
 export class AppModule {}
 
