@@ -43,6 +43,7 @@ export type RuntimeActionPayload = {
   unitId?: 'fighter' | 'healer' | 'ranger' | 'tank';
   unitInstanceId?: string;
   target?: 'board' | 'bench';
+  ready?: boolean;
 };
 
 export interface RuntimeActionResult {
@@ -90,6 +91,10 @@ export class MatchRuntimeAdapter {
       'game:match:phase',
       this.phasePayload(runtime, SHOP_PHASE_SECONDS),
     );
+    // The match screen needs an authoritative roster/gold snapshot before
+    // the player can act. Publish it after the phase event so PubsubBridge
+    // has already attached both players' sockets to this new match.
+    await this.publishState(runtime, 'p1', runtime.p1State);
     await this.shop.rollOffersForMatch(runtime);
   }
 
@@ -167,6 +172,7 @@ export class MatchRuntimeAdapter {
           userId,
           matchId,
           payload.round,
+          payload.ready ?? true,
           payload.clientActionId,
         );
       case 'match:combat_done': {
@@ -290,6 +296,7 @@ export class MatchRuntimeAdapter {
     userId: string,
     matchId: string,
     round: number,
+    ready: boolean,
     clientActionId: string,
   ): Promise<RuntimeActionResult> {
     const runtime = await this.requireActionPhase(matchId, round, 'shop_place');
@@ -298,7 +305,7 @@ export class MatchRuntimeAdapter {
       runtime,
       userId,
       side === 'p1' ? 'readyP1' : 'readyP2',
-      '1',
+      ready ? '1' : '0',
       clientActionId,
       'shop_place',
     );
@@ -488,6 +495,7 @@ export class MatchRuntimeAdapter {
       'game:match:phase',
       this.phasePayload(runtime, SHOP_PHASE_SECONDS),
     );
+    await this.publishState(runtime, 'p1', runtime.p1State);
     await this.shop.rollOffersForMatch(runtime);
     this.logger.log(`advanced match=${matchId} round=${round} -> ${nextRound}`);
     return true;

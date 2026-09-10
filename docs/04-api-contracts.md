@@ -262,8 +262,12 @@ End-of-round.
 
 #### `game:match:ready`
 ```ts
-{ round: number; clientActionId: string }
+{ round: number; ready?: boolean; clientActionId: string }
 ```
+
+`ready` defaults to `true` for older clients. Send `false` to cancel while
+the match is still in `shop_place`; cancellation is no longer possible once
+both players are ready and the phase has flipped to `battle`.
 
 #### `game:match:combat_done`
 Client tells the server it's finished playing the `game:combat:events` batch locally and is ready for `game:match:damage`. Server waits for BOTH clients' acks (or 60 s timeout) before proceeding.
