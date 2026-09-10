@@ -10,6 +10,8 @@ class FakeWsTransport implements WsTransport {
   int connectCalls = 0;
   int disconnectCalls = 0;
   bool disposed = false;
+  Object? ackResponse = const <String, dynamic>{'queued': true};
+  bool withholdAck = false;
   bool _connected = false;
 
   void Function()? _onConnect;
@@ -59,6 +61,16 @@ class FakeWsTransport implements WsTransport {
 
   @override
   void emit(String event, Object? data) => sent.add((event: event, data: data));
+
+  @override
+  void emitWithAck(
+    String event,
+    Object? data,
+    void Function(dynamic response) ack,
+  ) {
+    sent.add((event: event, data: data));
+    if (!withholdAck) ack(ackResponse);
+  }
 
   @override
   void on(String event, void Function(dynamic data) handler) =>

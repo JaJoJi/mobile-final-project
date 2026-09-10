@@ -151,6 +151,22 @@ describe('MatchRuntimeAdapter WS action seam', () => {
     expect(h.combat.runCombat).toHaveBeenCalledWith(match.id, 1);
   });
 
+  it('lets a player cancel ready before the second player starts combat', async () => {
+    const h = await harness();
+    expect(await h.adapter.handleAction('player-1', 'match:ready', {
+      round: 1,
+      ready: true,
+      clientActionId: 'ready-on',
+    })).toEqual({ duplicate: false, readyCount: 1 });
+    expect(await h.adapter.handleAction('player-1', 'match:ready', {
+      round: 1,
+      ready: false,
+      clientActionId: 'ready-off',
+    })).toEqual({ duplicate: false, readyCount: 0 });
+    expect((await h.adapter.getRuntime(match.id)).readyP1).toBe(false);
+    expect(h.combat.runCombat).not.toHaveBeenCalled();
+  });
+
   it('resolves the active match for a one-argument disconnect', async () => {
     const h = await harness();
     expect(await h.adapter.handleDisconnect('player-1')).toBe(true);

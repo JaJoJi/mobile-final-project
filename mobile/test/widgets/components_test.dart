@@ -106,7 +106,8 @@ void main() {
         ),
       );
       expect(find.text('Ranger'), findsOneWidget);
-      expect(find.text('2g'), findsOneWidget);
+      expect(find.byIcon(Icons.monetization_on), findsOneWidget);
+      expect(find.text('2'), findsOneWidget);
       expect(find.byIcon(Icons.star), findsNWidgets(2));
     });
 
@@ -136,18 +137,21 @@ void main() {
       }
     });
 
-    testWidgets('sm size keeps a type glyph (no name label)', (tester) async {
+    testWidgets('bench avatar overlays stars without a type glyph',
+        (tester) async {
       await pumpThemed(
         tester,
         const UnitAvatar(
           unitId: 'ranger',
-          star: 0,
+          star: 2,
           size: UnitAvatarSize.sm,
           variant: UnitAvatarVariant.bench,
         ),
       );
       expect(find.text('Ranger'), findsNothing);
-      expect(find.byIcon(Icons.change_history), findsOneWidget);
+      expect(find.byIcon(Icons.change_history), findsNothing);
+      expect(find.byIcon(Icons.star), findsNWidgets(2));
+      expect(find.byType(Image), findsOneWidget);
     });
   });
 

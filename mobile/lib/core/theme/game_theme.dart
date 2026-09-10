@@ -77,18 +77,18 @@ class GameTheme extends ThemeExtension<GameTheme> {
   );
 
   static const GameTheme _dark = GameTheme(
-    success: Color(0xFF8BD98F),
-    warning: Color(0xFFFFB95C),
-    ally: Color(0xFFB9C3FF),
-    enemy: Color(0xFFFFB68C),
-    hpHigh: Color(0xFF8BD98F),
-    hpMid: Color(0xFFFFB95C),
-    hpLow: Color(0xFFFFB4AB),
-    gold: Color(0xFFF5C542),
-    star1: Color(0xFFB9C3FF),
-    star2: Color(0xFFF5C542),
-    boardCellEmpty: Color(0xFF26252C),
-    boardCellValidDrop: Color(0xFF3A4370),
+    success: Color(0xFF63C58C),
+    warning: Color(0xFFE7AE5A),
+    ally: Color(0xFFAEBBFF),
+    enemy: Color(0xFFD9756B),
+    hpHigh: Color(0xFF63C58C),
+    hpMid: Color(0xFFE7AE5A),
+    hpLow: Color(0xFFE47777),
+    gold: Color(0xFFF2C14E),
+    star1: Color(0xFFAEBBFF),
+    star2: Color(0xFFF2C14E),
+    boardCellEmpty: Color(0xFF242A3A),
+    boardCellValidDrop: Color(0xFF3B4E82),
   );
 
   static GameTheme of(Brightness brightness) =>

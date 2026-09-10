@@ -48,13 +48,29 @@ class _LobbyScreenState extends ConsumerState<LobbyScreen> {
   bool _navigating = false;
 
   @override
+  void initState() {
+    super.initState();
+    // Fallback for browser Back/direct navigation. Riverpod forbids changing
+    // provider state while the route is mounting, so do it after this frame.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        ScaffoldMessenger.maybeOf(context)?.clearSnackBars();
+        ref.read(matchmakingStateProvider.notifier).resetAfterMatch();
+      }
+    });
+  }
+
+  @override
   Widget build(BuildContext context) {
     // React to phase events landing while we're searching.
     ref.listen<AsyncValue<MatchPhaseEvent>>(matchPhaseProvider, (prev, next) {
       final phase = next.valueOrNull;
       if (phase == null) return;
       final state = ref.read(matchmakingStateProvider);
-      if (state != MatchmakingState.searching) return;
+      if (state != MatchmakingState.joining &&
+          state != MatchmakingState.searching) {
+        return;
+      }
       _onMatchFound(phase);
     });
 
@@ -80,7 +96,11 @@ class _LobbyScreenState extends ConsumerState<LobbyScreen> {
         children: [
           const ProfileCard(),
           const Spacer(),
-          const Center(child: FindMatchButton()),
+          Center(
+            child: FindMatchButton(
+              enabled: connectionStatus == ConnectionStatus.connected,
+            ),
+          ),
           const SizedBox(height: AppSpacing.md),
           Center(child: _StatusText(state: state)),
           const Spacer(),
@@ -120,31 +140,36 @@ class _StatusText extends StatelessWidget {
   Widget build(BuildContext context) {
     final (text, style) = switch (state) {
       MatchmakingState.idle => (
-        null,
-        Theme.of(context).textTheme.bodyMedium?.copyWith(
-              color: Theme.of(context).colorScheme.outline,
-            ),
-      ),
+          null,
+          Theme.of(context).textTheme.bodyMedium?.copyWith(
+                color: Theme.of(context).colorScheme.outline,
+              ),
+        ),
+      MatchmakingState.joining => (
+          'Joining queue…',
+          Theme.of(context).textTheme.bodyLarge?.copyWith(
+                color: Theme.of(context).colorScheme.primary,
+                fontWeight: FontWeight.w500,
+              ),
+        ),
       MatchmakingState.searching => (
-        'Searching…',
-        Theme.of(context).textTheme.bodyLarge?.copyWith(
-              color: Theme.of(context).colorScheme.primary,
-              fontWeight: FontWeight.w500,
-            ),
-      ),
+          'Searching…',
+          Theme.of(context).textTheme.bodyLarge?.copyWith(
+                color: Theme.of(context).colorScheme.primary,
+                fontWeight: FontWeight.w500,
+              ),
+        ),
       MatchmakingState.matched => (
-        'Match found!',
-        Theme.of(context).textTheme.bodyLarge?.copyWith(
-              color: Theme.of(context).colorScheme.primary,
-              fontWeight: FontWeight.w700,
-            ),
-      ),
+          'Match found!',
+          Theme.of(context).textTheme.bodyLarge?.copyWith(
+                color: Theme.of(context).colorScheme.primary,
+                fontWeight: FontWeight.w700,
+              ),
+        ),
     };
     return SizedBox(
       height: AppSpacing.xl,
-      child: text == null
-          ? const SizedBox.shrink()
-          : Text(text, style: style),
+      child: text == null ? const SizedBox.shrink() : Text(text, style: style),
     );
   }
 }

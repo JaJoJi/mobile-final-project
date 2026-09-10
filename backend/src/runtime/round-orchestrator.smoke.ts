@@ -52,10 +52,23 @@ class FakeQueue {
 }
 
 class FakePubsub {
-  readonly events: Array<{ matchId: string; type: string; payload: any }> = [];
+  readonly events: Array<{
+    matchId: string;
+    type: string;
+    payload: any;
+    targetUserId?: string;
+  }> = [];
   readonly combat = new Map<string, any[]>();
   async publish(matchId: string, type: string, payload: unknown) {
     this.events.push({ matchId, type, payload });
+  }
+  async publishToUser(
+    matchId: string,
+    targetUserId: string,
+    type: string,
+    payload: unknown,
+  ) {
+    this.events.push({ matchId, type, payload, targetUserId });
   }
   async getCombatResult(matchId: string) {
     return this.combat.get(matchId) ?? null;
@@ -151,8 +164,11 @@ async function run() {
   add(
     results,
     'match initialization persists shared runtime and schedules 40 s timer',
-    initial.phase === 'shop_place' && initial.round === 1 && h.queue.phases[0]?.delay === 40_000,
-    `phase=${initial.phase} round=${initial.round} delay=${h.queue.phases[0]?.delay}`,
+    initial.phase === 'shop_place' && initial.round === 1 &&
+      h.queue.phases[0]?.delay === 40_000 &&
+      h.pubsub.events.filter((event) => event.type === 'game:match:state').length === 2,
+    `phase=${initial.phase} round=${initial.round} delay=${h.queue.phases[0]?.delay} ` +
+      `initialStates=${h.pubsub.events.filter((event) => event.type === 'game:match:state').length}`,
   );
 
   await Promise.all([
@@ -188,7 +204,11 @@ async function run() {
     results,
     'damage event is followed by the next shop phase and timer',
     h.pubsub.events.some((event) => event.type === 'game:match:damage') &&
-      h.pubsub.events.at(-1)?.payload.phase === 'shop_place' &&
+      h.pubsub.events.some((event) =>
+        event.type === 'game:match:phase' && event.payload.phase === 'shop_place' &&
+          event.payload.round === 2) &&
+      h.pubsub.events.filter((event) =>
+        event.type === 'game:match:state' && event.payload.round === 2).length === 2 &&
       h.queue.phases.length === 2 && h.shop.rolls === 2,
     `events=${h.pubsub.events.map((event) => event.type).join(',')} timers=${h.queue.phases.length} shops=${h.shop.rolls}`,
   );

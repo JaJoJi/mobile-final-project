@@ -88,7 +88,10 @@ export class MatchRepository {
   findActiveByUserId(userId: string): Promise<Match | null> {
     return this.repo
       .createQueryBuilder('m')
-      .where('m.player1Id = :uid OR m.player2Id = :uid', { uid: userId })
+      // Keep the player alternatives grouped. Without these parentheses SQL
+      // evaluates AND before OR and any historical match where the user was
+      // player1 is incorrectly treated as active.
+      .where('(m.player1Id = :uid OR m.player2Id = :uid)', { uid: userId })
       .andWhere("m.status = 'in_progress'")
       .getOne();
   }

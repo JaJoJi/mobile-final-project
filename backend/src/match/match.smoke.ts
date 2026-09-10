@@ -7,7 +7,8 @@
  *   2. findById returns it with defaults: status='in_progress', wipeIndex*=0
  *   3. findActiveByUserId(player1Id) returns it
  *   4. findActiveByUserId(nonExistent) returns null
- *   5. match_rounds row inserts and ON DELETE CASCADE works (delete
+ *   5. A finished match is inactive for both player seats
+ *   6. match_rounds row inserts and ON DELETE CASCADE works (delete
  *      match → round vanishes)
  *
  * Run inside the docker network:
@@ -130,7 +131,21 @@ async function run(): Promise<void> {
     });
   }
 
-  // 6. match_rounds insert + ON DELETE CASCADE
+  // 6. A historical match must not block either player from matchmaking.
+  {
+    await ds.getRepository(Match).update({ id: matchId }, { status: 'forfeited' });
+    const [forPlayer1, forPlayer2] = await Promise.all([
+      matchRepo.findActiveByUserId(player1Id),
+      matchRepo.findActiveByUserId(player2Id),
+    ]);
+    results.push({
+      name: '6. forfeited match is inactive for both player seats',
+      passed: forPlayer1 === null && forPlayer2 === null,
+      detail: `player1=${forPlayer1?.id ?? 'null'} player2=${forPlayer2?.id ?? 'null'}`,
+    });
+  }
+
+  // 7. match_rounds insert + ON DELETE CASCADE
   {
     const roundsRepo = ds.getRepository('MatchRound');
     const round = await roundsRepo.save(
@@ -148,7 +163,7 @@ async function run(): Promise<void> {
     await ds.getRepository(Match).delete({ id: matchId });
     const afterCount = await roundsRepo.count({ where: { matchId } });
     results.push({
-      name: '6. FK ON DELETE CASCADE removes match_rounds on match delete',
+      name: '7. FK ON DELETE CASCADE removes match_rounds on match delete',
       passed: beforeCount === 1 && afterCount === 0,
       detail: `inserted round=${round.id} before=${beforeCount} after=${afterCount}`,
     });

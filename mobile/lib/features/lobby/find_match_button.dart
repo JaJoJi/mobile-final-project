@@ -16,7 +16,9 @@ import 'matchmaking_state.dart';
 ///   * `matched`   → "Match found!" (disabled, lg) — the screen auto-navigates
 ///                 away within ~500 ms so this state is rarely seen.
 class FindMatchButton extends ConsumerWidget {
-  const FindMatchButton({super.key});
+  const FindMatchButton({required this.enabled, super.key});
+
+  final bool enabled;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -25,17 +27,21 @@ class FindMatchButton extends ConsumerWidget {
 
     final (label, onPressed) = switch (state) {
       MatchmakingState.idle => (
-        const Text('Find match'),
-        notifier.beginSearch,
-      ),
+          const Text('Find match'),
+          enabled ? () => notifier.beginSearch() : null,
+        ),
+      MatchmakingState.joining => (
+          const Text('Joining queue…'),
+          null,
+        ),
       MatchmakingState.searching => (
-        const Text('Cancel'),
-        notifier.cancelSearch,
-      ),
+          const Text('Cancel'),
+          notifier.cancelSearch,
+        ),
       MatchmakingState.matched => (
-        const Text('Match found!'),
-        null, // disabled — auto-nav takes over
-      ),
+          const Text('Match found!'),
+          null, // disabled — auto-nav takes over
+        ),
     };
 
     return AppButton(

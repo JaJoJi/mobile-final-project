@@ -51,42 +51,42 @@ final wsEventProvider =
 final matchPhaseProvider = StreamProvider<MatchPhaseEvent>((ref) {
   return ref
       .watch(wsClientProvider)
-      .streamAs(GameEvents.matchPhase, MatchPhaseEvent.fromJson);
+      .streamAsLatest(GameEvents.matchPhase, MatchPhaseEvent.fromJson);
 });
 
 /// `game:match:state` → [MatchState].
 final matchStateProvider = StreamProvider<MatchState>((ref) {
   return ref
       .watch(wsClientProvider)
-      .streamAs(GameEvents.matchState, MatchState.fromJson);
+      .streamAsLatest(GameEvents.matchState, MatchState.fromJson);
 });
 
 /// `game:combat:events` → [CombatEventBatch] (one per battle).
 final combatEventsProvider = StreamProvider<CombatEventBatch>((ref) {
   return ref
       .watch(wsClientProvider)
-      .streamAs(GameEvents.combatEvents, CombatEventBatch.fromJson);
+      .streamAsLatest(GameEvents.combatEvents, CombatEventBatch.fromJson);
 });
 
 /// `game:shop:offer` → [ShopOffersEvent] (the caller's private shop).
 final shopOffersProvider = StreamProvider<ShopOffersEvent>((ref) {
   return ref
       .watch(wsClientProvider)
-      .streamAs(GameEvents.shopOffer, ShopOffersEvent.fromJson);
+      .streamAsLatest(GameEvents.shopOffer, ShopOffersEvent.fromJson);
 });
 
 /// `game:match:damage` → [MatchDamageEvent] (end-of-round result).
 final matchDamageProvider = StreamProvider<MatchDamageEvent>((ref) {
   return ref
       .watch(wsClientProvider)
-      .streamAs(GameEvents.matchDamage, MatchDamageEvent.fromJson);
+      .streamAsLatest(GameEvents.matchDamage, MatchDamageEvent.fromJson);
 });
 
 /// `game:match:end` → [MatchEndEvent].
 final matchEndProvider = StreamProvider<MatchEndEvent>((ref) {
   return ref
       .watch(wsClientProvider)
-      .streamAs(GameEvents.matchEnd, MatchEndEvent.fromJson);
+      .streamAsLatest(GameEvents.matchEnd, MatchEndEvent.fromJson);
 });
 
 /// Every `game:error` envelope (auth failures included).

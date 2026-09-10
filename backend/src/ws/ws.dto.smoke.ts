@@ -50,6 +50,8 @@ const cases: Case[] = [
     payload: { round: 1, unitInstanceId: UUID, target: 'bench', slot: 0, clientActionId: UUID } },
   { name: 'match:ready valid', dto: MatchReadyDto, expect: 'pass',
     payload: { round: 5, clientActionId: UUID } },
+  { name: 'match:ready cancel valid', dto: MatchReadyDto, expect: 'pass',
+    payload: { round: 5, ready: false, clientActionId: UUID } },
   { name: 'match:combat_done valid', dto: MatchCombatDoneDto, expect: 'pass',
     payload: { matchId: UUID, round: 5, clientActionId: UUID } },
   { name: 'matchmaking:join empty', dto: MatchmakingJoinDto, expect: 'pass', payload: {} },

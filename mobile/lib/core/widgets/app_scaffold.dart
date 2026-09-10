@@ -41,6 +41,12 @@ class AppScaffold extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Chrome can briefly report an almost-zero viewport while a Flutter web
+    // window is opening or being tiled. AppBar's trailing Row cannot fit a
+    // 48 px action in that transient width and reports a RenderFlex overflow.
+    final visibleActions =
+        MediaQuery.sizeOf(context).width >= 160 ? actions : null;
+
     Widget content = body;
     if (padded) {
       content = Padding(
@@ -53,8 +59,9 @@ class AppScaffold extends StatelessWidget {
     }
 
     return Scaffold(
-      appBar:
-          title != null ? AppBar(title: Text(title!), actions: actions) : null,
+      appBar: title != null
+          ? AppBar(title: Text(title!), actions: visibleActions)
+          : null,
       floatingActionButton: floatingActionButton,
       bottomNavigationBar: bottomBar,
       body: Column(

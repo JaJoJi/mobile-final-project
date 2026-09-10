@@ -30,3 +30,4 @@ flutter:
     # Unit illustrations (P0-FE-06b). 256 px + a 2.0x/ 512 px variant;
     # Flutter picks the right one per devicePixelRatio.
     - assets/images/units/
+    - assets/images/backgrounds/

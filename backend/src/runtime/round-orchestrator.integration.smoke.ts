@@ -35,10 +35,23 @@ class CaptureQueue {
 }
 
 class RedisPubsub {
-  readonly events: Array<{ matchId: string; type: string; payload: any }> = [];
+  readonly events: Array<{
+    matchId: string;
+    type: string;
+    payload: any;
+    targetUserId?: string;
+  }> = [];
   constructor(private readonly redis: RedisService) {}
   async publish(matchId: string, type: string, payload: unknown) {
     this.events.push({ matchId, type, payload });
+  }
+  async publishToUser(
+    matchId: string,
+    targetUserId: string,
+    type: string,
+    payload: unknown,
+  ) {
+    this.events.push({ matchId, type, payload, targetUserId });
   }
   async writeCombatResult(matchId: string, events: any[]) {
     await this.redis.client.set(

@@ -1,4 +1,12 @@
-import { IsIn, IsInt, IsUUID, Max, Min } from 'class-validator';
+import {
+  IsBoolean,
+  IsIn,
+  IsInt,
+  IsOptional,
+  IsUUID,
+  Max,
+  Min,
+} from 'class-validator';
 
 /**
  * DTOs for every incoming WS payload (`client → server`).
@@ -120,11 +128,16 @@ export class MatchPlaceDto {
   clientActionId!: string;
 }
 
-/** `game:match:ready` — `{ round, clientActionId }`. */
+/** `game:match:ready` — `{ round, ready?, clientActionId }`. */
 export class MatchReadyDto {
   @IsInt()
   @Min(1)
   round!: number;
+
+  /** Omitted by older clients = ready. `false` cancels before both are ready. */
+  @IsOptional()
+  @IsBoolean()
+  ready?: boolean;
 
   @IsUUID()
   clientActionId!: string;

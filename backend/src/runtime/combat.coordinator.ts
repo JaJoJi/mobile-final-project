@@ -5,6 +5,7 @@ import { QueueService } from '../queue/queue.service';
 import { RedisService } from '../redis/redis.service';
 import { PubsubBridge } from './pubsub.bridge';
 import { RUN_BATTLE, RunBattle } from './combat-engine.provider';
+import { COMBAT_DONE_TIMEOUT_MS } from './combat-timing';
 import {
   combatDoneKey,
   combatLockKey,
@@ -14,7 +15,6 @@ import {
 } from './match.runtime-state';
 
 const COMBAT_LOCK_TTL_SECONDS = 30;
-const COMBAT_DONE_TIMEOUT_MS = 60_000;
 
 @Injectable()
 export class CombatCoordinator {

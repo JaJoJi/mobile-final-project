@@ -25,6 +25,9 @@ abstract final class AppMotion {
   /// 800 ms — match-end cinematic.
   static const Duration extraLong2 = Duration(milliseconds: 800);
 
+  /// 1500 ms — enough time to read the end-of-round result; tap skips it.
+  static const Duration roundResult = Duration(milliseconds: 1500);
+
   /// Default for anything the player notices.
   static const Cubic emphasized = Cubic(0.2, 0.0, 0.0, 1.0);
 

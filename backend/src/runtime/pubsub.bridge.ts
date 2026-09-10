@@ -3,6 +3,7 @@ import Redis from 'ioredis';
 import type { Server } from 'socket.io';
 import type { CombatEvent } from '../game';
 import { RedisService } from '../redis/redis.service';
+import { COMBAT_RESULT_TTL_SECONDS } from './combat-timing';
 
 interface PubSubEnvelope {
   type: string;
@@ -11,7 +12,6 @@ interface PubSubEnvelope {
 }
 
 const CHANNEL_PATTERN = 'match:*:events';
-const COMBAT_RESULT_TTL_SECONDS = 60;
 
 /**
  * Cross-instance Pub/Sub bridge for real-time game events.
@@ -29,7 +29,7 @@ const COMBAT_RESULT_TTL_SECONDS = 60;
  *     sockets on all replicas. We only want the sockets interested in the
  *     publishing match to receive it, which is why we keep our own
  *     `localSubscribers` index.
- *   - 60 s late-subscriber cache for combat results lives here too, next
+ *   - Late-subscriber cache for combat results lives here too, next
  *     to the fan-out path. Adapter would push that concern elsewhere.
  *
  * Lifecycle:
@@ -179,8 +179,9 @@ export class PubsubBridge implements OnModuleInit, OnModuleDestroy {
 
   /**
    * Cache the full combat-event batch for `matchId` so a client that
-   * reconnects within 60 s can fetch it via {@link getCombatResult}.
-   * Stored as a STRING with `EX 60` — older entries auto-expire.
+   * reconnects while battle playback is pending can fetch it via
+   * {@link getCombatResult}. The TTL includes a safety margin beyond the
+   * combat-done timeout so the fallback worker can always read the result.
    */
   async writeCombatResult(matchId: string, events: CombatEvent[]): Promise<void> {
     await this.redis.client.set(
@@ -193,7 +194,7 @@ export class PubsubBridge implements OnModuleInit, OnModuleDestroy {
 
   /**
    * Read the cached combat-result batch for `matchId`. Returns `null` if
-   * no cache entry exists (either it never was written or the 60 s TTL
+   * no cache entry exists (either it never was written or the replay TTL
    * has elapsed).
    */
   async getCombatResult(matchId: string): Promise<CombatEvent[] | null> {
