@@ -1,4 +1,4 @@
-import { Logger, UseFilters, UseGuards } from '@nestjs/common';
+import { UseFilters, UseGuards } from '@nestjs/common';
 import {
   ConnectedSocket,
   MessageBody,
@@ -10,6 +10,7 @@ import {
   WebSocketServer,
   WsException,
 } from '@nestjs/websockets';
+import { PinoLogger } from 'nestjs-pino';
 import type { Server, Socket } from 'socket.io';
 import { MatchService } from '../match/match.service';
 import { MatchmakingService } from '../matchmaking/matchmaking.service';
@@ -74,8 +75,6 @@ interface SocketUser {
 // socket.io doesn't run @UseGuards for the lifecycle hooks.
 @UseGuards(WsThrottleGuard)
 export class WsGateway implements OnGatewayConnection, OnGatewayDisconnect, OnGatewayInit {
-  private readonly logger = new Logger(WsGateway.name);
-
   /** userId → set of currently-connected sockets (per-replica, in-memory). */
   private readonly connectedSockets = new Map<string, Set<Socket>>();
 
@@ -91,7 +90,10 @@ export class WsGateway implements OnGatewayConnection, OnGatewayDisconnect, OnGa
     private readonly matchmaking: MatchmakingService,
     private readonly runtime: MatchRuntimeAdapter,
     private readonly matches: MatchService,
-  ) {}
+    private readonly logger: PinoLogger,
+  ) {
+    this.logger.setContext(WsGateway.name);
+  }
 
   /**
    * Fires after the socket.io `Server` is constructed and bound to the
@@ -101,7 +103,10 @@ export class WsGateway implements OnGatewayConnection, OnGatewayDisconnect, OnGa
   afterInit(server: Server): void {
     this.server = server;
     this.pubsubBridge.setServer(server);
-    this.logger.log(`WsGateway ready on /game (instance=${process.env.HOSTNAME ?? 'local'})`);
+    this.logger.info(
+      { namespace: '/game' },
+      'WS gateway ready',
+    );
   }
 
   handleConnection(client: Socket): void {
@@ -119,9 +124,9 @@ export class WsGateway implements OnGatewayConnection, OnGatewayDisconnect, OnGa
     this.pubsubBridge.registerUserSocket(userId, client.id);
     void this.resumeActiveMatch(client, userId);
 
-    this.logger.log(
-      `WS connected: user=${userId} socket=${client.id} ` +
-        `(instance=${process.env.HOSTNAME ?? 'local'})`,
+    this.logger.info(
+      { userId, socketId: client.id },
+      'WS connected',
     );
   }
 
@@ -149,11 +154,15 @@ export class WsGateway implements OnGatewayConnection, OnGatewayDisconnect, OnGa
       this.socketMatches.delete(client.id);
     }
 
-    this.logger.log(`WS disconnected: user=${user.sub} socket=${client.id}`);
+    this.logger.info(
+      { userId: user.sub, socketId: client.id },
+      'WS disconnected',
+    );
     if (client.data.superseded !== true) {
       void this.handleClientDisconnect(user.sub).catch((error: unknown) => {
         this.logger.error(
-          `disconnect handling failed: user=${user.sub} error=${error instanceof Error ? error.message : String(error)}`,
+          { err: error, userId: user.sub, socketId: client.id },
+          'WS disconnect handling failed',
         );
       });
     }
@@ -176,7 +185,10 @@ export class WsGateway implements OnGatewayConnection, OnGatewayDisconnect, OnGa
       this.socketMatches.set(client.id, set);
     }
     set.add(matchId);
-    this.logger.log(`subscribed: socket=${client.id} match=${matchId}`);
+    this.logger.debug(
+      { userId, socketId: client.id, matchId },
+      'WS subscribed to match',
+    );
   }
 
   /**
@@ -256,7 +268,7 @@ export class WsGateway implements OnGatewayConnection, OnGatewayDisconnect, OnGa
       return this.wsAuthGuard.authenticate(client);
     } catch (e: unknown) {
       const code = e instanceof WsException ? String(e.getError()) : 'auth.invalid';
-      this.logger.warn(`WS auth rejected: socket=${client.id} code=${code}`);
+      this.logger.warn({ socketId: client.id, code }, 'WS auth rejected');
       client.emit('game:error', { code });
       client.disconnect(true);
       return null;
@@ -273,7 +285,10 @@ export class WsGateway implements OnGatewayConnection, OnGatewayDisconnect, OnGa
     if (!existing || existing.size === 0) return;
     for (const old of existing) {
       if (old.id === current.id) continue;
-      this.logger.log(`dedup: kicking old socket=${old.id} for user=${userId}`);
+      this.logger.info(
+        { userId, oldSocketId: old.id, socketId: current.id },
+        'WS connection superseded',
+      );
       old.data.superseded = true;
       old.disconnect(true);
     }
@@ -302,10 +317,16 @@ export class WsGateway implements OnGatewayConnection, OnGatewayDisconnect, OnGa
       return await operation();
     } catch (error: unknown) {
       const envelope = toGameError(error, fallbackCode, clientActionId);
+      const context = {
+        code: envelope.code,
+        clientActionId,
+        socketId: client.id,
+        userId: this.userId(client),
+      };
       if (envelope.code === 'internal') {
-        this.logger.error(
-          `WS handler failed: code=${fallbackCode} error=${error instanceof Error ? error.stack : String(error)}`,
-        );
+        this.logger.error({ ...context, err: error }, 'WS handler failed');
+      } else {
+        this.logger.warn(context, 'WS game:error');
       }
       client.emit('game:error', envelope);
       return undefined;
@@ -318,7 +339,8 @@ export class WsGateway implements OnGatewayConnection, OnGatewayDisconnect, OnGa
       if (match && client.connected) this.subscribeToMatch(client, match.id);
     } catch (error: unknown) {
       this.logger.error(
-        `active-match resume failed: user=${userId} error=${error instanceof Error ? error.message : String(error)}`,
+        { err: error, userId, socketId: client.id },
+        'active-match resume failed',
       );
     }
   }

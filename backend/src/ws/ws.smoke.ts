@@ -11,6 +11,8 @@
  *                               (per-user dedup). The new socket stays.
  *   4. Garbage token         → server emits `game:error{code:'auth.expired'}`
  *                               and disconnects.
+ *   9. WS message flood      → server emits `game:error{code:'rate.limited'}`
+ *                               before the handler runs.
  *
  * Run inside the docker network:
  *   docker compose exec nest-1 npx ts-node -T src/ws/ws.smoke.ts
@@ -382,6 +384,36 @@ async function run(): Promise<void> {
         s2.offers.length === 5 &&
         actionFlow,
       detail: `sameMatch=${sameMatch} bothPlayers=${bothPlayers} offers=${s1.offers.length}/${s2.offers.length} actionFlow=${actionFlow}`,
+    });
+  }
+
+  // 9. The production guard is wired to the gateway and returns the frozen
+  // game:error envelope. Malformed messages are intentional: validation owns
+  // the first `limit` messages, then the guard must reject the flood first.
+  {
+    const connection = await connect({ token: reg.accessToken });
+    const configured = Number(process.env.WS_MSG_PER_SEC ?? 30);
+    const limit = Number.isInteger(configured) && configured > 0 ? configured : 30;
+    const rateLimited = new Promise<ErrorEnvelope>((resolve, reject) => {
+      const timer = setTimeout(
+        () => reject(new Error('rate.limited timeout')),
+        TIMEOUT_MS,
+      );
+      connection.socket.on('game:error', (payload: ErrorEnvelope) => {
+        if (payload.code !== 'rate.limited') return;
+        clearTimeout(timer);
+        resolve(payload);
+      });
+    });
+    for (let i = 0; i <= limit; i++) {
+      connection.socket.emit('game:shop:buy', { round: 'three' });
+    }
+    const payload = await rateLimited;
+    connection.socket.close();
+    results.push({
+      name: '9. per-user WS rate limit',
+      passed: connection.connectOk && payload.code === 'rate.limited',
+      detail: `connectOk=${connection.connectOk} errorCode=${payload.code ?? '∅'} limit=${limit}`,
     });
   }
 
