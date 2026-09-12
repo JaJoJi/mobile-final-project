@@ -56,14 +56,128 @@ export interface BattleSim {
   p2Units: UnitInstance[];
 }
 
+/**
+ * Positional + identity fields attached to every event the FE animation
+ * player needs. Optional on the type so older clients keep parsing older
+ * payloads; the engine always populates them, so the FE can rely on them.
+ *
+ * Why inline (vs. a separate `combat:units` snapshot) — `docs/05 §4` says
+ * "All effects emit a `combat:event` for the UI" and P0-FE-05 will play
+ * events in order to drive the animation. One self-contained event
+ * removes a 2nd event the FE has to buffer + order against the combat
+ * stream, and keeps the replay cache byte-identical for the same seed.
+ */
+export interface CombatEventActorFields {
+  /** Owning side of the unit (`'p1' | 'p2'`). Lets the renderer anchor on
+   *  the correct half of the board without an external lookup. */
+  side?: Side;
+  /** Row-major board slot 0..8. `row = slot ~/ 3`, `col = slot % 3`. */
+  slot?: number;
+  /** Archetype — required for picking the right sprite / animation. */
+  unitId?: UnitId;
+  /** Fusion tier 0|1|2 — picks the star overlay and any per-star VFX. */
+  star?: Star;
+}
+
 export type CombatEvent =
-  | { type: 'attack'; cycle: number; tick: number; attacker: string; target: string; damage: number; targetHpAfter: number }
-  | { type: 'death'; cycle: number; tick: number; unit: string }
-  | { type: 'revive'; cycle: number; tick: number; unit: string; hpAfter: number }
-  | { type: 'heal'; cycle: number; tick: number; target: string; by: string; amount: number; targetHpAfter: number }
-  | { type: 'lifesteal'; cycle: number; tick: number; unit: string; amount: number; hpAfter: number }
-  | { type: 'pierce'; cycle: number; tick: number; attacker: string; target: string; damage: number }
-  | { type: 'slow'; cycle: number; tick: number; target: string; by: string }
+  | (CombatEventActorFields & {
+      type: 'attack';
+      cycle: number;
+      tick: number;
+      attacker: string;
+      target: string;
+      damage: number;
+      targetHpAfter: number;
+      attackerSide?: Side;
+      attackerSlot?: number;
+      attackerUnitId?: UnitId;
+      attackerStar?: Star;
+      targetSide?: Side;
+      targetSlot?: number;
+      targetUnitId?: UnitId;
+      targetStar?: Star;
+    })
+  | (CombatEventActorFields & {
+      type: 'death';
+      cycle: number;
+      tick: number;
+      unit: string;
+      unitSide?: Side;
+      unitSlot?: number;
+      unitUnitId?: UnitId;
+      unitStar?: Star;
+    })
+  | (CombatEventActorFields & {
+      type: 'revive';
+      cycle: number;
+      tick: number;
+      unit: string;
+      hpAfter: number;
+      unitSide?: Side;
+      unitSlot?: number;
+      unitUnitId?: UnitId;
+      unitStar?: Star;
+    })
+  | (CombatEventActorFields & {
+      type: 'heal';
+      cycle: number;
+      tick: number;
+      target: string;
+      by: string;
+      amount: number;
+      targetHpAfter: number;
+      targetSide?: Side;
+      targetSlot?: number;
+      targetUnitId?: UnitId;
+      targetStar?: Star;
+      bySide?: Side;
+      bySlot?: number;
+      byUnitId?: UnitId;
+      byStar?: Star;
+    })
+  | (CombatEventActorFields & {
+      type: 'lifesteal';
+      cycle: number;
+      tick: number;
+      unit: string;
+      amount: number;
+      hpAfter: number;
+      unitSide?: Side;
+      unitSlot?: number;
+      unitUnitId?: UnitId;
+      unitStar?: Star;
+    })
+  | (CombatEventActorFields & {
+      type: 'pierce';
+      cycle: number;
+      tick: number;
+      attacker: string;
+      target: string;
+      damage: number;
+      attackerSide?: Side;
+      attackerSlot?: number;
+      attackerUnitId?: UnitId;
+      attackerStar?: Star;
+      targetSide?: Side;
+      targetSlot?: number;
+      targetUnitId?: UnitId;
+      targetStar?: Star;
+    })
+  | (CombatEventActorFields & {
+      type: 'slow';
+      cycle: number;
+      tick: number;
+      target: string;
+      by: string;
+      targetSide?: Side;
+      targetSlot?: number;
+      targetUnitId?: UnitId;
+      targetStar?: Star;
+      bySide?: Side;
+      bySlot?: number;
+      byUnitId?: UnitId;
+      byStar?: Star;
+    })
   | { type: 'cycle_end'; cycle: number }
   | { type: 'battle_end'; cycle: number; winner: Side | null };
 

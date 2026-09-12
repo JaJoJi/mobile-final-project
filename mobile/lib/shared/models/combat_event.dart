@@ -8,9 +8,15 @@
 /// [CombatEvent] is a `sealed` class: a `switch` over a [CombatEvent] that
 /// misses a subtype is a compile error, which keeps the animation code
 /// honest when the server grows a new event kind.
+///
+/// The `*Side` / `*Slot` / `*UnitId` / `*Star` fields (P0-FE-05 prep, see
+/// `docs/04 §2.1`) are optional in the type but always populated by the
+/// engine. They let the FE animation player resolve any event to world
+/// coordinates + the right sprite without an out-of-band snapshot.
 library;
 
 import 'match_state.dart' show MatchSide;
+import 'unit.dart' show UnitId;
 
 sealed class CombatEvent {
   const CombatEvent();
@@ -29,6 +35,27 @@ sealed class CombatEvent {
     final type = j['type'] as String? ?? '';
     int i(String k) => (j[k] as num?)?.toInt() ?? 0;
     String s(String k) => j[k] as String? ?? '';
+    UnitId? uid(String k) {
+      final v = j[k] as String?;
+      return v == null ? null : UnitId.fromJson(v);
+    }
+    MatchSide? side(String k) {
+      final v = j[k] as String?;
+      if (v == 'p1') return MatchSide.p1;
+      if (v == 'p2') return MatchSide.p2;
+      return null;
+    }
+
+    int? iOpt(String k) {
+      final v = j[k];
+      return v is num ? v.toInt() : null;
+    }
+
+    int? starOpt(String k) {
+      final v = iOpt(k);
+      return (v == 0 || v == 1 || v == 2) ? v : null;
+    }
+
     return switch (type) {
       'attack' => AttackEvent(
           cycle: i('cycle'),
@@ -37,14 +64,33 @@ sealed class CombatEvent {
           target: s('target'),
           damage: i('damage'),
           targetHpAfter: i('targetHpAfter'),
+          attackerSide: side('attackerSide'),
+          attackerSlot: iOpt('attackerSlot'),
+          attackerUnitId: uid('attackerUnitId'),
+          attackerStar: starOpt('attackerStar'),
+          targetSide: side('targetSide'),
+          targetSlot: iOpt('targetSlot'),
+          targetUnitId: uid('targetUnitId'),
+          targetStar: starOpt('targetStar'),
         ),
-      'death' =>
-        DeathEvent(cycle: i('cycle'), tick: i('tick'), unit: s('unit')),
+      'death' => DeathEvent(
+          cycle: i('cycle'),
+          tick: i('tick'),
+          unit: s('unit'),
+          unitSide: side('unitSide'),
+          unitSlot: iOpt('unitSlot'),
+          unitUnitId: uid('unitUnitId'),
+          unitStar: starOpt('unitStar'),
+        ),
       'revive' => ReviveEvent(
           cycle: i('cycle'),
           tick: i('tick'),
           unit: s('unit'),
           hpAfter: i('hpAfter'),
+          unitSide: side('unitSide'),
+          unitSlot: iOpt('unitSlot'),
+          unitUnitId: uid('unitUnitId'),
+          unitStar: starOpt('unitStar'),
         ),
       'heal' => HealEvent(
           cycle: i('cycle'),
@@ -53,6 +99,14 @@ sealed class CombatEvent {
           by: s('by'),
           amount: i('amount'),
           targetHpAfter: i('targetHpAfter'),
+          targetSide: side('targetSide'),
+          targetSlot: iOpt('targetSlot'),
+          targetUnitId: uid('targetUnitId'),
+          targetStar: starOpt('targetStar'),
+          bySide: side('bySide'),
+          bySlot: iOpt('bySlot'),
+          byUnitId: uid('byUnitId'),
+          byStar: starOpt('byStar'),
         ),
       'lifesteal' => LifestealEvent(
           cycle: i('cycle'),
@@ -60,6 +114,10 @@ sealed class CombatEvent {
           unit: s('unit'),
           amount: i('amount'),
           hpAfter: i('hpAfter'),
+          unitSide: side('unitSide'),
+          unitSlot: iOpt('unitSlot'),
+          unitUnitId: uid('unitUnitId'),
+          unitStar: starOpt('unitStar'),
         ),
       'pierce' => PierceEvent(
           cycle: i('cycle'),
@@ -67,12 +125,28 @@ sealed class CombatEvent {
           attacker: s('attacker'),
           target: s('target'),
           damage: i('damage'),
+          attackerSide: side('attackerSide'),
+          attackerSlot: iOpt('attackerSlot'),
+          attackerUnitId: uid('attackerUnitId'),
+          attackerStar: starOpt('attackerStar'),
+          targetSide: side('targetSide'),
+          targetSlot: iOpt('targetSlot'),
+          targetUnitId: uid('targetUnitId'),
+          targetStar: starOpt('targetStar'),
         ),
       'slow' => SlowEvent(
           cycle: i('cycle'),
           tick: i('tick'),
           target: s('target'),
           by: s('by'),
+          targetSide: side('targetSide'),
+          targetSlot: iOpt('targetSlot'),
+          targetUnitId: uid('targetUnitId'),
+          targetStar: starOpt('targetStar'),
+          bySide: side('bySide'),
+          bySlot: iOpt('bySlot'),
+          byUnitId: uid('byUnitId'),
+          byStar: starOpt('byStar'),
         ),
       'cycle_end' => CycleEndEvent(cycle: i('cycle')),
       'battle_end' => BattleEndEvent(
@@ -96,6 +170,14 @@ class AttackEvent extends CombatEvent {
     required this.target,
     required this.damage,
     required this.targetHpAfter,
+    this.attackerSide,
+    this.attackerSlot,
+    this.attackerUnitId,
+    this.attackerStar,
+    this.targetSide,
+    this.targetSlot,
+    this.targetUnitId,
+    this.targetStar,
   });
 
   @override
@@ -106,6 +188,16 @@ class AttackEvent extends CombatEvent {
   final String target;
   final int damage;
   final int targetHpAfter;
+
+  // P0-FE-05 enriched fields — always populated by the engine.
+  final MatchSide? attackerSide;
+  final int? attackerSlot;
+  final UnitId? attackerUnitId;
+  final int? attackerStar;
+  final MatchSide? targetSide;
+  final int? targetSlot;
+  final UnitId? targetUnitId;
+  final int? targetStar;
 }
 
 class DeathEvent extends CombatEvent {
@@ -113,6 +205,10 @@ class DeathEvent extends CombatEvent {
     required this.cycle,
     required this.tick,
     required this.unit,
+    this.unitSide,
+    this.unitSlot,
+    this.unitUnitId,
+    this.unitStar,
   });
 
   @override
@@ -120,6 +216,11 @@ class DeathEvent extends CombatEvent {
   @override
   final int tick;
   final String unit;
+
+  final MatchSide? unitSide;
+  final int? unitSlot;
+  final UnitId? unitUnitId;
+  final int? unitStar;
 }
 
 class ReviveEvent extends CombatEvent {
@@ -128,6 +229,10 @@ class ReviveEvent extends CombatEvent {
     required this.tick,
     required this.unit,
     required this.hpAfter,
+    this.unitSide,
+    this.unitSlot,
+    this.unitUnitId,
+    this.unitStar,
   });
 
   @override
@@ -136,6 +241,11 @@ class ReviveEvent extends CombatEvent {
   final int tick;
   final String unit;
   final int hpAfter;
+
+  final MatchSide? unitSide;
+  final int? unitSlot;
+  final UnitId? unitUnitId;
+  final int? unitStar;
 }
 
 class HealEvent extends CombatEvent {
@@ -146,6 +256,14 @@ class HealEvent extends CombatEvent {
     required this.by,
     required this.amount,
     required this.targetHpAfter,
+    this.targetSide,
+    this.targetSlot,
+    this.targetUnitId,
+    this.targetStar,
+    this.bySide,
+    this.bySlot,
+    this.byUnitId,
+    this.byStar,
   });
 
   @override
@@ -156,6 +274,15 @@ class HealEvent extends CombatEvent {
   final String by;
   final int amount;
   final int targetHpAfter;
+
+  final MatchSide? targetSide;
+  final int? targetSlot;
+  final UnitId? targetUnitId;
+  final int? targetStar;
+  final MatchSide? bySide;
+  final int? bySlot;
+  final UnitId? byUnitId;
+  final int? byStar;
 }
 
 class LifestealEvent extends CombatEvent {
@@ -165,6 +292,10 @@ class LifestealEvent extends CombatEvent {
     required this.unit,
     required this.amount,
     required this.hpAfter,
+    this.unitSide,
+    this.unitSlot,
+    this.unitUnitId,
+    this.unitStar,
   });
 
   @override
@@ -174,6 +305,11 @@ class LifestealEvent extends CombatEvent {
   final String unit;
   final int amount;
   final int hpAfter;
+
+  final MatchSide? unitSide;
+  final int? unitSlot;
+  final UnitId? unitUnitId;
+  final int? unitStar;
 }
 
 class PierceEvent extends CombatEvent {
@@ -183,6 +319,14 @@ class PierceEvent extends CombatEvent {
     required this.attacker,
     required this.target,
     required this.damage,
+    this.attackerSide,
+    this.attackerSlot,
+    this.attackerUnitId,
+    this.attackerStar,
+    this.targetSide,
+    this.targetSlot,
+    this.targetUnitId,
+    this.targetStar,
   });
 
   @override
@@ -192,6 +336,15 @@ class PierceEvent extends CombatEvent {
   final String attacker;
   final String target;
   final int damage;
+
+  final MatchSide? attackerSide;
+  final int? attackerSlot;
+  final UnitId? attackerUnitId;
+  final int? attackerStar;
+  final MatchSide? targetSide;
+  final int? targetSlot;
+  final UnitId? targetUnitId;
+  final int? targetStar;
 }
 
 class SlowEvent extends CombatEvent {
@@ -200,6 +353,14 @@ class SlowEvent extends CombatEvent {
     required this.tick,
     required this.target,
     required this.by,
+    this.targetSide,
+    this.targetSlot,
+    this.targetUnitId,
+    this.targetStar,
+    this.bySide,
+    this.bySlot,
+    this.byUnitId,
+    this.byStar,
   });
 
   @override
@@ -208,6 +369,15 @@ class SlowEvent extends CombatEvent {
   final int tick;
   final String target;
   final String by;
+
+  final MatchSide? targetSide;
+  final int? targetSlot;
+  final UnitId? targetUnitId;
+  final int? targetStar;
+  final MatchSide? bySide;
+  final int? bySlot;
+  final UnitId? byUnitId;
+  final int? byStar;
 }
 
 class CycleEndEvent extends CombatEvent {
