@@ -108,11 +108,9 @@ export class ShopService {
 
       context.state.gold -= cost;
       const bought = this.newUnit(offer.unitId, cost);
-      if (!this.autoFuse(context.state, bought)) {
-        const slot = context.state.bench.findIndex((entry) => entry === null);
-        if (slot < 0) this.fail('shop.roster_full', 'Bench is full');
-        context.state.bench[slot] = bought;
-      }
+      const slot = context.state.bench.findIndex((entry) => entry === null);
+      if (slot < 0) this.fail('shop.roster_full', 'Bench is full');
+      context.state.bench[slot] = bought;
       context.shop.offers[offerIndex] = null;
     });
   }
@@ -165,8 +163,44 @@ export class ShopService {
     round: number,
     unitId: UnitId,
     clientActionId: string,
+    sourceInstanceId?: string,
+    targetInstanceId?: string,
   ): Promise<ShopActionResult> {
     return this.withAction(userId, matchId, round, clientActionId, async (context) => {
+      if ((sourceInstanceId == null) !== (targetInstanceId == null)) {
+        this.fail(
+          'shop.invalid_fuse_pair',
+          'Both sourceInstanceId and targetInstanceId are required',
+        );
+      }
+      if (sourceInstanceId && targetInstanceId) {
+        if (sourceInstanceId === targetInstanceId) {
+          this.fail('shop.cannot_fuse', 'A unit cannot be fused with itself');
+        }
+        const source = rosterEntries(context.state).find(
+          (entry) => entry.unit.instanceId === sourceInstanceId,
+        );
+        const target = rosterEntries(context.state).find(
+          (entry) => entry.unit.instanceId === targetInstanceId,
+        );
+        if (!source || !target) {
+          this.fail('shop.unit_not_found', 'A dragged fuse unit was not found');
+        }
+        if (
+          source.unit.unitId !== unitId ||
+          target.unit.unitId !== unitId ||
+          source.unit.star !== target.unit.star ||
+          target.unit.star >= 2
+        ) {
+          this.fail('shop.cannot_fuse', 'Dragged units must have the same type and star');
+        }
+        this.mergeUnits(target.unit, source.unit);
+        context.state[source.source][source.slot] = null;
+        return;
+      }
+
+      // Compatibility path for clients released before drag-to-fuse carried
+      // exact instance ids. New clients always use the branch above.
       const candidates = rosterEntries(context.state)
         .filter((entry) => entry.unit.unitId === unitId && entry.unit.star < 2)
         .sort((a, b) => a.unit.star - b.unit.star);
@@ -330,34 +364,6 @@ export class ShopService {
       maxHp,
       investedGold: cost,
     };
-  }
-
-  private autoFuse(state: RuntimePlayerState, bought: RuntimeUnitState): boolean {
-    const existing = rosterEntries(state).find((entry) =>
-      entry.unit.unitId === bought.unitId && entry.unit.star === bought.star,
-    );
-    if (!existing) return false;
-    this.mergeUnits(existing.unit, bought);
-    this.cascadeFuse(state, existing.unit, existing.source, existing.slot);
-    return true;
-  }
-
-  private cascadeFuse(
-    state: RuntimePlayerState,
-    unit: RuntimeUnitState,
-    source: 'board' | 'bench',
-    slot: number,
-  ): void {
-    while (unit.star < 2) {
-      const next = rosterEntries(state).find((entry) =>
-        !(entry.source === source && entry.slot === slot) &&
-        entry.unit.unitId === unit.unitId &&
-        entry.unit.star === unit.star,
-      );
-      if (!next) return;
-      this.mergeUnits(unit, next.unit);
-      state[next.source][next.slot] = null;
-    }
   }
 
   private mergeUnits(target: RuntimeUnitState, consumed: RuntimeUnitState): void {

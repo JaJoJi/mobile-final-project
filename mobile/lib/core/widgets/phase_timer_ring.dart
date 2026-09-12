@@ -29,6 +29,7 @@ class PhaseTimerRing extends StatefulWidget {
     this.size = 56,
     this.stroke = 6,
     this.clock,
+    this.compact = false,
   }) : assert(
           deadline != null || durationSeconds != null,
           'provide deadline or durationSeconds',
@@ -39,6 +40,7 @@ class PhaseTimerRing extends StatefulWidget {
   final VoidCallback onExpire;
   final double size;
   final double stroke;
+  final bool compact;
 
   /// Wall clock — override in tests. The countdown is always derived from a
   /// deadline vs. `now`, never a decrementing counter (design spec §5.2).
@@ -148,25 +150,28 @@ class _PhaseTimerRingState extends State<PhaseTimerRing>
     final ceilSecs = (_remaining.inMilliseconds / 1000).ceil();
 
     if (_expired && _remaining <= Duration.zero) {
+      final spinner = SizedBox(
+        width: widget.size,
+        height: widget.size,
+        child: CircularProgressIndicator(strokeWidth: widget.stroke),
+      );
       return Semantics(
         label: 'รอเซิร์ฟเวอร์',
         excludeSemantics: true,
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            SizedBox(
-              width: widget.size,
-              height: widget.size,
-              child: CircularProgressIndicator(strokeWidth: widget.stroke),
-            ),
-            const SizedBox(height: 4),
-            Text(
-              'รอเซิร์ฟเวอร์…',
-              textAlign: TextAlign.center,
-              style: t.textTheme.labelMedium,
-            ),
-          ],
-        ),
+        child: widget.compact
+            ? spinner
+            : Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  spinner,
+                  const SizedBox(height: 4),
+                  Text(
+                    'รอเซิร์ฟเวอร์…',
+                    textAlign: TextAlign.center,
+                    style: t.textTheme.labelMedium,
+                  ),
+                ],
+              ),
       );
     }
 

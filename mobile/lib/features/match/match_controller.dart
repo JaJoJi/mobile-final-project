@@ -308,7 +308,17 @@ class MatchController extends StateNotifier<MatchViewState> {
     final selected = from ?? state.selection;
     if (!state.canAct || match == null || selected == null) return;
     final unit = _unitAt(selected.area, selected.slot);
-    if (unit == null || _unitAt(target, slot) != null) return;
+    final targetUnit = _unitAt(target, slot);
+    if (unit == null) return;
+    if (selected.area == target && selected.slot == slot) return;
+    if (targetUnit != null) {
+      if (unit.unitId == targetUnit.unitId &&
+          unit.star == targetUnit.star &&
+          unit.star < 2) {
+        fuse(unit, targetUnit);
+      }
+      return;
+    }
 
     final board = List<Unit?>.of(match.roster.board);
     final bench = List<Unit?>.of(match.roster.bench);
@@ -362,7 +372,7 @@ class MatchController extends StateNotifier<MatchViewState> {
     });
   }
 
-  void fuse(Unit unit) {
+  void fuse(Unit source, [Unit? target]) {
     final match = state.match;
     if (!state.canAct || match == null) return;
     final actionId = _actionId();
@@ -373,7 +383,11 @@ class MatchController extends StateNotifier<MatchViewState> {
     );
     _client.emit(GameActions.shopFuse, {
       'round': match.round,
-      'unitId': unit.unitId.toJson(),
+      'unitId': source.unitId.toJson(),
+      if (target != null) ...{
+        'sourceInstanceId': source.instanceId,
+        'targetInstanceId': target.instanceId,
+      },
       'clientActionId': actionId,
     });
   }

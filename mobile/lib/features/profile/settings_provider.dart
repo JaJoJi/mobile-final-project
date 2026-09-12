@@ -12,15 +12,22 @@ class AppSettings {
   const AppSettings({
     this.themeMode = ThemeMode.system,
     this.wsAutoReconnect = true,
+    this.soundEnabled = true,
   });
 
   final ThemeMode themeMode;
   final bool wsAutoReconnect;
+  final bool soundEnabled;
 
-  AppSettings copyWith({ThemeMode? themeMode, bool? wsAutoReconnect}) =>
+  AppSettings copyWith({
+    ThemeMode? themeMode,
+    bool? wsAutoReconnect,
+    bool? soundEnabled,
+  }) =>
       AppSettings(
         themeMode: themeMode ?? this.themeMode,
         wsAutoReconnect: wsAutoReconnect ?? this.wsAutoReconnect,
+        soundEnabled: soundEnabled ?? this.soundEnabled,
       );
 }
 
@@ -36,6 +43,7 @@ final settingsProvider =
 class SettingsNotifier extends Notifier<AppSettings> {
   static const _kThemeMode = 'settings.themeMode';
   static const _kWsAutoReconnect = 'settings.wsAutoReconnect';
+  static const _kSoundEnabled = 'settings.soundEnabled';
 
   SharedPreferences get _prefs => ref.read(sharedPreferencesProvider);
 
@@ -48,6 +56,7 @@ class SettingsNotifier extends Notifier<AppSettings> {
     return AppSettings(
       themeMode: themeMode ?? ThemeMode.system,
       wsAutoReconnect: _prefs.getBool(_kWsAutoReconnect) ?? true,
+      soundEnabled: _prefs.getBool(_kSoundEnabled) ?? true,
     );
   }
 
@@ -59,5 +68,10 @@ class SettingsNotifier extends Notifier<AppSettings> {
   Future<void> setWsAutoReconnect(bool value) async {
     state = state.copyWith(wsAutoReconnect: value);
     await _prefs.setBool(_kWsAutoReconnect, value);
+  }
+
+  Future<void> setSoundEnabled(bool value) async {
+    state = state.copyWith(soundEnabled: value);
+    await _prefs.setBool(_kSoundEnabled, value);
   }
 }

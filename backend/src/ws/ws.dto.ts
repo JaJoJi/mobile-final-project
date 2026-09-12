@@ -91,7 +91,7 @@ export class ShopRefreshDto {
   clientActionId!: string;
 }
 
-/** `game:shop:fuse` — `{ round, unitId, clientActionId }`. */
+/** `game:shop:fuse` — manual merge, normally triggered by drag-and-drop. */
 export class ShopFuseDto {
   @IsInt()
   @Min(1)
@@ -99,6 +99,14 @@ export class ShopFuseDto {
 
   @IsIn(UNIT_IDS)
   unitId!: UnitId;
+
+  @IsOptional()
+  @IsUUID()
+  sourceInstanceId?: string;
+
+  @IsOptional()
+  @IsUUID()
+  targetInstanceId?: string;
 
   @IsUUID()
   clientActionId!: string;
