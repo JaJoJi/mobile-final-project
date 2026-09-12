@@ -78,8 +78,8 @@ When a unit picks an attack target:
 Two copies of a unit at the same star level consume both and yield **one** copy at the next level. Star level affects stats and unlocks abilities.
 
 Star-upgrade flow:
-- Buying from shop auto-fuses with an existing roster copy when possible.
-- A "Fuse now" button explicitly fuses two roster copies.
+- Buying from the shop always places the new copy in the reserve area.
+- Players fuse two same-type, same-star copies by dragging one onto the other.
 
 ### 3.4 Abilities (per star level)
 
@@ -127,7 +127,7 @@ All offers are 0★. Star upgrades happen only via fusion of two same-star copie
 - **Buy**: pay cost (in gold), unit enters roster.
 - **Sell**: recover **100%** of unit cost. Unit leaves roster.
 - **Refresh**: reroll all 5 offers. Free **once per merged phase**.
-- **Auto-fuse** when buying a duplicate, or via a "Fuse now" button.
+- **Manual fuse** by dragging one same-type, same-star unit onto another.
 
 ## 5. Phases per Round
 

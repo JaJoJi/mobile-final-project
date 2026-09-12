@@ -148,6 +148,17 @@ class _Content extends ConsumerWidget {
             onChanged: settingsNotifier.setWsAutoReconnect,
           ),
         ),
+        SettingsTile(
+          leading: settings.soundEnabled
+              ? Icons.volume_up_outlined
+              : Icons.volume_off_outlined,
+          title: 'เสียงเอฟเฟกต์',
+          subtitle: 'เสียงซื้อ รีเฟรช และกดพร้อม',
+          trailing: Switch(
+            value: settings.soundEnabled,
+            onChanged: settingsNotifier.setSoundEnabled,
+          ),
+        ),
         const Divider(),
         SettingsTile(
           leading: Icons.info_outline,

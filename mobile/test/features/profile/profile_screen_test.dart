@@ -5,6 +5,7 @@ import 'package:auto_chess_mobile/core/auth/auth_gate.dart';
 import 'package:auto_chess_mobile/core/theme/app_theme.dart';
 import 'package:auto_chess_mobile/features/profile/profile_screen.dart';
 import 'package:auto_chess_mobile/features/profile/settings_provider.dart';
+import 'package:auto_chess_mobile/features/profile/settings_tile.dart';
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -114,11 +115,33 @@ void main() {
     expect(container.read(settingsProvider).themeMode, ThemeMode.dark);
   });
 
+  testWidgets('sound switch drives settingsProvider', (tester) async {
+    await tester.pumpWidget(await app(adapter: okMe));
+    await tester.pumpAndSettle();
+
+    final container = ProviderScope.containerOf(
+      tester.element(find.byType(ProfileScreen)),
+    );
+    final soundTile = find.ancestor(
+      of: find.text('เสียงเอฟเฟกต์'),
+      matching: find.byType(SettingsTile),
+    );
+    await tester.ensureVisible(soundTile);
+    await tester.pumpAndSettle();
+    await tester
+        .tap(find.descendant(of: soundTile, matching: find.byType(Switch)));
+    await tester.pumpAndSettle();
+
+    expect(container.read(settingsProvider).soundEnabled, isFalse);
+  });
+
   testWidgets('logout asks for confirmation', (tester) async {
     AuthGate.instance.signalSignedIn();
     await tester.pumpWidget(await app(adapter: okMe));
     await tester.pumpAndSettle();
 
+    await tester.ensureVisible(find.text('ออกจากระบบ'));
+    await tester.pumpAndSettle();
     await tester.tap(find.text('ออกจากระบบ'));
     await tester.pumpAndSettle();
 

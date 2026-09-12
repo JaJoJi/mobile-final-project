@@ -178,7 +178,7 @@ describe('ShopService — P0-BE-14', () => {
     expect(h.matches.updates).toHaveLength(1);
   });
 
-  it('buy auto-fuses a same-star unit without using another slot', async () => {
+  it('buy keeps a duplicate in the bench until the player fuses it', async () => {
     const h = harness(5);
     const hash = h.redis.hashes.get(runtimeKey(h.match.id))!;
     const state = JSON.parse(hash.p1State);
@@ -187,8 +187,9 @@ describe('ShopService — P0-BE-14', () => {
     setShop(h, [offer('fighter')]);
     await h.service.buy(h.match.player1Id, h.match.id, 1, 0, randomUUID());
     const updated = readPlayerState(h);
-    expect(updated.bench.filter(Boolean)).toHaveLength(1);
-    expect(updated.bench[0]).toMatchObject({ unitId: 'fighter', star: 1, investedGold: 2 });
+    expect(updated.bench.filter(Boolean)).toHaveLength(2);
+    expect(updated.bench[0]).toMatchObject({ unitId: 'fighter', star: 0 });
+    expect(updated.bench[1]).toMatchObject({ unitId: 'fighter', star: 0 });
   });
 
   it('sell refunds the full invested cost of a fused unit', async () => {
@@ -248,6 +249,36 @@ describe('ShopService — P0-BE-14', () => {
     await expect(
       h.service.fuse(h.match.player1Id, h.match.id, 1, 'ranger', randomUUID()),
     ).rejects.toMatchObject({ response: { code: 'shop.cannot_fuse' } });
+  });
+
+  it('fuses the dragged source into the exact target instance', async () => {
+    const h = harness();
+    const hash = h.redis.hashes.get(runtimeKey(h.match.id))!;
+    const state = JSON.parse(hash.p1State);
+    const sourceId = randomUUID();
+    const targetId = randomUUID();
+    state.board[2] = { instanceId: sourceId, unitId: 'healer', star: 0, hp: 80, maxHp: 80 };
+    state.bench[5] = { instanceId: targetId, unitId: 'healer', star: 0, hp: 80, maxHp: 80 };
+    hash.p1State = JSON.stringify(state);
+    setShop(h, [offer('fighter')]);
+
+    await h.service.fuse(
+      h.match.player1Id,
+      h.match.id,
+      1,
+      'healer',
+      randomUUID(),
+      sourceId,
+      targetId,
+    );
+
+    const updated = readPlayerState(h);
+    expect(updated.board[2]).toBeNull();
+    expect(updated.bench[5]).toMatchObject({
+      instanceId: targetId,
+      unitId: 'healer',
+      star: 1,
+    });
   });
 
   it('never lets gold go negative', async () => {

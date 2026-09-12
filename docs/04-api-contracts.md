@@ -246,8 +246,17 @@ End-of-round.
 
 #### `game:shop:fuse`
 ```ts
-{ round: number; unitId: string; clientActionId: string }
+{
+  round: number;
+  unitId: string;
+  sourceInstanceId?: string; // dragged unit; paired with targetInstanceId
+  targetInstanceId?: string; // destination unit that keeps the upgrade
+  clientActionId: string;
+}
 ```
+
+Current clients send both instance ids for drag-to-fuse. The optional legacy
+shape is accepted during rollout, but buying a duplicate never auto-fuses it.
 
 #### `game:match:place`
 ```ts

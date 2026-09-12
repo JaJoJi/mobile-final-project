@@ -34,6 +34,7 @@ class HealthBar extends StatefulWidget {
     this.size = HealthBarSize.md,
     this.width,
     this.showText = true,
+    this.showTrack = true,
   }) : assert(max > 0);
 
   final int current;
@@ -41,6 +42,7 @@ class HealthBar extends StatefulWidget {
   final HealthBarSize size;
   final double? width;
   final bool showText;
+  final bool showTrack;
 
   double get thickness => switch (size) {
         HealthBarSize.sm => 4,
@@ -132,13 +134,14 @@ class _HealthBarState extends State<HealthBar>
           height: widget.thickness,
           child: Stack(
             children: [
-              DecoratedBox(
-                decoration: BoxDecoration(
-                  color: t.colorScheme.outlineVariant,
-                  borderRadius: AppRadius.allFull,
+              if (widget.showTrack)
+                DecoratedBox(
+                  decoration: BoxDecoration(
+                    color: t.colorScheme.outlineVariant,
+                    borderRadius: AppRadius.allFull,
+                  ),
+                  child: const SizedBox.expand(),
                 ),
-                child: const SizedBox.expand(),
-              ),
               Container(
                 width: track.isFinite ? track * _ghostFraction : 0,
                 decoration: BoxDecoration(

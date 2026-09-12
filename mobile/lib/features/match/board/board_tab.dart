@@ -1,39 +1,99 @@
 import 'package:flutter/material.dart';
 
+import '../../../core/theme/app_motion.dart';
 import '../../../core/theme/app_spacing.dart';
 import '../../../core/theme/game_theme.dart';
+import '../../../core/widgets/game_art_frame.dart';
 import '../../../core/widgets/health_bar.dart';
 import '../../../core/widgets/unit_avatar.dart';
 import '../../../shared/models/match_state.dart';
 import '../../../shared/models/unit.dart';
 import '../match_controller.dart';
 import 'board_slot.dart';
+import 'stone_board_tile.dart';
 
 class BoardTab extends StatefulWidget {
   const BoardTab({
     super.key,
     required this.match,
     required this.enabled,
+    required this.ready,
     required this.selection,
     required this.onSelect,
     required this.onDrop,
     required this.onSell,
-    required this.onFuse,
   });
 
   final MatchState match;
   final bool enabled;
+  final bool ready;
   final UnitSelection? selection;
   final void Function(RosterArea, int) onSelect;
   final void Function(RosterArea, int, UnitSelection) onDrop;
   final void Function(RosterArea, int) onSell;
-  final ValueChanged<Unit> onFuse;
 
   @override
   State<BoardTab> createState() => _BoardTabState();
 }
 
-class _BoardTabState extends State<BoardTab> {
+class _BoardTabState extends State<BoardTab>
+    with SingleTickerProviderStateMixin {
+  final Set<String> _precachedAssets = {};
+  late final AnimationController _reservePulse;
+
+  @override
+  void initState() {
+    super.initState();
+    _reservePulse = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 520),
+    );
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _precacheMatchArt();
+  }
+
+  @override
+  void didUpdateWidget(covariant BoardTab oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    final oldIds = oldWidget.match.roster.bench
+        .whereType<Unit>()
+        .map((unit) => unit.instanceId)
+        .toSet();
+    final purchasedUnitAppeared =
+        widget.match.roster.bench.whereType<Unit>().any(
+              (unit) =>
+                  !oldIds.contains(unit.instanceId) &&
+                  unit.instanceId.startsWith('pending-'),
+            );
+    if (purchasedUnitAppeared && !MediaQuery.disableAnimationsOf(context)) {
+      _reservePulse.forward(from: 0);
+    }
+    _precacheMatchArt();
+  }
+
+  @override
+  void dispose() {
+    _reservePulse.dispose();
+    super.dispose();
+  }
+
+  void _precacheMatchArt() {
+    final paths = <String>{
+      ...StoneBoardTile.allAssetPaths,
+      ...GameUiAssets.reserve,
+      for (final kind in UnitKind.values) kind.artPath,
+    };
+    for (final path in paths) {
+      if (_precachedAssets.add(path)) {
+        precacheImage(AssetImage(path), context);
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final roster = widget.match.roster;
@@ -66,8 +126,8 @@ class _BoardTabState extends State<BoardTab> {
           child: _BoardArena(
             roster: roster,
             enabled: widget.enabled,
+            locked: widget.ready,
             isSelected: _isSelected,
-            isFusable: (unit) => _isFusable(roster, unit),
             onSelect: widget.onSelect,
             onDrop: widget.onDrop,
           ),
@@ -75,18 +135,39 @@ class _BoardTabState extends State<BoardTab> {
         const SizedBox(height: AppSpacing.xs),
         SizedBox(
           height: 78,
-          child: _BenchBar(
-            roster: roster,
-            selected: selected,
-            selection: widget.selection,
-            enabled: widget.enabled,
-            isSelected: _isSelected,
-            isFusable: (unit) => _isFusable(roster, unit),
-            canFuse: selected != null && _canFuse(roster, selected),
-            onSelect: widget.onSelect,
-            onDrop: widget.onDrop,
-            onSell: widget.onSell,
-            onFuse: widget.onFuse,
+          child: AnimatedBuilder(
+            animation: _reservePulse,
+            builder: (context, child) {
+              final glow = Curves.easeOut.transform(1 - _reservePulse.value);
+              return DecoratedBox(
+                key: const ValueKey('reserve-purchase-pulse'),
+                decoration: BoxDecoration(
+                  borderRadius: AppRadius.allMd,
+                  boxShadow: _reservePulse.isAnimating
+                      ? [
+                          BoxShadow(
+                            color: scheme.primary.withValues(
+                              alpha: glow * 0.72,
+                            ),
+                            blurRadius: 20,
+                            spreadRadius: 3,
+                          ),
+                        ]
+                      : null,
+                ),
+                child: child,
+              );
+            },
+            child: _BenchBar(
+              roster: roster,
+              selected: selected,
+              selection: widget.selection,
+              enabled: widget.enabled,
+              isSelected: _isSelected,
+              onSelect: widget.onSelect,
+              onDrop: widget.onDrop,
+              onSell: widget.onSell,
+            ),
           ),
         ),
       ],
@@ -103,111 +184,103 @@ class _BoardTabState extends State<BoardTab> {
         selection.area == RosterArea.board ? roster.board : roster.bench;
     return selection.slot < list.length ? list[selection.slot] : null;
   }
-
-  bool _isFusable(PlayerRoster roster, Unit? unit) =>
-      unit != null && _canFuse(roster, unit);
-
-  bool _canFuse(PlayerRoster roster, Unit selected) =>
-      selected.star < 2 &&
-      [...roster.board, ...roster.bench]
-              .whereType<Unit>()
-              .where(
-                (unit) =>
-                    unit.unitId == selected.unitId &&
-                    unit.star == selected.star,
-              )
-              .length >=
-          2;
 }
 
 class _BoardArena extends StatelessWidget {
   const _BoardArena({
     required this.roster,
     required this.enabled,
+    required this.locked,
     required this.isSelected,
-    required this.isFusable,
     required this.onSelect,
     required this.onDrop,
   });
 
   final PlayerRoster roster;
   final bool enabled;
+  final bool locked;
   final bool Function(RosterArea, int) isSelected;
-  final bool Function(Unit?) isFusable;
   final void Function(RosterArea, int) onSelect;
   final void Function(RosterArea, int, UnitSelection) onDrop;
 
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
-    return Card(
-      margin: EdgeInsets.zero,
-      color: scheme.surfaceContainerLow.withValues(alpha: 0.20),
-      clipBehavior: Clip.antiAlias,
-      child: Padding(
-        padding: const EdgeInsets.all(AppSpacing.xs),
-        child: LayoutBuilder(
-          builder: (context, constraints) {
-            const labelGutter = 56.0;
-            final centeredWidth = constraints.maxWidth - (labelGutter * 2);
-            final side = centeredWidth < constraints.maxHeight
-                ? centeredWidth
-                : constraints.maxHeight;
-            final top = (constraints.maxHeight - side) / 2;
-            final left = (constraints.maxWidth - side) / 2;
-            return Stack(
-              children: [
-                Positioned(
-                  left: left - labelGutter,
-                  top: top,
-                  width: labelGutter,
-                  height: side,
-                  child: const Column(
-                    children: [
-                      Expanded(child: _RowLabel(row: 0)),
-                      Expanded(child: _RowLabel(row: 1)),
-                      Expanded(child: _RowLabel(row: 2)),
-                    ],
-                  ),
-                ),
-                Center(
-                  child: SizedBox.square(
-                    dimension: side,
-                    child: GridView.builder(
-                      key: const ValueKey('planning-board-grid'),
-                      physics: const NeverScrollableScrollPhysics(),
-                      gridDelegate:
-                          const SliverGridDelegateWithFixedCrossAxisCount(
-                        crossAxisCount: 3,
-                        mainAxisSpacing: AppSpacing.xs,
-                        crossAxisSpacing: AppSpacing.xs,
-                      ),
-                      itemCount: 9,
-                      itemBuilder: (context, slot) {
-                        final unit = roster.board[slot];
-                        return BoardSlot(
-                          key: ValueKey('board-$slot'),
-                          area: RosterArea.board,
-                          slot: slot,
-                          unit: unit,
-                          enabled: enabled,
-                          selected: isSelected(RosterArea.board, slot),
-                          fusable: isFusable(unit),
-                          expand: true,
-                          onTap: () => onSelect(RosterArea.board, slot),
-                          onLongPress: unit == null
-                              ? null
-                              : () => _showUnitDetails(context, unit),
-                          onDrop: (from) =>
-                              onDrop(RosterArea.board, slot, from),
-                        );
-                      },
+    return AnimatedOpacity(
+      key: const ValueKey('planning-board-dimmer'),
+      opacity: locked ? 0.68 : 1,
+      duration: AppMotion.maybe(
+        AppMotion.short4,
+        reduceMotion: MediaQuery.disableAnimationsOf(context),
+      ),
+      child: Card(
+        margin: EdgeInsets.zero,
+        color: scheme.surfaceContainerLow.withValues(alpha: 0.20),
+        clipBehavior: Clip.antiAlias,
+        child: Padding(
+          padding: const EdgeInsets.all(AppSpacing.xs),
+          child: LayoutBuilder(
+            builder: (context, constraints) {
+              const labelGutter = 56.0;
+              final centeredWidth = constraints.maxWidth - (labelGutter * 2);
+              final side = centeredWidth < constraints.maxHeight
+                  ? centeredWidth
+                  : constraints.maxHeight;
+              final top = (constraints.maxHeight - side) / 2;
+              final left = (constraints.maxWidth - side) / 2;
+              return Stack(
+                children: [
+                  Positioned(
+                    left: left - labelGutter,
+                    top: top,
+                    width: labelGutter,
+                    height: side,
+                    child: const Column(
+                      children: [
+                        Expanded(child: _RowLabel(row: 0)),
+                        Expanded(child: _RowLabel(row: 1)),
+                        Expanded(child: _RowLabel(row: 2)),
+                      ],
                     ),
                   ),
-                ),
-              ],
-            );
-          },
+                  Center(
+                    child: SizedBox.square(
+                      dimension: side,
+                      child: GridView.builder(
+                        key: const ValueKey('planning-board-grid'),
+                        physics: const NeverScrollableScrollPhysics(),
+                        gridDelegate:
+                            const SliverGridDelegateWithFixedCrossAxisCount(
+                          crossAxisCount: 3,
+                          mainAxisSpacing: AppSpacing.xs,
+                          crossAxisSpacing: AppSpacing.xs,
+                        ),
+                        itemCount: 9,
+                        itemBuilder: (context, slot) {
+                          final unit = roster.board[slot];
+                          return BoardSlot(
+                            key: ValueKey('board-$slot'),
+                            area: RosterArea.board,
+                            slot: slot,
+                            unit: unit,
+                            enabled: enabled,
+                            selected: isSelected(RosterArea.board, slot),
+                            expand: true,
+                            onTap: () => onSelect(RosterArea.board, slot),
+                            onLongPress: unit == null
+                                ? null
+                                : () => _showUnitDetails(context, unit),
+                            onDrop: (from) =>
+                                onDrop(RosterArea.board, slot, from),
+                          );
+                        },
+                      ),
+                    ),
+                  ),
+                ],
+              );
+            },
+          ),
         ),
       ),
     );
@@ -221,12 +294,9 @@ class _BenchBar extends StatelessWidget {
     required this.selection,
     required this.enabled,
     required this.isSelected,
-    required this.isFusable,
-    required this.canFuse,
     required this.onSelect,
     required this.onDrop,
     required this.onSell,
-    required this.onFuse,
   });
 
   final PlayerRoster roster;
@@ -234,19 +304,21 @@ class _BenchBar extends StatelessWidget {
   final UnitSelection? selection;
   final bool enabled;
   final bool Function(RosterArea, int) isSelected;
-  final bool Function(Unit?) isFusable;
-  final bool canFuse;
   final void Function(RosterArea, int) onSelect;
   final void Function(RosterArea, int, UnitSelection) onDrop;
   final void Function(RosterArea, int) onSell;
-  final ValueChanged<Unit> onFuse;
 
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
-    return Card(
-      margin: EdgeInsets.zero,
-      color: scheme.surfaceContainerHigh.withValues(alpha: 0.94),
+    return Material(
+      key: const ValueKey('reserve-panel'),
+      color: scheme.surface.withValues(alpha: 0.68),
+      shape: RoundedRectangleBorder(
+        borderRadius: AppRadius.allMd,
+        side: BorderSide(color: scheme.outline.withValues(alpha: 0.32)),
+      ),
+      clipBehavior: Clip.antiAlias,
       child: Padding(
         padding: const EdgeInsets.all(AppSpacing.xs),
         child: Row(
@@ -260,12 +332,6 @@ class _BenchBar extends StatelessWidget {
                     : null,
                 icon: const Icon(Icons.sell_outlined),
               ),
-              IconButton(
-                visualDensity: VisualDensity.compact,
-                tooltip: 'รวมดาว',
-                onPressed: enabled && canFuse ? () => onFuse(selected!) : null,
-                icon: const Icon(Icons.auto_awesome),
-              ),
               VerticalDivider(color: scheme.outlineVariant),
             ],
             Expanded(
@@ -277,19 +343,37 @@ class _BenchBar extends StatelessWidget {
                     const SizedBox(width: AppSpacing.xs),
                 itemBuilder: (context, slot) {
                   final unit = roster.bench[slot];
-                  return BoardSlot(
-                    key: ValueKey('bench-$slot'),
-                    area: RosterArea.bench,
-                    slot: slot,
-                    unit: unit,
-                    enabled: enabled,
-                    selected: isSelected(RosterArea.bench, slot),
-                    fusable: isFusable(unit),
-                    onTap: () => onSelect(RosterArea.bench, slot),
-                    onLongPress: unit == null
-                        ? null
-                        : () => _showUnitDetails(context, unit),
-                    onDrop: (from) => onDrop(RosterArea.bench, slot, from),
+                  return SizedBox(
+                    width: BoardSlot.extent + AppSpacing.xs,
+                    child: DecoratedBox(
+                      decoration: BoxDecoration(
+                        color: scheme.surfaceContainerHighest.withValues(
+                          alpha: 0.42,
+                        ),
+                        borderRadius: AppRadius.allSm,
+                        border: Border.all(
+                          color: scheme.outlineVariant.withValues(alpha: 0.48),
+                        ),
+                      ),
+                      child: Padding(
+                        padding: const EdgeInsets.all(AppSpacing.xxs),
+                        child: BoardSlot(
+                          key: ValueKey('bench-$slot'),
+                          area: RosterArea.bench,
+                          slot: slot,
+                          unit: unit,
+                          enabled: enabled,
+                          selected: isSelected(RosterArea.bench, slot),
+                          expand: true,
+                          onTap: () => onSelect(RosterArea.bench, slot),
+                          onLongPress: unit == null
+                              ? null
+                              : () => _showUnitDetails(context, unit),
+                          onDrop: (from) =>
+                              onDrop(RosterArea.bench, slot, from),
+                        ),
+                      ),
+                    ),
                   );
                 },
               ),
@@ -354,12 +438,21 @@ class _OpponentScout extends StatelessWidget {
   Widget build(BuildContext context) {
     final units = opponent.boardSummary.whereType<OpponentUnit>().toList();
     final game = Theme.of(context).extension<GameTheme>()!;
-    return Card(
-      margin: EdgeInsets.zero,
+    return Material(
+      key: const ValueKey('scout-panel-frame'),
+      color: Theme.of(context).colorScheme.surface.withValues(alpha: 0.68),
+      shape: RoundedRectangleBorder(
+        borderRadius: AppRadius.allMd,
+        side: BorderSide(color: game.enemy.withValues(alpha: 0.22)),
+      ),
+      clipBehavior: Clip.antiAlias,
       child: InkWell(
         onTap: () => _showFullBoard(context),
         child: Padding(
-          padding: const EdgeInsets.all(AppSpacing.sm),
+          padding: const EdgeInsets.symmetric(
+            horizontal: AppSpacing.md,
+            vertical: AppSpacing.sm,
+          ),
           child: LayoutBuilder(
             builder: (context, constraints) {
               final previewCount = constraints.maxWidth >= 520
@@ -461,15 +554,18 @@ class _OpponentScout extends StatelessWidget {
                         itemCount: 9,
                         itemBuilder: (context, slot) {
                           final entry = opponent.boardSummary[slot];
-                          return SizedBox.expand(
+                          return StoneBoardTile(
                             key: ValueKey('opponent-scout-$slot'),
+                            slot: slot,
+                            unitSide: entry == null ? null : UnitSide.enemy,
                             child: entry == null
                                 ? _EmptyOpponentSlot(slot: slot)
-                                : FittedBox(
+                                : SizedBox.expand(
                                     child: UnitAvatar(
                                       unitId: entry.unitId.toJson(),
                                       star: entry.star,
                                       side: UnitSide.enemy,
+                                      expand: true,
                                       onLongPress: () => _showUnitDetailSheet(
                                         context,
                                         unitId: entry.unitId,
@@ -500,21 +596,10 @@ class _EmptyOpponentSlot extends StatelessWidget {
   final int slot;
 
   @override
-  Widget build(BuildContext context) {
-    final game = Theme.of(context).extension<GameTheme>()!;
-    return Semantics(
-      label: 'ช่องคู่แข่ง ${slot + 1} ว่าง',
-      child: DecoratedBox(
-        decoration: BoxDecoration(
-          color: game.boardCellEmpty,
-          borderRadius: AppRadius.allSm,
-          border: Border.all(
-            color: Theme.of(context).colorScheme.outlineVariant,
-          ),
-        ),
-      ),
-    );
-  }
+  Widget build(BuildContext context) => Semantics(
+        label: 'ช่องคู่แข่ง ${slot + 1} ว่าง',
+        child: const SizedBox.expand(),
+      );
 }
 
 void _showUnitDetails(BuildContext context, Unit unit) {

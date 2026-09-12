@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'core/audio/game_audio.dart';
 import 'core/auth/auth_gate.dart';
 import 'core/error_logger.dart';
 import 'core/router.dart';
@@ -73,13 +74,14 @@ class _AutoChessAppState extends ConsumerState<AutoChessApp> {
 
   @override
   Widget build(BuildContext context) {
-    final themeMode = ref.watch(settingsProvider).themeMode;
+    final settings = ref.watch(settingsProvider);
+    ref.read(gameAudioProvider).enabled = settings.soundEnabled;
     return MaterialApp.router(
       title: 'Auto Chess',
       debugShowCheckedModeBanner: false,
       theme: buildTheme(Brightness.light),
       darkTheme: buildTheme(Brightness.dark),
-      themeMode: themeMode,
+      themeMode: settings.themeMode,
       routerConfig: _router,
     );
   }

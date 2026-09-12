@@ -42,6 +42,8 @@ export type RuntimeActionPayload = {
   slot?: number;
   unitId?: 'fighter' | 'healer' | 'ranger' | 'tank';
   unitInstanceId?: string;
+  sourceInstanceId?: string;
+  targetInstanceId?: string;
   target?: 'board' | 'bench';
   ready?: boolean;
 };
@@ -156,6 +158,8 @@ export class MatchRuntimeAdapter {
           payload.round,
           payload.unitId!,
           payload.clientActionId,
+          payload.sourceInstanceId,
+          payload.targetInstanceId,
         );
       case 'match:place':
         return this.place(
@@ -228,8 +232,18 @@ export class MatchRuntimeAdapter {
     round: number,
     unitId: 'fighter' | 'healer' | 'ranger' | 'tank',
     clientActionId: string,
+    sourceInstanceId?: string,
+    targetInstanceId?: string,
   ) {
-    return this.shop.fuse(userId, matchId, round, unitId, clientActionId);
+    return this.shop.fuse(
+      userId,
+      matchId,
+      round,
+      unitId,
+      clientActionId,
+      sourceInstanceId,
+      targetInstanceId,
+    );
   }
 
   /** Move a live roster instance between board/bench slots atomically. */

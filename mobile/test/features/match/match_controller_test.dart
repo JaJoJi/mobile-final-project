@@ -97,6 +97,33 @@ void main() {
     expect(BoardPosition.fromSlot(4), const BoardPosition(row: 1, col: 1));
   });
 
+  test('dropping a matching unit onto another emits an exact fuse pair',
+      () async {
+    transport.emitFromServer(
+      GameEvents.matchState,
+      _matchState(
+        bench: [
+          _unit('fighter-source', 'fighter'),
+          _unit('fighter-target', 'fighter'),
+          ...List<Object?>.filled(6, null),
+        ],
+      ),
+    );
+    await Future<void>.delayed(Duration.zero);
+
+    controller.place(
+      RosterArea.bench,
+      1,
+      const UnitSelection(RosterArea.bench, 0),
+    );
+
+    expect(transport.sent.last.event, GameActions.shopFuse);
+    final payload = transport.sent.last.data! as Map<String, dynamic>;
+    expect(payload['unitId'], 'fighter');
+    expect(payload['sourceInstanceId'], 'fighter-source');
+    expect(payload['targetInstanceId'], 'fighter-target');
+  });
+
   test('ready can be submitted and cancelled before both players are ready',
       () async {
     controller.toggleReady();

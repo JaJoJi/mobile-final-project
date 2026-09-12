@@ -16,12 +16,13 @@ void main() {
     return c;
   }
 
-  test('defaults: system theme, auto-reconnect on', () async {
+  test('defaults: system theme, auto-reconnect and sound on', () async {
     SharedPreferences.setMockInitialValues({});
     final c = await makeContainer();
     final s = c.read(settingsProvider);
     expect(s.themeMode, ThemeMode.system);
     expect(s.wsAutoReconnect, isTrue);
+    expect(s.soundEnabled, isTrue);
   });
 
   test('setThemeMode updates state and persists', () async {
@@ -47,16 +48,30 @@ void main() {
     );
   });
 
+  test('setSoundEnabled persists', () async {
+    SharedPreferences.setMockInitialValues({});
+    final c = await makeContainer();
+
+    await c.read(settingsProvider.notifier).setSoundEnabled(false);
+    expect(c.read(settingsProvider).soundEnabled, isFalse);
+    expect(
+      c.read(sharedPreferencesProvider).getBool('settings.soundEnabled'),
+      isFalse,
+    );
+  });
+
   test('reads persisted values on a fresh container (survives restart)',
       () async {
     SharedPreferences.setMockInitialValues({
       'settings.themeMode': 'light',
       'settings.wsAutoReconnect': false,
+      'settings.soundEnabled': false,
     });
     final c = await makeContainer();
     final s = c.read(settingsProvider);
     expect(s.themeMode, ThemeMode.light);
     expect(s.wsAutoReconnect, isFalse);
+    expect(s.soundEnabled, isFalse);
   });
 
   test('ignores a garbage persisted theme value', () async {

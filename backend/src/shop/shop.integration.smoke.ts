@@ -115,16 +115,28 @@ async function run() {
       `winners=${buyWinners} gold=${afterBuy.p1State.gold} units=${afterBuy.p1State.bench.filter(Boolean).length}`,
     );
 
-    // A second copy auto-fuses; selling returns both copies' full investment.
+    // A second copy stays separate until drag-to-fuse; selling then returns
+    // both copies' full investment.
     await redis.client.set(shopKey(match.id, users[0].id), oneOffer('fighter'), 'EX', 1800);
     await shops[0].buy(users[0].id, match.id, 1, 0, randomUUID());
     let state = parseRuntimeHash(match.id, await redis.client.hgetall(runtimeKey(match.id)))!.p1State;
+    const copies = state.bench.filter((unit) => unit !== null);
+    await shops[0].fuse(
+      users[0].id,
+      match.id,
+      1,
+      'fighter',
+      randomUUID(),
+      copies[0]!.instanceId,
+      copies[1]!.instanceId,
+    );
+    state = parseRuntimeHash(match.id, await redis.client.hgetall(runtimeKey(match.id)))!.p1State;
     const fused = state.bench.find(Boolean)!;
     await shops[0].sell(users[0].id, match.id, 1, 'bench', state.bench.indexOf(fused), randomUUID());
     state = parseRuntimeHash(match.id, await redis.client.hgetall(runtimeKey(match.id)))!.p1State;
     add(
       results,
-      'auto-fuse upgrades the unit and sell refunds the full investment',
+      'drag-to-fuse upgrades the target and sell refunds the full investment',
       fused.star === 1 && fused.investedGold === 2 && state.gold === 5 && state.bench.every((unit) => !unit),
       `star=${fused.star} invested=${fused.investedGold} goldAfterSell=${state.gold}`,
     );
