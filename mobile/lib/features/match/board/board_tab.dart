@@ -454,51 +454,51 @@ class _OpponentScout extends StatelessWidget {
             vertical: AppSpacing.sm,
           ),
           child: LayoutBuilder(
-              builder: (context, constraints) {
-                final previewCount = constraints.maxWidth >= 520
-                    ? 3
-                    : constraints.maxWidth >= 400
-                        ? 2
-                        : 1;
-                return Row(
-                  children: [
-                    Icon(Icons.visibility_outlined, color: game.enemy),
-                    const SizedBox(width: AppSpacing.sm),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            'สอดแนมคู่แข่ง',
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: Theme.of(context).textTheme.titleSmall,
-                          ),
-                          Text(
-                            '${units.length}/9 ตัว · แตะเพื่อดูกระดาน',
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: Theme.of(context).textTheme.bodySmall,
-                          ),
-                        ],
-                      ),
+            builder: (context, constraints) {
+              final previewCount = constraints.maxWidth >= 520
+                  ? 3
+                  : constraints.maxWidth >= 400
+                      ? 2
+                      : 1;
+              return Row(
+                children: [
+                  Icon(Icons.visibility_outlined, color: game.enemy),
+                  const SizedBox(width: AppSpacing.sm),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'สอดแนมคู่แข่ง',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: Theme.of(context).textTheme.titleSmall,
+                        ),
+                        Text(
+                          '${units.length}/9 ตัว · แตะเพื่อดูกระดาน',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: Theme.of(context).textTheme.bodySmall,
+                        ),
+                      ],
                     ),
-                    ...units.take(previewCount).map(
-                          (unit) => Padding(
-                            padding: const EdgeInsets.only(left: AppSpacing.xs),
-                            child: UnitAvatar(
-                              unitId: unit.unitId.toJson(),
-                              star: unit.star,
-                              size: UnitAvatarSize.sm,
-                              variant: UnitAvatarVariant.bench,
-                              side: UnitSide.enemy,
-                            ),
+                  ),
+                  ...units.take(previewCount).map(
+                        (unit) => Padding(
+                          padding: const EdgeInsets.only(left: AppSpacing.xs),
+                          child: UnitAvatar(
+                            unitId: unit.unitId.toJson(),
+                            star: unit.star,
+                            size: UnitAvatarSize.sm,
+                            variant: UnitAvatarVariant.bench,
+                            side: UnitSide.enemy,
                           ),
                         ),
-                    const Icon(Icons.chevron_right),
-                  ],
-                );
-              },
+                      ),
+                  const Icon(Icons.chevron_right),
+                ],
+              );
+            },
           ),
         ),
       ),

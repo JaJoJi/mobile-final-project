@@ -128,8 +128,7 @@ class _ShopTabState extends State<ShopTab> {
                         final offer =
                             index < offers.length ? offers[index] : null;
                         return Padding(
-                          padding:
-                              EdgeInsets.only(right: index == 4 ? 0 : gap),
+                          padding: EdgeInsets.only(right: index == 4 ? 0 : gap),
                           child: ShopCard(
                             key: ValueKey('shop-$index'),
                             offer: offer,

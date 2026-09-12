@@ -616,9 +616,7 @@ void main() {
     expect(
       tester.getCenter(find.text('กลับหน้าหลัก')).dy,
       closeTo(
-        tester
-            .getCenter(find.byKey(const ValueKey('back-to-lobby-button')))
-            .dy,
+        tester.getCenter(find.byKey(const ValueKey('back-to-lobby-button'))).dy,
         0.1,
       ),
     );
