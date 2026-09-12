@@ -40,6 +40,39 @@ export interface UnitInstance {
   effectiveSpd?: number;
 }
 
+/**
+ * Lightweight snapshot of a unit's state at a specific point in the battle.
+ * Sent with every combat event so the FE can render directly from the
+ * snapshot without tracking state locally.
+ */
+export interface UnitSnapshot {
+  instanceId: string;
+  unitId: UnitId;
+  star: Star;
+  hp: number;
+  maxHp: number;
+  slot: number;
+  side: Side;
+  alive: boolean;
+}
+
+export function snapshotUnit(u: UnitInstance): UnitSnapshot {
+  return {
+    instanceId: u.instanceId,
+    unitId: u.unitId,
+    star: u.star,
+    hp: u.hp,
+    maxHp: u.maxHp,
+    slot: u.slot,
+    side: u.side,
+    alive: u.alive,
+  };
+}
+
+export function snapshotAllUnits(sim: BattleSim): UnitSnapshot[] {
+  return [...sim.p1Units, ...sim.p2Units].map(snapshotUnit);
+}
+
 export interface BattleState {
   p1Units: UnitInstance[];
   p2Units: UnitInstance[];
@@ -61,11 +94,9 @@ export interface BattleSim {
  * player needs. Optional on the type so older clients keep parsing older
  * payloads; the engine always populates them, so the FE can rely on them.
  *
- * Why inline (vs. a separate `combat:units` snapshot) — `docs/05 §4` says
- * "All effects emit a `combat:event` for the UI" and P0-FE-05 will play
- * events in order to drive the animation. One self-contained event
- * removes a 2nd event the FE has to buffer + order against the combat
- * stream, and keeps the replay cache byte-identical for the same seed.
+ * `unitStates` carries the full board snapshot after this event, so the FE
+ * can render directly from it without tracking state locally. This
+ * eliminates phantom-unit bugs caused by client/server state divergence.
  */
 export interface CombatEventActorFields {
   /** Owning side of the unit (`'p1' | 'p2'`). Lets the renderer anchor on
@@ -77,6 +108,8 @@ export interface CombatEventActorFields {
   unitId?: UnitId;
   /** Fusion tier 0|1|2 — picks the star overlay and any per-star VFX. */
   star?: Star;
+  /** Full board snapshot after this event. FE renders from this. */
+  unitStates?: UnitSnapshot[];
 }
 
 export type CombatEvent =
@@ -178,8 +211,8 @@ export type CombatEvent =
       byUnitId?: UnitId;
       byStar?: Star;
     })
-  | { type: 'cycle_end'; cycle: number }
-  | { type: 'battle_end'; cycle: number; winner: Side | null };
+  | (CombatEventActorFields & { type: 'cycle_end'; cycle: number })
+  | (CombatEventActorFields & { type: 'battle_end'; cycle: number; winner: Side | null });
 
 export const enemySideOf = (side: Side): Side => (side === 'p1' ? 'p2' : 'p1');
 

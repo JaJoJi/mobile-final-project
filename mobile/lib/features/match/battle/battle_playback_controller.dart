@@ -22,9 +22,21 @@ class BattlePlaybackController extends StateNotifier<BattleVisualState> {
   BattlePlaybackController() : super(BattleVisualState.empty);
 
   /// Load a fresh batch from the server. Resets the playhead to 0.
+  ///
+  /// Filters out `cycle_end` and `battle_end` events which have no visual
+  /// representation and would otherwise waste 600 ms each on the playhead.
   void loadBatch(CombatEventBatch batch) {
+    final effective = batch.events
+        .where((e) => e is! CycleEndEvent && e is! BattleEndEvent)
+        .toList(growable: false);
     state = BattleVisualState(
-      batch: batch,
+      batch: CombatEventBatch(
+        matchId: batch.matchId,
+        round: batch.round,
+        cycleCount: batch.cycleCount,
+        endedAt: batch.endedAt,
+        events: effective,
+      ),
       playheadIndex: 0,
       playheadProgress: 0.0,
     );

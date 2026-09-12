@@ -30,6 +30,7 @@ import '../../../shared/models/combat_event.dart';
 import '../../../shared/models/match_state.dart';
 import '../../../shared/models/unit.dart';
 import '../board/stone_board_tile.dart';
+import '../match_controller.dart' show unitMaxHp;
 import 'battle_playback_controller.dart';
 import 'battle_visual_state.dart';
 
@@ -72,27 +73,30 @@ class _BattleViewState extends ConsumerState<BattleView>
       duration: kCombatEventDuration,
     );
     _playhead.addStatusListener(_onPlayheadStatusChanged);
+    _playhead.addListener(_pushPlayhead);
     _controller = ref.read(battlePlaybackProvider(widget.matchId).notifier);
   }
 
   @override
   void dispose() {
     _playhead.removeStatusListener(_onPlayheadStatusChanged);
+    _playhead.removeListener(_pushPlayhead);
     _playhead.dispose();
     super.dispose();
   }
 
   void _onBatch(CombatEventBatch batch) {
     if (!mounted) return;
-    final totalMs = batch.events.length * kCombatEventDuration.inMilliseconds;
-    developer.log(
-      'battle batch loaded: match=${batch.matchId} round=${batch.round} '
-      'events=${batch.events.length} cycleCount=${batch.cycleCount} '
-      'playbackMs=$totalMs',
-      name: 'BattleView',
-    );
     _acked = false;
     _controller.loadBatch(batch);
+    final filtered = _controller.state.batch!.events;
+    final totalMs = filtered.length * kCombatEventDuration.inMilliseconds;
+    developer.log(
+      'battle batch loaded: match=${batch.matchId} round=${batch.round} '
+      'events=${filtered.length} (of ${batch.events.length}) '
+      'cycleCount=${batch.cycleCount} playbackMs=$totalMs',
+      name: 'BattleView',
+    );
     _playhead
       ..duration = Duration(milliseconds: totalMs)
       ..forward(from: 0);
@@ -113,12 +117,6 @@ class _BattleViewState extends ConsumerState<BattleView>
 
   @override
   Widget build(BuildContext context) {
-    // Drive the controller with the playhead's value. We do this in build
-    // because the AnimationController needs a listener to repaint; a
-    // single addListener is enough because the controller is idempotent.
-    _playhead.removeListener(_pushPlayhead);
-    _playhead.addListener(_pushPlayhead);
-
     // Listen for batches arriving from the server.
     ref.listen<AsyncValue<CombatEventBatch>>(
       combatEventsProvider,
@@ -134,7 +132,7 @@ class _BattleViewState extends ConsumerState<BattleView>
     final view = ref.watch(battlePlaybackProvider(widget.matchId));
     final game = Theme.of(context).extension<GameTheme>()!;
 
-    // Derive per-unit visual states from events + playhead.
+    // Derive per-unit visual states from server snapshots in events.
     final unitStates = <UnitKey, UnitVisualState>{};
     if (view.batch != null) {
       unitStates.addAll(
@@ -142,18 +140,21 @@ class _BattleViewState extends ConsumerState<BattleView>
           events: view.batch!.events,
           playheadIndex: view.playheadIndex,
           playerBoard: widget.match.roster.board,
-        opponentBoard: widget.match.opponent.boardSummary
-            .map((o) => o == null
-                ? null
-                : Unit(
-                    instanceId: '',
-                    unitId: o.unitId,
-                    star: o.star,
-                    hp: 100,
-                    maxHp: 100,
-                  ),
-                    )
-            .toList(),
+          opponentBoard: widget.match.opponent.boardSummary
+              .asMap()
+              .entries
+              .map((entry) {
+                final o = entry.value;
+                if (o == null) return null;
+                return Unit(
+                  instanceId: 'opponent-${entry.key}-${o.unitId.name}',
+                  unitId: o.unitId,
+                  star: o.star,
+                  hp: unitMaxHp(o.unitId),
+                  maxHp: unitMaxHp(o.unitId),
+                );
+              })
+              .toList(),
         ),
       );
     }
@@ -226,13 +227,14 @@ class _BattleStage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final orientation = MediaQuery.orientationOf(context);
+    final enemySide = match.yourSide == MatchSide.p1 ? MatchSide.p2 : MatchSide.p1;
     final mine = _BoardPreview(
       boardKey: const ValueKey('battle-player-board'),
       label: 'คุณ',
       icon: Icons.shield_outlined,
       color: game.ally,
       units: match.roster.board,
-      side: MatchSide.p1,
+      side: match.yourSide,
       unitStates: unitStates,
       showLabel: orientation == Orientation.landscape,
     );
@@ -242,7 +244,7 @@ class _BattleStage extends StatelessWidget {
       icon: Icons.sports_martial_arts_outlined,
       color: game.enemy,
       opponentUnits: match.opponent.boardSummary,
-      side: MatchSide.p2,
+      side: enemySide,
       unitStates: unitStates,
       reverseRows: true,
       showLabel: orientation == Orientation.landscape,
@@ -388,6 +390,7 @@ class _BattleTileState extends State<BattleTile>
   bool _wasLunging = false;
   bool _wasShooting = false;
   bool _wasFloating = false;
+  int? _lastFloatingDamage;
 
   @override
   void initState() {
@@ -430,10 +433,12 @@ class _BattleTileState extends State<BattleTile>
     }
     _wasShooting = isShooting;
 
-    final hasFloating = widget.unitState?.floatingDamage != null;
-    if (hasFloating && !_wasFloating) {
+    final floatingAmount = widget.unitState?.floatingDamage;
+    final hasFloating = floatingAmount != null;
+    if (hasFloating && floatingAmount != _lastFloatingDamage) {
       _floatCtrl.forward(from: 0);
     }
+    _lastFloatingDamage = floatingAmount;
     _wasFloating = hasFloating;
   }
 
