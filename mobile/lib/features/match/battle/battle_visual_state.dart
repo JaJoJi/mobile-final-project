@@ -42,6 +42,8 @@ class UnitVisualState {
     required this.alive,
     this.isLunging = false,
     this.lungeTargetSlot,
+    this.lungeDx = 0,
+    this.lungeDy = 0,
     this.isShooting = false,
     this.projectileTargetSlot,
     this.projectileIcon = Icons.arrow_forward,
@@ -56,6 +58,10 @@ class UnitVisualState {
   final bool alive;
   final bool isLunging;
   final int? lungeTargetSlot;
+  /// Normalized horizontal lunge direction (-1 = left, +1 = right).
+  final double lungeDx;
+  /// Normalized vertical lunge direction (-1 = up toward enemy, +1 = down).
+  final double lungeDy;
   final bool isShooting;
   final int? projectileTargetSlot;
   final IconData projectileIcon;
@@ -128,7 +134,18 @@ Map<UnitKey, UnitVisualState> deriveUnitStates({
           );
           final existing = map[key];
           if (existing != null) {
-            if (isMelee) {
+            if (isMelee && current.targetSlot != null) {
+              // Melee always attacks cross-board, so vertical direction
+              // is simply toward the opponent side.
+              final attackerSlot = current.attackerSlot!;
+              final targetSlot = current.targetSlot!;
+              final aCol = attackerSlot % 3;
+              final tCol = targetSlot % 3;
+              var dCol = (tCol - aCol).toDouble();
+              // Normalize horizontal to -1..+1.
+              if (dCol.abs() > 1) dCol = dCol > 0 ? 1.0 : -1.0;
+              // Vertical: player lunges UP, enemy lunges DOWN.
+              final dRow = current.attackerSide == MatchSide.p2 ? 1.0 : -1.0;
               map[key] = UnitVisualState(
                 unitId: existing.unitId,
                 star: existing.star,
@@ -137,6 +154,8 @@ Map<UnitKey, UnitVisualState> deriveUnitStates({
                 alive: existing.alive,
                 isLunging: true,
                 lungeTargetSlot: current.targetSlot,
+                lungeDx: dCol,
+                lungeDy: dRow,
               );
             } else {
               final icon = current.attackerUnitId == UnitId.ranger

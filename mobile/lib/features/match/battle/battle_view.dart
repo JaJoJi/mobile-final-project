@@ -253,6 +253,7 @@ class _BattleStage extends StatelessWidget {
       color: game.ally,
       units: match.roster.board,
       side: match.yourSide,
+      mySide: match.yourSide,
       unitStates: unitStates,
       showLabel: orientation == Orientation.landscape,
     );
@@ -263,6 +264,7 @@ class _BattleStage extends StatelessWidget {
       color: game.enemy,
       opponentUnits: match.opponent.boardSummary,
       side: enemySide,
+      mySide: match.yourSide,
       unitStates: unitStates,
       reverseRows: true,
       showLabel: orientation == Orientation.landscape,
@@ -301,6 +303,7 @@ class _BoardPreview extends StatelessWidget {
     required this.icon,
     required this.color,
     required this.side,
+    required this.mySide,
     required this.unitStates,
     this.units,
     this.opponentUnits,
@@ -313,6 +316,7 @@ class _BoardPreview extends StatelessWidget {
   final IconData icon;
   final Color color;
   final MatchSide side;
+  final MatchSide mySide;
   final Map<UnitKey, UnitVisualState> unitStates;
   final List<Unit?>? units;
   final List<OpponentUnit?>? opponentUnits;
@@ -338,6 +342,9 @@ class _BoardPreview extends StatelessWidget {
           child: LayoutBuilder(
             builder: (context, constraints) {
               final boardSize = constraints.biggest.shortestSide;
+              final tileWidth = (boardSize - 2 * AppSpacing.xs) / 3;
+              final tileHeight = (boardSize - 2 * AppSpacing.xs) / 3;
+              final boardHeight = 3 * tileHeight + 2 * AppSpacing.xs;
               return Center(
                 child: SizedBox.square(
                   key: boardKey,
@@ -361,11 +368,14 @@ class _BoardPreview extends StatelessWidget {
                       return BattleTile(
                         slot: sourceIndex,
                         unitSide: uv != null
-                            ? (side == MatchSide.p1
+                            ? (side == mySide
                                 ? UnitSide.ally
                                 : UnitSide.enemy)
                             : null,
                         unitState: uv,
+                        tileWidth: tileWidth,
+                        tileHeight: tileHeight,
+                        boardHeight: boardHeight,
                       );
                     },
                   ),
@@ -387,11 +397,17 @@ class BattleTile extends StatefulWidget {
     required this.slot,
     required this.unitSide,
     this.unitState,
+    this.tileWidth = 80,
+    this.tileHeight = 80,
+    this.boardHeight = 260,
   });
 
   final int slot;
   final UnitSide? unitSide;
   final UnitVisualState? unitState;
+  final double tileWidth;
+  final double tileHeight;
+  final double boardHeight;
 
   @override
   State<BattleTile> createState() => _BattleTileState();
@@ -415,21 +431,21 @@ class _BattleTileState extends State<BattleTile>
     super.initState();
     _lungeCtrl = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 100), // short2
+      duration: const Duration(milliseconds: 250),
     );
     _lungeAnim = Tween<double>(begin: 0, end: 1).animate(
-      CurvedAnimation(parent: _lungeCtrl, curve: AppMotion.standard),
+      CurvedAnimation(parent: _lungeCtrl, curve: Curves.easeInOut),
     );
     _projCtrl = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 300), // medium2
+      duration: const Duration(milliseconds: 500),
     );
     _projAnim = Tween<double>(begin: 0, end: 1).animate(
-      CurvedAnimation(parent: _projCtrl, curve: AppMotion.standard),
+      CurvedAnimation(parent: _projCtrl, curve: Curves.linear),
     );
     _floatCtrl = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 300), // medium2
+      duration: const Duration(milliseconds: 800),
     );
     _floatAnim = Tween<double>(begin: 0, end: 1).animate(
       CurvedAnimation(parent: _floatCtrl, curve: AppMotion.standard),
@@ -473,17 +489,23 @@ class _BattleTileState extends State<BattleTile>
     final uv = widget.unitState;
     final isAlive = uv?.alive ?? false;
     return AnimatedOpacity(
-      opacity: isAlive || uv == null ? 1.0 : 0.3,
+      opacity: uv == null ? 0.3 : (isAlive ? 1.0 : 0.3),
       duration: const Duration(milliseconds: 200),
       child: AnimatedBuilder(
         animation: Listenable.merge([_lungeAnim, _projAnim]),
         builder: (context, child) {
-          // Lunge offset: toward the opponent side.
-          final isAlly = widget.unitSide == UnitSide.ally;
-          final dy = isAlly ? -12.0 : 12.0;
-          final lungeOffset = _lungeAnim.value * dy;
+          // Lunge: travel 80% of the way to the target tile and back.
+          // Vertical direction is derived from board position:
+          // ally board → UP toward opponent, enemy board → DOWN toward player.
+          final lungeDx = widget.unitState?.lungeDx ?? 0;
+          final lungeDy = widget.unitSide == UnitSide.ally ? -1.0 : 1.0;
+          final progress = _lungeAnim.value;
+          final lungeOffset = Offset(
+            lungeDx * widget.tileWidth * 0.8 * progress,
+            lungeDy * widget.tileHeight * 0.8 * progress,
+          );
           return Transform.translate(
-            offset: Offset(0, lungeOffset),
+            offset: lungeOffset,
             child: child,
           );
         },
@@ -515,16 +537,19 @@ class _BattleTileState extends State<BattleTile>
                   animation: _projAnim,
                   builder: (context, _) {
                     final isAlly = widget.unitSide == UnitSide.ally;
-                    // Fly upward for allies, downward for enemies.
-                    final travelDy = isAlly ? -60.0 : 60.0;
                     final progress = _projAnim.value;
+                    // Travel full board distance toward the target.
+                    final travelX =
+                        (widget.unitState?.lungeDx ?? 0) * widget.tileWidth * 1.2;
+                    final travelY =
+                        isAlly ? -widget.boardHeight : widget.boardHeight;
                     return Opacity(
-                      opacity: (1.0 - progress).clamp(0.0, 1.0),
+                      opacity: progress < 0.95 ? 1.0 : 0.0,
                       child: Transform.translate(
-                        offset: Offset(0, travelDy * progress),
+                        offset: Offset(travelX * progress, travelY * progress),
                         child: Icon(
                           uv.projectileIcon,
-                          size: 16,
+                          size: 24,
                           color: isAlly
                               ? Theme.of(context)
                                   .extension<GameTheme>()!
@@ -545,24 +570,37 @@ class _BattleTileState extends State<BattleTile>
                   animation: _floatAnim,
                   builder: (context, _) {
                     final progress = _floatAnim.value;
+                    final isHeal = uv.floatingIsHeal;
                     return Opacity(
                       opacity: (1.0 - progress).clamp(0.0, 1.0),
                       child: Align(
                         alignment: Alignment.topCenter,
                         child: Transform.translate(
-                          offset: Offset(0, -24 * progress),
-                          child: Text(
-                            uv.floatingIsHeal
-                                ? '+${uv.floatingDamage}'
-                                : '-${uv.floatingDamage}',
-                            style: TextStyle(
-                              fontSize: 12,
-                              fontWeight: FontWeight.bold,
-                              color: uv.floatingIsHeal
-                                  ? Colors.green
-                                  : Colors.red,
-                            ),
-                          ),
+                          offset: Offset(0, -32 * progress),
+                          child: isHeal
+                              ? Container(
+                                  padding: const EdgeInsets.all(4),
+                                  decoration: BoxDecoration(
+                                    color: Colors.green.withOpacity(0.3),
+                                    shape: BoxShape.circle,
+                                  ),
+                                  child: Text(
+                                    '+${uv.floatingDamage}',
+                                    style: const TextStyle(
+                                      fontSize: 14,
+                                      fontWeight: FontWeight.bold,
+                                      color: Colors.green,
+                                    ),
+                                  ),
+                                )
+                              : Text(
+                                  '-${uv.floatingDamage}',
+                                  style: const TextStyle(
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.bold,
+                                    color: Colors.red,
+                                  ),
+                                ),
                         ),
                       ),
                     );
