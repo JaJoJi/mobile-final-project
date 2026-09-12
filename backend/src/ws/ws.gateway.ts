@@ -315,7 +315,24 @@ export class WsGateway implements OnGatewayConnection, OnGatewayDisconnect, OnGa
   private async resumeActiveMatch(client: Socket, userId: string): Promise<void> {
     try {
       const match = await this.matches.findActiveByUserId(userId);
-      if (match && client.connected) this.subscribeToMatch(client, match.id);
+      if (match && client.connected) {
+        this.subscribeToMatch(client, match.id);
+        // If match is in battle phase, re-send cached combat events so the
+        // reconnecting client doesn't get stuck waiting for a missed event.
+        const cached = await this.runtime.getCombatResultForReconnect(match.id);
+        if (cached) {
+          const battleEnd = cached.events.at(-1) as Record<string, unknown> | undefined;
+          const cycleCount = battleEnd?.type === 'battle_end' ? battleEnd.cycle : 0;
+          client.emit('game:combat:events', {
+            matchId: match.id,
+            round: cached.round,
+            cycleCount,
+            endedAt: Date.now(),
+            events: cached.events,
+          });
+          this.logger.log(`combat events resent to reconnecting client user=${userId} match=${match.id}`);
+        }
+      }
     } catch (error: unknown) {
       this.logger.error(
         `active-match resume failed: user=${userId} error=${error instanceof Error ? error.message : String(error)}`,

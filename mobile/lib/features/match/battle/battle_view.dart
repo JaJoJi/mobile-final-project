@@ -15,6 +15,7 @@
 /// [BattlePlaybackController] is stable across all of them.
 library;
 
+import 'dart:async';
 import 'dart:developer' as developer;
 
 import 'package:flutter/material.dart';
@@ -64,6 +65,8 @@ class _BattleViewState extends ConsumerState<BattleView>
     with SingleTickerProviderStateMixin {
   late final AnimationController _playhead;
   late final BattlePlaybackController _controller;
+  Timer? _staleTimer;
+  bool _staleDetected = false;
 
   @override
   void initState() {
@@ -75,18 +78,33 @@ class _BattleViewState extends ConsumerState<BattleView>
     _playhead.addStatusListener(_onPlayheadStatusChanged);
     _playhead.addListener(_pushPlayhead);
     _controller = ref.read(battlePlaybackProvider(widget.matchId).notifier);
+    _startStaleTimer();
   }
 
   @override
   void dispose() {
+    _staleTimer?.cancel();
     _playhead.removeStatusListener(_onPlayheadStatusChanged);
     _playhead.removeListener(_pushPlayhead);
     _playhead.dispose();
     super.dispose();
   }
 
+  /// If no combat batch arrives within 10s, the WS likely missed the event.
+  void _startStaleTimer() {
+    _staleTimer = Timer(const Duration(seconds: 10), () {
+      if (!mounted) return;
+      final batch = ref.read(battlePlaybackProvider(widget.matchId)).batch;
+      if (batch == null) {
+        setState(() => _staleDetected = true);
+      }
+    });
+  }
+
   void _onBatch(CombatEventBatch batch) {
     if (!mounted) return;
+    _staleTimer?.cancel();
+    _staleDetected = false;
     _acked = false;
     _controller.loadBatch(batch);
     final filtered = _controller.state.batch!.events;
@@ -171,7 +189,7 @@ class _BattleViewState extends ConsumerState<BattleView>
             ),
           ),
           const SizedBox(height: AppSpacing.sm),
-          _BatchSummary(view: view),
+          _BatchSummary(view: view, staleDetected: _staleDetected),
           const SizedBox(height: AppSpacing.xs),
           ConstrainedBox(
             constraints: const BoxConstraints(maxWidth: 320),
@@ -562,14 +580,23 @@ class _BattleTileState extends State<BattleTile>
 /// "controller logs the batch" verification. Will be deleted once 2e
 /// replaces it with the real playback HUD.
 class _BatchSummary extends StatelessWidget {
-  const _BatchSummary({required this.view});
+  const _BatchSummary({required this.view, this.staleDetected = false});
 
   final BattleVisualState view;
+  final bool staleDetected;
 
   @override
   Widget build(BuildContext context) {
     final batch = view.batch;
     if (batch == null) {
+      if (staleDetected) {
+        return const Text(
+          'รอคิวการต่อสู้… (อาจต้องรอสักครู่ — กำลังเชื่อมต่อใหม่)',
+          key: ValueKey('battle-batch-summary'),
+          textAlign: TextAlign.center,
+          style: TextStyle(fontSize: 12, color: Colors.orange),
+        );
+      }
       return const Text(
         'รอคิวการต่อสู้…',
         key: ValueKey('battle-batch-summary'),
