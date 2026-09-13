@@ -31,12 +31,20 @@ function harness() {
     handleDisconnect: jest.fn(async () => true),
   };
   const matches = { findActiveByUserId: jest.fn(async () => null) };
+  const logger = {
+    setContext: jest.fn(),
+    debug: jest.fn(),
+    info: jest.fn(),
+    warn: jest.fn(),
+    error: jest.fn(),
+  };
   const gateway = new WsGateway(
     pubsub as any,
     auth as any,
     matchmaking as any,
     runtime as any,
     matches as any,
+    logger as any,
   );
   const socket = {
     id: 'socket-1',
@@ -45,7 +53,7 @@ function harness() {
     emit: jest.fn(),
     disconnect: jest.fn(),
   };
-  return { gateway, pubsub, matchmaking, runtime, matches, socket };
+  return { gateway, pubsub, matchmaking, runtime, matches, logger, socket };
 }
 
 describe('WsGateway P0-BE-10 handlers', () => {
@@ -89,6 +97,15 @@ describe('WsGateway P0-BE-10 handlers', () => {
       message: 'occupied',
       clientActionId: 'action-5',
     });
+    expect(h.logger.warn).toHaveBeenCalledWith(
+      {
+        code: 'place.slot_occupied',
+        clientActionId: 'action-5',
+        socketId: 'socket-1',
+        userId: 'user-1',
+      },
+      'WS game:error',
+    );
   });
 
   it('masks unexpected service errors', async () => {
@@ -148,6 +165,14 @@ describe('WS error envelope', () => {
 });
 
 describe('WsGameExceptionFilter → game:error (P1-BE-02)', () => {
+  function logger() {
+    return {
+      setContext: jest.fn(),
+      warn: jest.fn(),
+      error: jest.fn(),
+    };
+  }
+
   function hostFor(socket: unknown, data: unknown) {
     return {
       switchToWs: () => ({
@@ -158,8 +183,13 @@ describe('WsGameExceptionFilter → game:error (P1-BE-02)', () => {
   }
 
   it('emits game:error{code:invalid_payload} when the validation pipe rejects a payload', () => {
-    const filter = new WsGameExceptionFilter();
-    const socket = { emit: jest.fn() };
+    const log = logger();
+    const filter = new WsGameExceptionFilter(log as any);
+    const socket = {
+      id: 'socket-1',
+      data: { user: { sub: 'user-1' } },
+      emit: jest.fn(),
+    };
     // What @MessageBody(WsValidationPipe) throws on a bad body:
     const pipeError = new WsException({
       code: 'invalid_payload',
@@ -173,11 +203,25 @@ describe('WsGameExceptionFilter → game:error (P1-BE-02)', () => {
       message: 'round must be an integer',
       clientActionId: 'act-9',
     });
+    expect(log.warn).toHaveBeenCalledWith(
+      {
+        code: 'invalid_payload',
+        clientActionId: 'act-9',
+        socketId: 'socket-1',
+        userId: 'user-1',
+      },
+      'WS game:error',
+    );
   });
 
   it('masks an unexpected handler throw as game:error{code:internal}', () => {
-    const filter = new WsGameExceptionFilter();
-    const socket = { emit: jest.fn() };
+    const log = logger();
+    const filter = new WsGameExceptionFilter(log as any);
+    const socket = {
+      id: 'socket-1',
+      data: { user: { sub: 'user-1' } },
+      emit: jest.fn(),
+    };
 
     filter.catch(new Error('redis url with password'), hostFor(socket, undefined));
 
@@ -185,5 +229,13 @@ describe('WsGameExceptionFilter → game:error (P1-BE-02)', () => {
       code: 'internal',
       message: 'unexpected error',
     });
+    expect(log.error).toHaveBeenCalledWith(
+      expect.objectContaining({
+        code: 'internal',
+        socketId: 'socket-1',
+        userId: 'user-1',
+      }),
+      'unhandled WS error',
+    );
   });
 });

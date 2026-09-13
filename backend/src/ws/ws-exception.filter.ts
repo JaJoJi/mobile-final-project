@@ -1,5 +1,6 @@
-import { ArgumentsHost, Catch, ExceptionFilter, HttpException, Logger } from '@nestjs/common';
+import { ArgumentsHost, Catch, ExceptionFilter, HttpException } from '@nestjs/common';
 import { WsException } from '@nestjs/websockets';
+import { PinoLogger } from 'nestjs-pino';
 import type { Socket } from 'socket.io';
 
 export interface GameErrorEnvelope {
@@ -11,7 +12,9 @@ export interface GameErrorEnvelope {
 /** Converts pipe, Nest domain, and unexpected failures to the frozen WS shape. */
 @Catch()
 export class WsGameExceptionFilter implements ExceptionFilter {
-  private readonly logger = new Logger(WsGameExceptionFilter.name);
+  constructor(private readonly logger: PinoLogger) {
+    this.logger.setContext(WsGameExceptionFilter.name);
+  }
 
   catch(exception: unknown, host: ArgumentsHost): void {
     const ws = host.switchToWs();
@@ -21,10 +24,16 @@ export class WsGameExceptionFilter implements ExceptionFilter {
       ? data.clientActionId
       : undefined;
     const envelope = toGameError(exception, 'internal', clientActionId);
+    const context = {
+      code: envelope.code,
+      clientActionId,
+      socketId: client.id,
+      userId: client.data?.user?.sub,
+    };
     if (envelope.code === 'internal') {
-      this.logger.error(
-        `Unhandled WS error: ${exception instanceof Error ? exception.stack : String(exception)}`,
-      );
+      this.logger.error({ ...context, err: exception }, 'unhandled WS error');
+    } else {
+      this.logger.warn(context, 'WS game:error');
     }
     client.emit('game:error', envelope);
   }
