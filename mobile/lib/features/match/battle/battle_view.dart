@@ -107,7 +107,7 @@ class _BattleViewState extends ConsumerState<BattleView>
     _staleDetected = false;
     _acked = false;
     _controller.loadBatch(batch);
-    final filtered = _controller.events;
+    final filtered = _controller.events!;
     final totalMs = filtered.length * kCombatEventDuration.inMilliseconds;
     developer.log(
       'battle batch loaded: match=${batch.matchId} round=${batch.round} '
