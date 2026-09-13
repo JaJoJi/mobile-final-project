@@ -365,7 +365,6 @@ class _BoardPreview extends StatelessWidget {
               final boardSize = constraints.biggest.shortestSide;
               final tileWidth = (boardSize - 2 * AppSpacing.xs) / 3;
               final tileHeight = (boardSize - 2 * AppSpacing.xs) / 3;
-              final boardHeight = 3 * tileHeight + 2 * AppSpacing.xs;
               return Center(
                 child: SizedBox.square(
                   key: boardKey,
@@ -398,7 +397,6 @@ class _BoardPreview extends StatelessWidget {
                           unitState: uv,
                           tileWidth: tileWidth,
                           tileHeight: tileHeight,
-                          boardHeight: boardHeight,
                         );
                       },
                     ),
@@ -414,7 +412,9 @@ class _BoardPreview extends StatelessWidget {
 }
 
 /// Minimal tile — shows the unit avatar with HP, alive/dead state,
-/// and melee lunge animation derived from the event stream (2b+2c).
+/// hit-shake, heal-bubble, floating damage numbers, and debuff tint/badge
+/// derived from the event stream. Melee lunge/ranged projectile animation
+/// lives in [CombatEffectsOverlay], not here.
 class BattleTile extends StatefulWidget {
   const BattleTile({
     super.key,
@@ -423,7 +423,6 @@ class BattleTile extends StatefulWidget {
     this.unitState,
     this.tileWidth = 80,
     this.tileHeight = 80,
-    this.boardHeight = 260,
   });
 
   final int slot;
@@ -431,7 +430,6 @@ class BattleTile extends StatefulWidget {
   final UnitVisualState? unitState;
   final double tileWidth;
   final double tileHeight;
-  final double boardHeight;
 
   @override
   State<BattleTile> createState() => _BattleTileState();
