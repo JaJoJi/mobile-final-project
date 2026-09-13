@@ -106,8 +106,23 @@ class CombatEffectsOverlay extends StatelessWidget {
       return null;
     }
 
-    // Any already-mounted ancestor works as the shared coordinate space —
-    // the enclosing `Stack` is the natural, always-present choice.
+    // Walks up to the *nearest* `RenderStack`-or-subtype ancestor — not
+    // "any" ancestor works, despite what this comment used to claim. This
+    // is only correct because `CombatEffectsOverlay` is wired as a direct
+    // sibling of the boards inside the same `Stack` (see `battle_view.dart`
+    // for that wiring), so the nearest match is guaranteed to be the
+    // intended shared coordinate space.
+    //
+    // Two ways this can silently break, with no error or crash — just
+    // wrong on-screen positions:
+    //  - `RenderIndexedStack` (from Flutter's `IndexedStack`) is itself a
+    //    `RenderStack` subtype. An `IndexedStack` sitting anywhere between
+    //    this widget and the intended layout `Stack` would be picked up
+    //    instead, silently.
+    //  - Nothing in the type system ties this lookup to *the* boards'
+    //    `Stack` specifically. If this widget is ever nested one level
+    //    deeper inside another `Stack` (or `IndexedStack`) later, it will
+    //    silently resolve to that nearer, wrong ancestor instead.
     final ancestor = context.findAncestorRenderObjectOfType<RenderStack>();
     if (ancestor == null) return null;
 

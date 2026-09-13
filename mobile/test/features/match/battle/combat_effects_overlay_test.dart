@@ -31,7 +31,29 @@ void main() {
     events: [meleeAttack],
   );
 
-  Widget buildTree(double progress) {
+  const rangedAttack = AttackEvent(
+    cycle: 1,
+    tick: 1,
+    attacker: 'a',
+    target: 'b',
+    damage: 10,
+    targetHpAfter: 90,
+    attackerSide: MatchSide.p1,
+    attackerSlot: 0,
+    attackerUnitId: UnitId.ranger,
+    targetSide: MatchSide.p2,
+    targetSlot: 4,
+  );
+
+  const rangedBatch = CombatEventBatch(
+    matchId: 'm1',
+    round: 1,
+    cycleCount: 1,
+    endedAt: 0,
+    events: [rangedAttack],
+  );
+
+  Widget buildTree(double progress, {CombatEventBatch? eventsBatch}) {
     return MaterialApp(
       home: Scaffold(
         body: Stack(
@@ -51,7 +73,7 @@ void main() {
               child: SizedBox(key: opponentBoardKey),
             ),
             CombatEffectsOverlay(
-              batch: batch,
+              batch: eventsBatch ?? batch,
               playheadProgress: progress,
               myBoardKey: myBoardKey,
               opponentBoardKey: opponentBoardKey,
@@ -120,6 +142,39 @@ void main() {
     // y in [300, 600] on screen -> its center tile center is at (150, 450).
     expect(iconCenter.dx, closeTo(150, 5));
     expect(iconCenter.dy, closeTo(450, 5));
+  });
+
+  testWidgets(
+      'projectile mark moves linearly with subProgress, not the triangle wave',
+      (tester) async {
+    // 1 event total: playheadProgress 0.25 -> subProgress 0.25. The
+    // ranger's attackerUnitId makes `isMelee` false, so the widget should
+    // use `current.subProgress` directly (linear) rather than
+    // `triangleWave(subProgress)`.
+    await tester.pumpWidget(buildTree(0.25, eventsBatch: rangedBatch));
+
+    // Confirms melee/ranged branching selects the ranged icon, not the
+    // melee one.
+    expect(find.byKey(const ValueKey('projectile-mark')), findsOneWidget);
+    expect(find.byKey(const ValueKey('lunge-streak')), findsNothing);
+
+    final iconCenter =
+        tester.getCenter(find.byKey(const ValueKey('projectile-mark')));
+    // Attacker is slot 0 (top-left tile) of my board, which spans
+    // (0,0)-(300,300) -> tile center (48.667, 48.667). Target is slot 4
+    // (center tile) of the opponent board, which spans y in [300, 600]
+    // -> tile center (150, 450).
+    //
+    // Linear lerp at t = 0.25:
+    //   x = 48.667 + 0.25 * (150 - 48.667)   = 74.0
+    //   y = 48.667 + 0.25 * (450 - 48.667)   = 149.0
+    //
+    // If the melee (triangle-wave) branch were used by mistake,
+    // triangleWave(0.25) == 0.5, putting the icon at (99.333, 249.333)
+    // instead -- clearly distinct from the linear expectation below, so
+    // this assertion actually proves which branch ran.
+    expect(iconCenter.dx, closeTo(74.0, 5));
+    expect(iconCenter.dy, closeTo(149.0, 5));
   });
 
   testWidgets('renders nothing when a tile position cannot be resolved',
