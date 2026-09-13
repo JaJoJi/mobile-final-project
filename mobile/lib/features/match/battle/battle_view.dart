@@ -107,7 +107,7 @@ class _BattleViewState extends ConsumerState<BattleView>
     _staleDetected = false;
     _acked = false;
     _controller.loadBatch(batch);
-    final filtered = _controller.state.batch!.events;
+    final filtered = _controller.events;
     final totalMs = filtered.length * kCombatEventDuration.inMilliseconds;
     developer.log(
       'battle batch loaded: match=${batch.matchId} round=${batch.round} '
@@ -417,7 +417,6 @@ class _BattleTileState extends State<BattleTile> with TickerProviderStateMixin {
   late final Animation<double> _floatAnim;
   bool _wasLunging = false;
   bool _wasShooting = false;
-  bool _wasFloating = false;
   int? _lastFloatingDamage;
 
   @override
@@ -467,7 +466,6 @@ class _BattleTileState extends State<BattleTile> with TickerProviderStateMixin {
       _floatCtrl.forward(from: 0);
     }
     _lastFloatingDamage = floatingAmount;
-    _wasFloating = hasFloating;
   }
 
   @override
@@ -572,7 +570,7 @@ class _BattleTileState extends State<BattleTile> with TickerProviderStateMixin {
                               ? Container(
                                   padding: const EdgeInsets.all(4),
                                   decoration: BoxDecoration(
-                                    color: Colors.green.withOpacity(0.3),
+                                    color: Colors.green.withValues(alpha: 0.3),
                                     shape: BoxShape.circle,
                                   ),
                                   child: Text(
