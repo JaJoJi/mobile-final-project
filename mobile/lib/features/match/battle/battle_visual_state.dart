@@ -144,9 +144,7 @@ Map<UnitKey, UnitVisualState> deriveUnitStates({
   final slowStart = <String, List<_SlowEntry>>{};
   for (var i = 0; i < events.length; i++) {
     final e = events[i];
-    if (e is SlowEvent &&
-        e.targetSide != null &&
-        e.targetSlot != null) {
+    if (e is SlowEvent && e.targetSide != null && e.targetSlot != null) {
       final key = UnitKey(side: e.targetSide!, slot: e.targetSlot!);
       slowStart.putIfAbsent(e.by, () => []).add(_SlowEntry(key, i));
     }
