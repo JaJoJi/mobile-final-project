@@ -158,21 +158,18 @@ class _BattleViewState extends ConsumerState<BattleView>
           events: view.batch!.events,
           playheadIndex: view.playheadIndex,
           playerBoard: widget.match.roster.board,
-          opponentBoard: widget.match.opponent.boardSummary
-              .asMap()
-              .entries
-              .map((entry) {
-                final o = entry.value;
-                if (o == null) return null;
-                return Unit(
-                  instanceId: 'opponent-${entry.key}-${o.unitId.name}',
-                  unitId: o.unitId,
-                  star: o.star,
-                  hp: unitMaxHp(o.unitId),
-                  maxHp: unitMaxHp(o.unitId),
-                );
-              })
-              .toList(),
+          opponentBoard:
+              widget.match.opponent.boardSummary.asMap().entries.map((entry) {
+            final o = entry.value;
+            if (o == null) return null;
+            return Unit(
+              instanceId: 'opponent-${entry.key}-${o.unitId.name}',
+              unitId: o.unitId,
+              star: o.star,
+              hp: unitMaxHp(o.unitId),
+              maxHp: unitMaxHp(o.unitId),
+            );
+          }).toList(),
         ),
       );
     }
@@ -196,8 +193,7 @@ class _BattleViewState extends ConsumerState<BattleView>
             child: GameAssetButton(
               key: const ValueKey('skip-combat-button'),
               onPressed: widget.skipSubmitted ? null : widget.onSkip,
-              disabledReason:
-                  widget.skipSubmitted ? 'ส่งผลการทดสอบแล้ว' : null,
+              disabledReason: widget.skipSubmitted ? 'ส่งผลการทดสอบแล้ว' : null,
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
@@ -245,7 +241,8 @@ class _BattleStage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final orientation = MediaQuery.orientationOf(context);
-    final enemySide = match.yourSide == MatchSide.p1 ? MatchSide.p2 : MatchSide.p1;
+    final enemySide =
+        match.yourSide == MatchSide.p1 ? MatchSide.p2 : MatchSide.p1;
     final mine = _BoardPreview(
       boardKey: const ValueKey('battle-player-board'),
       label: 'คุณ',
@@ -368,9 +365,7 @@ class _BoardPreview extends StatelessWidget {
                       return BattleTile(
                         slot: sourceIndex,
                         unitSide: uv != null
-                            ? (side == mySide
-                                ? UnitSide.ally
-                                : UnitSide.enemy)
+                            ? (side == mySide ? UnitSide.ally : UnitSide.enemy)
                             : null,
                         unitState: uv,
                         tileWidth: tileWidth,
@@ -387,6 +382,28 @@ class _BoardPreview extends StatelessWidget {
       ],
     );
   }
+}
+
+/// Pixel offset for the melee lunge at a given animation [progress]
+/// (0 = origin tile, 1 = fully crossed to the enemy board).
+///
+/// Ally and enemy render on two separate board widgets (own `GridView`
+/// each, stacked with the versus divider between them) — there is no
+/// shared coordinate space between an attacker's tile and its target's.
+/// So, same as the ranged projectile below, "reaching the target" means
+/// traveling the full [boardHeight] toward the opponent, not one local
+/// tile step.
+Offset lungeOffsetFor({
+  required double lungeDx,
+  required double lungeDy,
+  required double tileWidth,
+  required double boardHeight,
+  required double progress,
+}) {
+  return Offset(
+    lungeDx * tileWidth * 1.2 * progress,
+    lungeDy * boardHeight * progress,
+  );
 }
 
 /// Minimal tile — shows the unit avatar with HP, alive/dead state,
@@ -413,8 +430,7 @@ class BattleTile extends StatefulWidget {
   State<BattleTile> createState() => _BattleTileState();
 }
 
-class _BattleTileState extends State<BattleTile>
-    with TickerProviderStateMixin {
+class _BattleTileState extends State<BattleTile> with TickerProviderStateMixin {
   late final AnimationController _lungeCtrl;
   late final Animation<double> _lungeAnim;
   late final AnimationController _projCtrl;
@@ -536,20 +552,23 @@ class _BattleTileState extends State<BattleTile>
           _shakeAnim,
         ]),
         builder: (context, child) {
-          // Lunge: travel 80% of the way to the target tile and back.
+          // Lunge: travel across to the enemy board and back.
           final lungeDx = widget.unitState?.lungeDx ?? 0;
-          final lungeDy = widget.unitSide == UnitSide.ally ? -1.0 : 1.0;
+          final lungeDy = widget.unitState?.lungeDy ??
+              (widget.unitSide == UnitSide.ally ? -1.0 : 1.0);
           final progress = _lungeAnim.value;
-          final lungeOffset = Offset(
-            lungeDx * widget.tileWidth * 0.8 * progress,
-            lungeDy * widget.tileHeight * 0.8 * progress,
+          final lungeOffset = lungeOffsetFor(
+            lungeDx: lungeDx,
+            lungeDy: lungeDy,
+            tileWidth: widget.tileWidth,
+            boardHeight: widget.boardHeight,
+            progress: progress,
           );
           // Hit shake: constant 6px horizontal offset, oscillating.
           final shakeProgress = _shakeAnim.value;
           final shakeOffset = shakeProgress > 0
               ? Offset(
-                  6 * (1 - shakeProgress) *
-                      (shakeProgress < 0.5 ? 1.0 : -1.0),
+                  6 * (1 - shakeProgress) * (shakeProgress < 0.5 ? 1.0 : -1.0),
                   0,
                 )
               : Offset.zero;
@@ -608,8 +627,9 @@ class _BattleTileState extends State<BattleTile>
                   builder: (context, _) {
                     final isAlly = widget.unitSide == UnitSide.ally;
                     final progress = _projAnim.value;
-                    final travelX =
-                        (widget.unitState?.lungeDx ?? 0) * widget.tileWidth * 1.2;
+                    final travelX = (widget.unitState?.lungeDx ?? 0) *
+                        widget.tileWidth *
+                        1.2;
                     final travelY =
                         isAlly ? -widget.boardHeight : widget.boardHeight;
                     return Opacity(
@@ -620,12 +640,8 @@ class _BattleTileState extends State<BattleTile>
                           uv.projectileIcon,
                           size: 24,
                           color: isAlly
-                              ? Theme.of(context)
-                                  .extension<GameTheme>()!
-                                  .ally
-                              : Theme.of(context)
-                                  .extension<GameTheme>()!
-                                  .enemy,
+                              ? Theme.of(context).extension<GameTheme>()!.ally
+                              : Theme.of(context).extension<GameTheme>()!.enemy,
                         ),
                       ),
                     );
