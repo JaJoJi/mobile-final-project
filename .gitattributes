@@ -1,2 +1,8 @@
 # Auto detect text files and perform LF normalization
 * text=auto
+
+# Scripts executed inside Linux containers must never be checked out with
+# CRLF (breaks the shebang: "/bin/bash^M: bad interpreter"). Pin LF
+# regardless of platform/editor/core.autocrlf.
+*.sh text eol=lf
+*.sql text eol=lf
