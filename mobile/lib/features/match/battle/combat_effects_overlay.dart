@@ -23,26 +23,6 @@ import '../../../shared/models/match_state.dart';
 import '../../../shared/models/unit.dart';
 import 'combat_effects_math.dart';
 
-/// Global-space center of board [slot], or `null` if [boardKey]'s
-/// `RenderBox` isn't laid out yet (first frame, or the widget was never
-/// mounted).
-Offset? tileGlobalCenter({
-  required GlobalKey boardKey,
-  required int slot,
-  required bool reverseRows,
-}) {
-  final board = boardKey.currentContext?.findRenderObject() as RenderBox?;
-  if (board == null || !board.hasSize) return null;
-  final local = tileLocalCenter(
-    slot: slot,
-    boardWidth: board.size.width,
-    boardHeight: board.size.height,
-    spacing: AppSpacing.xs,
-    reverseRows: reverseRows,
-  );
-  return board.localToGlobal(local);
-}
-
 /// Center of board [slot], expressed in [ancestor]'s local coordinate
 /// space instead of the screen's global space. Resolving relative to a
 /// shared ancestor (a single `localToGlobal(point, ancestor: ...)` hop)

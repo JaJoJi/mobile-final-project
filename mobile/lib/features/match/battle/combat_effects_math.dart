@@ -2,8 +2,9 @@
 ///
 /// Kept separate from `combat_effects_overlay.dart` so it can be unit
 /// tested without mounting any widget tree. Nothing in this file reads
-/// live layout — the one function that does (`tileGlobalCenter`) lives
-/// in `combat_effects_overlay.dart` and calls `tileLocalCenter` below.
+/// live layout — the one function that does (`_tileCenterRelativeTo`)
+/// lives in `combat_effects_overlay.dart` and calls `tileLocalCenter`
+/// below.
 library;
 
 import 'dart:ui' show Offset;
