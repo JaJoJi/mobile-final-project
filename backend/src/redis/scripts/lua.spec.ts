@@ -166,8 +166,13 @@ describe('ws_rate_limit.lua — shared sliding-window counter (P1-BE-01)', () =>
   const sequence = 'rate:ws:{user-1}:seq';
 
   beforeEach(async () => {
+    jest.spyOn(Date, 'now').mockReturnValue(1_726_000_000_000);
     redis = new RedisMock();
     await redis.flushall();
+  });
+
+  afterEach(() => {
+    jest.restoreAllMocks();
   });
 
   it('counts every hit atomically and expires its bookkeeping keys', async () => {

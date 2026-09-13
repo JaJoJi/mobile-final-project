@@ -737,8 +737,6 @@ class _AnimatedGoldBadgeState extends State<_AnimatedGoldBadge>
   }
 }
 
-
-
 class _InMatchError extends StatelessWidget {
   const _InMatchError({required this.message, required this.onDismiss});
 

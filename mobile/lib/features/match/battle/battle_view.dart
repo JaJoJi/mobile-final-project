@@ -158,21 +158,18 @@ class _BattleViewState extends ConsumerState<BattleView>
           events: view.batch!.events,
           playheadIndex: view.playheadIndex,
           playerBoard: widget.match.roster.board,
-          opponentBoard: widget.match.opponent.boardSummary
-              .asMap()
-              .entries
-              .map((entry) {
-                final o = entry.value;
-                if (o == null) return null;
-                return Unit(
-                  instanceId: 'opponent-${entry.key}-${o.unitId.name}',
-                  unitId: o.unitId,
-                  star: o.star,
-                  hp: unitMaxHp(o.unitId),
-                  maxHp: unitMaxHp(o.unitId),
-                );
-              })
-              .toList(),
+          opponentBoard:
+              widget.match.opponent.boardSummary.asMap().entries.map((entry) {
+            final o = entry.value;
+            if (o == null) return null;
+            return Unit(
+              instanceId: 'opponent-${entry.key}-${o.unitId.name}',
+              unitId: o.unitId,
+              star: o.star,
+              hp: unitMaxHp(o.unitId),
+              maxHp: unitMaxHp(o.unitId),
+            );
+          }).toList(),
         ),
       );
     }
@@ -196,8 +193,7 @@ class _BattleViewState extends ConsumerState<BattleView>
             child: GameAssetButton(
               key: const ValueKey('skip-combat-button'),
               onPressed: widget.skipSubmitted ? null : widget.onSkip,
-              disabledReason:
-                  widget.skipSubmitted ? 'ส่งผลการทดสอบแล้ว' : null,
+              disabledReason: widget.skipSubmitted ? 'ส่งผลการทดสอบแล้ว' : null,
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
@@ -245,7 +241,8 @@ class _BattleStage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final orientation = MediaQuery.orientationOf(context);
-    final enemySide = match.yourSide == MatchSide.p1 ? MatchSide.p2 : MatchSide.p1;
+    final enemySide =
+        match.yourSide == MatchSide.p1 ? MatchSide.p2 : MatchSide.p1;
     final mine = _BoardPreview(
       boardKey: const ValueKey('battle-player-board'),
       label: 'คุณ',
@@ -368,9 +365,7 @@ class _BoardPreview extends StatelessWidget {
                       return BattleTile(
                         slot: sourceIndex,
                         unitSide: uv != null
-                            ? (side == mySide
-                                ? UnitSide.ally
-                                : UnitSide.enemy)
+                            ? (side == mySide ? UnitSide.ally : UnitSide.enemy)
                             : null,
                         unitState: uv,
                         tileWidth: tileWidth,
@@ -413,8 +408,7 @@ class BattleTile extends StatefulWidget {
   State<BattleTile> createState() => _BattleTileState();
 }
 
-class _BattleTileState extends State<BattleTile>
-    with TickerProviderStateMixin {
+class _BattleTileState extends State<BattleTile> with TickerProviderStateMixin {
   late final AnimationController _lungeCtrl;
   late final Animation<double> _lungeAnim;
   late final AnimationController _projCtrl;
@@ -539,8 +533,9 @@ class _BattleTileState extends State<BattleTile>
                     final isAlly = widget.unitSide == UnitSide.ally;
                     final progress = _projAnim.value;
                     // Travel full board distance toward the target.
-                    final travelX =
-                        (widget.unitState?.lungeDx ?? 0) * widget.tileWidth * 1.2;
+                    final travelX = (widget.unitState?.lungeDx ?? 0) *
+                        widget.tileWidth *
+                        1.2;
                     final travelY =
                         isAlly ? -widget.boardHeight : widget.boardHeight;
                     return Opacity(
@@ -551,12 +546,8 @@ class _BattleTileState extends State<BattleTile>
                           uv.projectileIcon,
                           size: 24,
                           color: isAlly
-                              ? Theme.of(context)
-                                  .extension<GameTheme>()!
-                                  .ally
-                              : Theme.of(context)
-                                  .extension<GameTheme>()!
-                                  .enemy,
+                              ? Theme.of(context).extension<GameTheme>()!.ally
+                              : Theme.of(context).extension<GameTheme>()!.enemy,
                         ),
                       ),
                     );
