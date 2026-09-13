@@ -145,11 +145,10 @@ Map<UnitKey, UnitVisualState> deriveUnitStates({
   for (var i = 0; i < events.length; i++) {
     final e = events[i];
     if (e is SlowEvent &&
-        e.by != null &&
         e.targetSide != null &&
         e.targetSlot != null) {
       final key = UnitKey(side: e.targetSide!, slot: e.targetSlot!);
-      slowStart.putIfAbsent(e.by!, () => []).add(_SlowEntry(key, i));
+      slowStart.putIfAbsent(e.by, () => []).add(_SlowEntry(key, i));
     }
   }
   // debuffExpiry[targetKey] = event index where debuff clears.

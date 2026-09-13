@@ -574,7 +574,7 @@ class _BattleTileState extends State<BattleTile> with TickerProviderStateMixin {
               Positioned.fill(
                 child: DecoratedBox(
                   decoration: BoxDecoration(
-                    color: uv!.debuff!.color.withOpacity(0.15),
+                    color: uv!.debuff!.color.withValues(alpha: 0.15),
                     borderRadius: BorderRadius.circular(4),
                   ),
                 ),
@@ -633,8 +633,8 @@ class _BattleTileState extends State<BattleTile> with TickerProviderStateMixin {
                         height: radius * 2,
                         decoration: BoxDecoration(
                           shape: BoxShape.circle,
-                          color: Colors.green.withOpacity(
-                            (0.3 * (1.0 - progress)).clamp(0.0, 1.0),
+                          color: Colors.green.withValues(
+                            alpha: (0.3 * (1.0 - progress)).clamp(0.0, 1.0),
                           ),
                         ),
                       ),
