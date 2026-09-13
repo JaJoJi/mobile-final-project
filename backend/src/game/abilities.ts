@@ -36,6 +36,10 @@ export function applyLifesteal(
     unit: fighter.instanceId,
     amount: heal,
     hpAfter: fighter.hp,
+    unitSide: fighter.side,
+    unitSlot: fighter.slot,
+    unitUnitId: fighter.unitId,
+    unitStar: fighter.star,
   });
 }
 
@@ -71,11 +75,28 @@ export function applyPierce(
     attacker: ranger.instanceId,
     target: behind.instanceId,
     damage: dmg,
+    attackerSide: ranger.side,
+    attackerSlot: ranger.slot,
+    attackerUnitId: ranger.unitId,
+    attackerStar: ranger.star,
+    targetSide: behind.side,
+    targetSlot: behind.slot,
+    targetUnitId: behind.unitId,
+    targetStar: behind.star,
   });
 
   if (behind.hp === 0 && behind.alive) {
     behind.alive = false;
-    events.push({ type: 'death', cycle, tick, unit: behind.instanceId });
+    events.push({
+      type: 'death',
+      cycle,
+      tick,
+      unit: behind.instanceId,
+      unitSide: behind.side,
+      unitSlot: behind.slot,
+      unitUnitId: behind.unitId,
+      unitStar: behind.star,
+    });
   }
 }
 
@@ -118,7 +139,21 @@ export function applySlow(
   );
   target.slowActive = true;
   target.slowUntilHealerAct = healer.instanceId;
-  events.push({ type: 'slow', cycle, tick, target: target.instanceId, by: healer.instanceId });
+  events.push({
+    type: 'slow',
+    cycle,
+    tick,
+    target: target.instanceId,
+    by: healer.instanceId,
+    targetSide: target.side,
+    targetSlot: target.slot,
+    targetUnitId: target.unitId,
+    targetStar: target.star,
+    bySide: healer.side,
+    bySlot: healer.slot,
+    byUnitId: healer.unitId,
+    byStar: healer.star,
+  });
 }
 
 /**
@@ -153,6 +188,14 @@ function healOne(
     by: healer.instanceId,
     amount,
     targetHpAfter: target.hp,
+    targetSide: target.side,
+    targetSlot: target.slot,
+    targetUnitId: target.unitId,
+    targetStar: target.star,
+    bySide: healer.side,
+    bySlot: healer.slot,
+    byUnitId: healer.unitId,
+    byStar: healer.star,
   });
 }
 

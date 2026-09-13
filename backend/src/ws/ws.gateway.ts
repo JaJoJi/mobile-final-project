@@ -336,7 +336,25 @@ export class WsGateway implements OnGatewayConnection, OnGatewayDisconnect, OnGa
   private async resumeActiveMatch(client: Socket, userId: string): Promise<void> {
     try {
       const match = await this.matches.findActiveByUserId(userId);
-      if (match && client.connected) this.subscribeToMatch(client, match.id);
+      if (match && client.connected) {
+        this.subscribeToMatch(client, match.id);
+        const cached = await this.runtime.getCombatResultForReconnect(match.id);
+        if (cached) {
+          const battleEnd = cached.events.at(-1) as Record<string, unknown> | undefined;
+          const cycleCount = battleEnd?.type === 'battle_end' ? battleEnd.cycle : 0;
+          client.emit('game:combat:events', {
+            matchId: match.id,
+            round: cached.round,
+            cycleCount,
+            endedAt: Date.now(),
+            events: cached.events,
+          });
+          this.logger.info(
+            { userId, matchId: match.id },
+            'combat events resent to reconnecting client',
+          );
+        }
+      }
     } catch (error: unknown) {
       this.logger.error(
         { err: error, userId, socketId: client.id },
