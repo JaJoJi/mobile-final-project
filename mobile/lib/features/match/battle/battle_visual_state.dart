@@ -188,7 +188,7 @@ Map<UnitKey, UnitVisualState> deriveUnitStates({
     }
   }
 
-  // Apply animation flags from the current event (lunge, shoot, floating).
+  // Apply floating damage/heal from the current event.
   if (events.isNotEmpty && limit < events.length) {
     final current = events[limit];
 
