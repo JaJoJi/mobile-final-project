@@ -1,4 +1,5 @@
-import { Logger, UseFilters, UseGuards } from '@nestjs/common';
+import { UseFilters, UseGuards } from '@nestjs/common';
+import { PinoLogger } from 'nestjs-pino';
 import {
   ConnectedSocket,
   MessageBody,
@@ -74,8 +75,6 @@ interface SocketUser {
 // socket.io doesn't run @UseGuards for the lifecycle hooks.
 @UseGuards(WsThrottleGuard)
 export class WsGateway implements OnGatewayConnection, OnGatewayDisconnect, OnGatewayInit {
-  private readonly logger = new Logger(WsGateway.name);
-
   /** userId → set of currently-connected sockets (per-replica, in-memory). */
   private readonly connectedSockets = new Map<string, Set<Socket>>();
 
@@ -91,7 +90,10 @@ export class WsGateway implements OnGatewayConnection, OnGatewayDisconnect, OnGa
     private readonly matchmaking: MatchmakingService,
     private readonly runtime: MatchRuntimeAdapter,
     private readonly matches: MatchService,
-  ) {}
+    private readonly logger: PinoLogger,
+  ) {
+    logger.setContext(WsGateway.name);
+  }
 
   /**
    * Fires after the socket.io `Server` is constructed and bound to the
@@ -101,7 +103,7 @@ export class WsGateway implements OnGatewayConnection, OnGatewayDisconnect, OnGa
   afterInit(server: Server): void {
     this.server = server;
     this.pubsubBridge.setServer(server);
-    this.logger.log(`WsGateway ready on /game (instance=${process.env.HOSTNAME ?? 'local'})`);
+    this.logger.info(`WsGateway ready on /game (instance=${process.env.HOSTNAME ?? 'local'})`);
   }
 
   handleConnection(client: Socket): void {
@@ -119,7 +121,7 @@ export class WsGateway implements OnGatewayConnection, OnGatewayDisconnect, OnGa
     this.pubsubBridge.registerUserSocket(userId, client.id);
     void this.resumeActiveMatch(client, userId);
 
-    this.logger.log(
+    this.logger.info(
       `WS connected: user=${userId} socket=${client.id} ` +
         `(instance=${process.env.HOSTNAME ?? 'local'})`,
     );
@@ -149,7 +151,7 @@ export class WsGateway implements OnGatewayConnection, OnGatewayDisconnect, OnGa
       this.socketMatches.delete(client.id);
     }
 
-    this.logger.log(`WS disconnected: user=${user.sub} socket=${client.id}`);
+    this.logger.info(`WS disconnected: user=${user.sub} socket=${client.id}`);
     if (client.data.superseded !== true) {
       void this.handleClientDisconnect(user.sub).catch((error: unknown) => {
         this.logger.error(
@@ -176,7 +178,7 @@ export class WsGateway implements OnGatewayConnection, OnGatewayDisconnect, OnGa
       this.socketMatches.set(client.id, set);
     }
     set.add(matchId);
-    this.logger.log(`subscribed: socket=${client.id} match=${matchId}`);
+    this.logger.info(`subscribed: socket=${client.id} match=${matchId}`);
   }
 
   /**
@@ -273,7 +275,7 @@ export class WsGateway implements OnGatewayConnection, OnGatewayDisconnect, OnGa
     if (!existing || existing.size === 0) return;
     for (const old of existing) {
       if (old.id === current.id) continue;
-      this.logger.log(`dedup: kicking old socket=${old.id} for user=${userId}`);
+      this.logger.info(`dedup: kicking old socket=${old.id} for user=${userId}`);
       old.data.superseded = true;
       old.disconnect(true);
     }
@@ -330,7 +332,7 @@ export class WsGateway implements OnGatewayConnection, OnGatewayDisconnect, OnGa
             endedAt: Date.now(),
             events: cached.events,
           });
-          this.logger.log(`combat events resent to reconnecting client user=${userId} match=${match.id}`);
+          this.logger.info(`combat events resent to reconnecting client user=${userId} match=${match.id}`);
         }
       }
     } catch (error: unknown) {
