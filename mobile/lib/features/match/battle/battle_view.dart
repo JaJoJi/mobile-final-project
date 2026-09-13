@@ -413,28 +413,6 @@ class _BoardPreview extends StatelessWidget {
   }
 }
 
-/// Pixel offset for the melee lunge at a given animation [progress]
-/// (0 = origin tile, 1 = fully crossed to the enemy board).
-///
-/// Ally and enemy render on two separate board widgets (own `GridView`
-/// each, stacked with the versus divider between them) — there is no
-/// shared coordinate space between an attacker's tile and its target's.
-/// So, same as the ranged projectile below, "reaching the target" means
-/// traveling the full [boardHeight] toward the opponent, not one local
-/// tile step.
-Offset lungeOffsetFor({
-  required double lungeDx,
-  required double lungeDy,
-  required double tileWidth,
-  required double boardHeight,
-  required double progress,
-}) {
-  return Offset(
-    lungeDx * tileWidth * 1.2 * progress,
-    lungeDy * boardHeight * progress,
-  );
-}
-
 /// Minimal tile — shows the unit avatar with HP, alive/dead state,
 /// and melee lunge animation derived from the event stream (2b+2c).
 class BattleTile extends StatefulWidget {
@@ -460,18 +438,12 @@ class BattleTile extends StatefulWidget {
 }
 
 class _BattleTileState extends State<BattleTile> with TickerProviderStateMixin {
-  late final AnimationController _lungeCtrl;
-  late final Animation<double> _lungeAnim;
-  late final AnimationController _projCtrl;
-  late final Animation<double> _projAnim;
   late final AnimationController _floatCtrl;
   late final Animation<double> _floatAnim;
   late final AnimationController _shakeCtrl;
   late final Animation<double> _shakeAnim;
   late final AnimationController _healBubbleCtrl;
   late final Animation<double> _healBubbleAnim;
-  bool _wasLunging = false;
-  bool _wasShooting = false;
   bool _wasFloating = false;
   int? _lastFloatingDamage;
   int? _lastDamageIndex;
@@ -480,20 +452,6 @@ class _BattleTileState extends State<BattleTile> with TickerProviderStateMixin {
   @override
   void initState() {
     super.initState();
-    _lungeCtrl = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 250),
-    );
-    _lungeAnim = Tween<double>(begin: 0, end: 1).animate(
-      CurvedAnimation(parent: _lungeCtrl, curve: Curves.easeInOut),
-    );
-    _projCtrl = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 500),
-    );
-    _projAnim = Tween<double>(begin: 0, end: 1).animate(
-      CurvedAnimation(parent: _projCtrl, curve: Curves.linear),
-    );
     _floatCtrl = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 800),
@@ -522,18 +480,6 @@ class _BattleTileState extends State<BattleTile> with TickerProviderStateMixin {
   @override
   void didUpdateWidget(BattleTile oldWidget) {
     super.didUpdateWidget(oldWidget);
-    final isLunging = widget.unitState?.isLunging ?? false;
-    if (isLunging && !_wasLunging) {
-      _lungeCtrl.forward(from: 0).then((_) => _lungeCtrl.reverse());
-    }
-    _wasLunging = isLunging;
-
-    final isShooting = widget.unitState?.isShooting ?? false;
-    if (isShooting && !_wasShooting) {
-      _projCtrl.forward(from: 0);
-    }
-    _wasShooting = isShooting;
-
     final floatingAmount = widget.unitState?.floatingDamage;
     final hasFloating = floatingAmount != null;
     if (hasFloating && floatingAmount != _lastFloatingDamage) {
@@ -559,8 +505,6 @@ class _BattleTileState extends State<BattleTile> with TickerProviderStateMixin {
 
   @override
   void dispose() {
-    _lungeCtrl.dispose();
-    _projCtrl.dispose();
     _floatCtrl.dispose();
     _shakeCtrl.dispose();
     _healBubbleCtrl.dispose();
@@ -575,24 +519,8 @@ class _BattleTileState extends State<BattleTile> with TickerProviderStateMixin {
       opacity: uv == null ? 0.3 : (isAlive ? 1.0 : 0.3),
       duration: const Duration(milliseconds: 200),
       child: AnimatedBuilder(
-        animation: Listenable.merge([
-          _lungeAnim,
-          _projAnim,
-          _shakeAnim,
-        ]),
+        animation: _shakeAnim,
         builder: (context, child) {
-          // Lunge: travel across to the enemy board and back.
-          final lungeDx = widget.unitState?.lungeDx ?? 0;
-          final lungeDy = widget.unitState?.lungeDy ??
-              (widget.unitSide == UnitSide.ally ? -1.0 : 1.0);
-          final progress = _lungeAnim.value;
-          final lungeOffset = lungeOffsetFor(
-            lungeDx: lungeDx,
-            lungeDy: lungeDy,
-            tileWidth: widget.tileWidth,
-            boardHeight: widget.boardHeight,
-            progress: progress,
-          );
           // Hit shake: constant 6px horizontal offset, oscillating.
           final shakeProgress = _shakeAnim.value;
           final shakeOffset = shakeProgress > 0
@@ -602,7 +530,7 @@ class _BattleTileState extends State<BattleTile> with TickerProviderStateMixin {
                 )
               : Offset.zero;
           return Transform.translate(
-            offset: lungeOffset + shakeOffset,
+            offset: shakeOffset,
             child: child,
           );
         },
@@ -646,35 +574,6 @@ class _BattleTileState extends State<BattleTile> with TickerProviderStateMixin {
                   Icons.speed,
                   size: 12,
                   color: Color(0xFF42A5F5),
-                ),
-              ),
-            // Projectile overlay.
-            if (uv != null && uv.isShooting)
-              Positioned.fill(
-                child: AnimatedBuilder(
-                  animation: _projAnim,
-                  builder: (context, _) {
-                    final isAlly = widget.unitSide == UnitSide.ally;
-                    final progress = _projAnim.value;
-                    final travelX = (widget.unitState?.lungeDx ?? 0) *
-                        widget.tileWidth *
-                        1.2;
-                    final travelY =
-                        isAlly ? -widget.boardHeight : widget.boardHeight;
-                    return Opacity(
-                      opacity: progress < 0.95 ? 1.0 : 0.0,
-                      child: Transform.translate(
-                        offset: Offset(travelX * progress, travelY * progress),
-                        child: Icon(
-                          uv.projectileIcon,
-                          size: 24,
-                          color: isAlly
-                              ? Theme.of(context).extension<GameTheme>()!.ally
-                              : Theme.of(context).extension<GameTheme>()!.enemy,
-                        ),
-                      ),
-                    );
-                  },
                 ),
               ),
             // Heal bubble — expanding green circle, emit-and-dispose.
