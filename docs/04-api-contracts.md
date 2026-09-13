@@ -175,16 +175,50 @@ Sent to both clients when roster changes (purchase, sell, place).
 }
 
 type CombatEvent =
-  | { type: 'attack';      cycle: number; tick: number; attacker: string; target: string;  damage: number; targetHpAfter: number }
-  | { type: 'death';       cycle: number; tick: number; unit: string }
-  | { type: 'revive';      cycle: number; tick: number; unit: string;  hpAfter: number }
-  | { type: 'heal';        cycle: number; tick: number; target: string; by: string;  amount: number; targetHpAfter: number }
-  | { type: 'lifesteal';   cycle: number; tick: number; unit: string;  amount: number; hpAfter: number }
-  | { type: 'pierce';      cycle: number; tick: number; attacker: string; target: string;  damage: number }
-  | { type: 'slow';        cycle: number; tick: number; target: string; by: string }
+  | { type: 'attack';      cycle: number; tick: number; attacker: string; target: string;  damage: number; targetHpAfter: number;
+      attackerSide?: 'p1' | 'p2'; attackerSlot?: number; attackerUnitId?: 'fighter' | 'healer' | 'ranger' | 'tank'; attackerStar?: 0 | 1 | 2;
+      targetSide?:   'p1' | 'p2'; targetSlot?:   number; targetUnitId?:   'fighter' | 'healer' | 'ranger' | 'tank'; targetStar?:   0 | 1 | 2 }
+  | { type: 'death';       cycle: number; tick: number; unit: string;
+      unitSide?: 'p1' | 'p2'; unitSlot?: number; unitUnitId?: 'fighter' | 'healer' | 'ranger' | 'tank'; unitStar?: 0 | 1 | 2 }
+  | { type: 'revive';      cycle: number; tick: number; unit: string;  hpAfter: number;
+      unitSide?: 'p1' | 'p2'; unitSlot?: number; unitUnitId?: 'fighter' | 'healer' | 'ranger' | 'tank'; unitStar?: 0 | 1 | 2 }
+  | { type: 'heal';        cycle: number; tick: number; target: string; by: string;  amount: number; targetHpAfter: number;
+      targetSide?: 'p1' | 'p2'; targetSlot?: number; targetUnitId?: 'fighter' | 'healer' | 'ranger' | 'tank'; targetStar?: 0 | 1 | 2;
+      bySide?:    'p1' | 'p2'; bySlot?:    number; byUnitId?:    'fighter' | 'healer' | 'ranger' | 'tank'; byStar?:    0 | 1 | 2 }
+  | { type: 'lifesteal';   cycle: number; tick: number; unit: string;  amount: number; hpAfter: number;
+      unitSide?: 'p1' | 'p2'; unitSlot?: number; unitUnitId?: 'fighter' | 'healer' | 'ranger' | 'tank'; unitStar?: 0 | 1 | 2 }
+  | { type: 'pierce';      cycle: number; tick: number; attacker: string; target: string;  damage: number;
+      attackerSide?: 'p1' | 'p2'; attackerSlot?: number; attackerUnitId?: 'fighter' | 'healer' | 'ranger' | 'tank'; attackerStar?: 0 | 1 | 2;
+      targetSide?:   'p1' | 'p2'; targetSlot?:   number; targetUnitId?:   'fighter' | 'healer' | 'ranger' | 'tank'; targetStar?:   0 | 1 | 2 }
+  | { type: 'slow';        cycle: number; tick: number; target: string; by: string;
+      targetSide?: 'p1' | 'p2'; targetSlot?: number; targetUnitId?: 'fighter' | 'healer' | 'ranger' | 'tank'; targetStar?: 0 | 1 | 2;
+      bySide?:    'p1' | 'p2'; bySlot?:    number; byUnitId?:    'fighter' | 'healer' | 'ranger' | 'tank'; byStar?:    0 | 1 | 2 }
   | { type: 'cycle_end';   cycle: number }
   | { type: 'battle_end';  cycle: number; winner: 'p1' | 'p2' | null /* tie */ };
 ```
+
+#### `CombatEvent` enriched fields (P0-FE-05 prep)
+
+The `*Side` / `*Slot` / `*UnitId` / `*Star` fields are **optional on the type** but **always populated by the engine**. They let the client animation player resolve any event to world coordinates + the right sprite without an out-of-band snapshot:
+
+| Suffix | Meaning | Range |
+|---|---|---|
+| `*Side` | Owning side of the unit | `'p1' \| 'p2'` |
+| `*Slot` | Row-major board slot (`row = slot ~/ 3`, `col = slot % 3`) | `0..8` |
+| `*UnitId` | Archetype | `'fighter' \| 'healer' \| 'ranger' \| 'tank'` |
+| `*Star` | Fusion tier (drives the star overlay + any per-star VFX) | `0 \| 1 \| 2` |
+
+Per-event mapping:
+
+| Event | Fields that name an actor | Fields that name a target |
+|---|---|---|
+| `attack` | `attackerSide` / `attackerSlot` / `attackerUnitId` / `attackerStar` | `targetSide` / `targetSlot` / `targetUnitId` / `targetStar` |
+| `pierce` | `attackerSide` / `attackerSlot` / `attackerUnitId` / `attackerStar` | `targetSide` / `targetSlot` / `targetUnitId` / `targetStar` |
+| `death` / `revive` / `lifesteal` | — | `unitSide` / `unitSlot` / `unitUnitId` / `unitStar` |
+| `heal` / `slow` | `bySide` / `bySlot` / `byUnitId` / `byStar` | `targetSide` / `targetSlot` / `targetUnitId` / `targetStar` |
+| `cycle_end` / `battle_end` | — | — |
+
+Older clients ignore the extra fields (defensive parse); the engine never omits them, so the FE can rely on them being present.
 
 The 60-second combat-done timeout applies after this event is emitted. If at least one client fails to ack within 60 s, the server forces the next phase.
 

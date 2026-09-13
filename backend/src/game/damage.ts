@@ -31,7 +31,17 @@ export function applyDamage(
   ) {
     target.hp = Math.floor(target.maxHp * REVIVE_HP_FRACTION);
     target.revivedThisRound = true;
-    events.push({ type: 'revive', cycle, tick, unit: target.instanceId, hpAfter: target.hp });
+    events.push({
+      type: 'revive',
+      cycle,
+      tick,
+      unit: target.instanceId,
+      hpAfter: target.hp,
+      unitSide: target.side,
+      unitSlot: target.slot,
+      unitUnitId: target.unitId,
+      unitStar: target.star,
+    });
     return;
   }
 
@@ -39,7 +49,16 @@ export function applyDamage(
   if (target.hp <= 0) {
     target.hp = 0;
     target.alive = false;
-    events.push({ type: 'death', cycle, tick, unit: target.instanceId });
+    events.push({
+      type: 'death',
+      cycle,
+      tick,
+      unit: target.instanceId,
+      unitSide: target.side,
+      unitSlot: target.slot,
+      unitUnitId: target.unitId,
+      unitStar: target.star,
+    });
   }
 
   events.push({
@@ -50,5 +69,13 @@ export function applyDamage(
     target: target.instanceId,
     damage: dmg,
     targetHpAfter: target.hp,
+    attackerSide: source.side,
+    attackerSlot: source.slot,
+    attackerUnitId: source.unitId,
+    attackerStar: source.star,
+    targetSide: target.side,
+    targetSlot: target.slot,
+    targetUnitId: target.unitId,
+    targetStar: target.star,
   });
 }

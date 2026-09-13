@@ -84,6 +84,10 @@ export class CombatCoordinator {
         cycleCount,
         endedAt: Date.now(),
         events,
+        initialBoard: {
+          p1: runtime.p1State.board,
+          p2: runtime.p2State.board,
+        },
       });
       await this.queue.scheduleCombatDoneTimeout(
         matchId,

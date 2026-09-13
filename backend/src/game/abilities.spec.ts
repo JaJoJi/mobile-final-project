@@ -16,7 +16,18 @@ describe('Fighter Lifesteal (docs/05 §4.1)', () => {
     applyLifesteal(fighter, 22, 1, 1, events);
     expect(fighter.hp).toBe(51);
     expect(events).toEqual([
-      { type: 'lifesteal', cycle: 1, tick: 1, unit: fighter.instanceId, amount: 1, hpAfter: 51 },
+      {
+        type: 'lifesteal',
+        cycle: 1,
+        tick: 1,
+        unit: fighter.instanceId,
+        amount: 1,
+        hpAfter: 51,
+        unitSide: 'p1',
+        unitSlot: 0,
+        unitUnitId: 'fighter',
+        unitStar: 1,
+      },
     ]);
   });
 
@@ -47,7 +58,22 @@ describe('Ranger Pierce (docs/05 §4.2)', () => {
 
     expect(behind.hp).toBe(99); // floor(18 * 0.1) = 1
     expect(events).toEqual([
-      { type: 'pierce', cycle: 1, tick: 1, attacker: ranger.instanceId, target: 'behind', damage: 1 },
+      {
+        type: 'pierce',
+        cycle: 1,
+        tick: 1,
+        attacker: ranger.instanceId,
+        target: 'behind',
+        damage: 1,
+        attackerSide: 'p1',
+        attackerSlot: 0,
+        attackerUnitId: 'ranger',
+        attackerStar: 1,
+        targetSide: 'p2',
+        targetSlot: 3,
+        targetUnitId: 'fighter',
+        targetStar: 0,
+      },
     ]);
   });
 
@@ -117,7 +143,21 @@ describe('Healer Slow (docs/05 §4.4)', () => {
     expect(enemy.slowActive).toBe(true);
     expect(enemy.slowUntilHealerAct).toBe(healer.instanceId);
     expect(events).toEqual([
-      { type: 'slow', cycle: 1, tick: 1, target: 'enemy', by: healer.instanceId },
+      {
+        type: 'slow',
+        cycle: 1,
+        tick: 1,
+        target: 'enemy',
+        by: healer.instanceId,
+        targetSide: 'p2',
+        targetSlot: 0,
+        targetUnitId: 'fighter',
+        targetStar: 0,
+        bySide: 'p1',
+        bySlot: 0,
+        byUnitId: 'healer',
+        byStar: 1,
+      },
     ]);
   });
 
