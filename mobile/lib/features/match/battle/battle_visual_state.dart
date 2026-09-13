@@ -5,7 +5,7 @@
 /// snapshot, eliminating phantom-unit bugs caused by state divergence.
 library;
 
-import 'package:flutter/material.dart' show Color, IconData, Icons;
+import 'package:flutter/material.dart' show Color;
 
 import '../../../shared/models/combat_event.dart';
 import '../../../shared/models/match_state.dart' show MatchSide;
@@ -48,13 +48,6 @@ class UnitVisualState {
     required this.hp,
     required this.maxHp,
     required this.alive,
-    this.isLunging = false,
-    this.lungeTargetSlot,
-    this.lungeDx = 0,
-    this.lungeDy = 0,
-    this.isShooting = false,
-    this.projectileTargetSlot,
-    this.projectileIcon = Icons.arrow_forward,
     this.floatingDamage,
     this.floatingIsHeal = false,
     this.healEventIndex,
@@ -67,15 +60,6 @@ class UnitVisualState {
   final int hp;
   final int maxHp;
   final bool alive;
-  final bool isLunging;
-  final int? lungeTargetSlot;
-  /// Normalized horizontal lunge direction (-1 = left, +1 = right).
-  final double lungeDx;
-  /// Normalized vertical lunge direction (-1 = up toward enemy, +1 = down).
-  final double lungeDy;
-  final bool isShooting;
-  final int? projectileTargetSlot;
-  final IconData projectileIcon;
   final int? floatingDamage;
   final bool floatingIsHeal;
 
@@ -142,7 +126,10 @@ Map<UnitKey, UnitVisualState> deriveUnitStates({
   final slowStart = <String, List<_SlowEntry>>{};
   for (var i = 0; i < events.length; i++) {
     final e = events[i];
-    if (e is SlowEvent && e.by != null && e.targetSide != null && e.targetSlot != null) {
+    if (e is SlowEvent &&
+        e.by != null &&
+        e.targetSide != null &&
+        e.targetSlot != null) {
       final key = UnitKey(side: e.targetSide!, slot: e.targetSlot!);
       slowStart.putIfAbsent(e.by!, () => []).add(_SlowEntry(key, i));
     }
@@ -172,7 +159,9 @@ Map<UnitKey, UnitVisualState> deriveUnitStates({
     UnitKey? target;
     if (e is HealEvent && e.targetSide != null && e.targetSlot != null) {
       target = UnitKey(side: e.targetSide!, slot: e.targetSlot!);
-    } else if (e is LifestealEvent && e.unitSide != null && e.unitSlot != null) {
+    } else if (e is LifestealEvent &&
+        e.unitSide != null &&
+        e.unitSlot != null) {
       target = UnitKey(side: e.unitSide!, slot: e.unitSlot!);
     }
     if (target != null) {
@@ -189,7 +178,9 @@ Map<UnitKey, UnitVisualState> deriveUnitStates({
     UnitKey? target;
     if (e is AttackEvent && e.targetSide != null && e.targetSlot != null) {
       target = UnitKey(side: e.targetSide!, slot: e.targetSlot!);
-    } else if (e is PierceEvent && e.targetSide != null && e.targetSlot != null) {
+    } else if (e is PierceEvent &&
+        e.targetSide != null &&
+        e.targetSlot != null) {
       target = UnitKey(side: e.targetSide!, slot: e.targetSlot!);
     }
     if (target != null) {
@@ -203,7 +194,9 @@ Map<UnitKey, UnitVisualState> deriveUnitStates({
 
     switch (current) {
       case AttackEvent():
-        // Floating damage on target.
+        // Floating damage on target. Lunge/projectile visuals are driven
+        // directly from the event stream by CombatEffectsOverlay, not
+        // from UnitVisualState (P4-FE-01).
         _setFloating(
           current.targetSide,
           current.targetSlot,
@@ -211,54 +204,6 @@ Map<UnitKey, UnitVisualState> deriveUnitStates({
           false,
           map,
         );
-        // Lunging / shooting on attacker.
-        if (current.attackerSlot != null &&
-            current.attackerSide != null &&
-            current.attackerUnitId != null) {
-          final isMelee = current.attackerUnitId == UnitId.fighter ||
-              current.attackerUnitId == UnitId.tank;
-          final key = UnitKey(
-            side: current.attackerSide!,
-            slot: current.attackerSlot!,
-          );
-          final existing = map[key];
-          if (existing != null) {
-            if (isMelee && current.targetSlot != null) {
-              final attackerSlot = current.attackerSlot!;
-              final targetSlot = current.targetSlot!;
-              final aCol = attackerSlot % 3;
-              final tCol = targetSlot % 3;
-              var dCol = (tCol - aCol).toDouble();
-              if (dCol.abs() > 1) dCol = dCol > 0 ? 1.0 : -1.0;
-              final dRow = current.attackerSide == MatchSide.p2 ? 1.0 : -1.0;
-              map[key] = UnitVisualState(
-                unitId: existing.unitId,
-                star: existing.star,
-                hp: existing.hp,
-                maxHp: existing.maxHp,
-                alive: existing.alive,
-                isLunging: true,
-                lungeTargetSlot: current.targetSlot,
-                lungeDx: dCol,
-                lungeDy: dRow,
-              );
-            } else {
-              final icon = current.attackerUnitId == UnitId.ranger
-                  ? Icons.arrow_forward
-                  : Icons.bolt;
-              map[key] = UnitVisualState(
-                unitId: existing.unitId,
-                star: existing.star,
-                hp: existing.hp,
-                maxHp: existing.maxHp,
-                alive: existing.alive,
-                isShooting: true,
-                projectileTargetSlot: current.targetSlot,
-                projectileIcon: icon,
-              );
-            }
-          }
-        }
       case HealEvent():
         _setFloating(
           current.targetSide,
@@ -330,13 +275,6 @@ Map<UnitKey, UnitVisualState> deriveUnitStates({
       hp: existing.hp,
       maxHp: existing.maxHp,
       alive: existing.alive,
-      isLunging: existing.isLunging,
-      lungeTargetSlot: existing.lungeTargetSlot,
-      lungeDx: existing.lungeDx,
-      lungeDy: existing.lungeDy,
-      isShooting: existing.isShooting,
-      projectileTargetSlot: existing.projectileTargetSlot,
-      projectileIcon: existing.projectileIcon,
       floatingDamage: existing.floatingDamage,
       floatingIsHeal: existing.floatingIsHeal,
       healEventIndex: healEventIndex[key],
@@ -413,7 +351,9 @@ class BattleVisualState {
     double? playheadProgress,
   }) =>
       BattleVisualState(
-        batch: identical(batch, _sentinel) ? this.batch : batch as CombatEventBatch?,
+        batch: identical(batch, _sentinel)
+            ? this.batch
+            : batch as CombatEventBatch?,
         playheadIndex: playheadIndex ?? this.playheadIndex,
         playheadProgress: playheadProgress ?? this.playheadProgress,
       );
