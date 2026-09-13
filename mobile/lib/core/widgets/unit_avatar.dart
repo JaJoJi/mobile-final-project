@@ -241,9 +241,7 @@ class UnitAvatar extends StatelessWidget {
                       ),
                     ),
                   ),
-                if (isBoardPiece &&
-                    hp != null &&
-                    maxHp != null)
+                if (isBoardPiece && hp != null && maxHp != null)
                   Positioned(
                     left: AppSpacing.xxs,
                     right: AppSpacing.xxs,

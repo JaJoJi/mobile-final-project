@@ -539,8 +539,7 @@ class _BattleTileState extends State<BattleTile> with TickerProviderStateMixin {
           final shakeProgress = _shakeAnim.value;
           final shakeOffset = shakeProgress > 0
               ? Offset(
-                  6 * (1 - shakeProgress) *
-                      (shakeProgress < 0.5 ? 1.0 : -1.0),
+                  6 * (1 - shakeProgress) * (shakeProgress < 0.5 ? 1.0 : -1.0),
                   0,
                 )
               : Offset.zero;
@@ -599,8 +598,9 @@ class _BattleTileState extends State<BattleTile> with TickerProviderStateMixin {
                   builder: (context, _) {
                     final isAlly = widget.unitSide == UnitSide.ally;
                     final progress = _projAnim.value;
-                    final travelX =
-                        (widget.unitState?.lungeDx ?? 0) * widget.tileWidth * 1.2;
+                    final travelX = (widget.unitState?.lungeDx ?? 0) *
+                        widget.tileWidth *
+                        1.2;
                     final travelY =
                         isAlly ? -widget.boardHeight : widget.boardHeight;
                     return Opacity(

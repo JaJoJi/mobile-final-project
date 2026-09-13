@@ -144,7 +144,10 @@ Map<UnitKey, UnitVisualState> deriveUnitStates({
   final slowStart = <String, List<_SlowEntry>>{};
   for (var i = 0; i < events.length; i++) {
     final e = events[i];
-    if (e is SlowEvent && e.by != null && e.targetSide != null && e.targetSlot != null) {
+    if (e is SlowEvent &&
+        e.by != null &&
+        e.targetSide != null &&
+        e.targetSlot != null) {
       final key = UnitKey(side: e.targetSide!, slot: e.targetSlot!);
       slowStart.putIfAbsent(e.by!, () => []).add(_SlowEntry(key, i));
     }
@@ -174,7 +177,9 @@ Map<UnitKey, UnitVisualState> deriveUnitStates({
     UnitKey? target;
     if (e is HealEvent && e.targetSide != null && e.targetSlot != null) {
       target = UnitKey(side: e.targetSide!, slot: e.targetSlot!);
-    } else if (e is LifestealEvent && e.unitSide != null && e.unitSlot != null) {
+    } else if (e is LifestealEvent &&
+        e.unitSide != null &&
+        e.unitSlot != null) {
       target = UnitKey(side: e.unitSide!, slot: e.unitSlot!);
     }
     if (target != null) {
@@ -191,7 +196,9 @@ Map<UnitKey, UnitVisualState> deriveUnitStates({
     UnitKey? target;
     if (e is AttackEvent && e.targetSide != null && e.targetSlot != null) {
       target = UnitKey(side: e.targetSide!, slot: e.targetSlot!);
-    } else if (e is PierceEvent && e.targetSide != null && e.targetSlot != null) {
+    } else if (e is PierceEvent &&
+        e.targetSide != null &&
+        e.targetSlot != null) {
       target = UnitKey(side: e.targetSide!, slot: e.targetSlot!);
     }
     if (target != null) {
