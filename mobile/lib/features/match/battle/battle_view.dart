@@ -34,6 +34,7 @@ import '../board/stone_board_tile.dart';
 import '../match_controller.dart' show unitMaxHp;
 import 'battle_playback_controller.dart';
 import 'battle_visual_state.dart';
+import 'combat_effects_overlay.dart';
 
 /// Family by `matchId` so navigating between match screens (multi-match
 /// history) does not reuse a stale batch.
@@ -67,6 +68,8 @@ class _BattleViewState extends ConsumerState<BattleView>
   late final BattlePlaybackController _controller;
   Timer? _staleTimer;
   bool _staleDetected = false;
+  final GlobalKey _myBoardKey = GlobalKey();
+  final GlobalKey _opponentBoardKey = GlobalKey();
 
   @override
   void initState() {
@@ -179,10 +182,23 @@ class _BattleViewState extends ConsumerState<BattleView>
       child: Column(
         children: [
           Expanded(
-            child: _BattleStage(
-              match: widget.match,
-              game: game,
-              unitStates: unitStates,
+            child: Stack(
+              children: [
+                _BattleStage(
+                  match: widget.match,
+                  game: game,
+                  unitStates: unitStates,
+                  myBoardKey: _myBoardKey,
+                  opponentBoardKey: _opponentBoardKey,
+                ),
+                CombatEffectsOverlay(
+                  batch: view.batch,
+                  playheadProgress: view.playheadProgress,
+                  myBoardKey: _myBoardKey,
+                  opponentBoardKey: _opponentBoardKey,
+                  mySide: widget.match.yourSide,
+                ),
+              ],
             ),
           ),
           const SizedBox(height: AppSpacing.sm),
@@ -232,11 +248,15 @@ class _BattleStage extends StatelessWidget {
     required this.match,
     required this.game,
     required this.unitStates,
+    required this.myBoardKey,
+    required this.opponentBoardKey,
   });
 
   final MatchState match;
   final GameTheme game;
   final Map<UnitKey, UnitVisualState> unitStates;
+  final GlobalKey myBoardKey;
+  final GlobalKey opponentBoardKey;
 
   @override
   Widget build(BuildContext context) {
@@ -245,6 +265,7 @@ class _BattleStage extends StatelessWidget {
         match.yourSide == MatchSide.p1 ? MatchSide.p2 : MatchSide.p1;
     final mine = _BoardPreview(
       boardKey: const ValueKey('battle-player-board'),
+      positionKey: myBoardKey,
       label: 'คุณ',
       icon: Icons.shield_outlined,
       color: game.ally,
@@ -256,6 +277,7 @@ class _BattleStage extends StatelessWidget {
     );
     final opponent = _BoardPreview(
       boardKey: const ValueKey('battle-opponent-board'),
+      positionKey: opponentBoardKey,
       label: 'คู่แข่ง',
       icon: Icons.sports_martial_arts_outlined,
       color: game.enemy,
@@ -296,6 +318,7 @@ class _BattleStage extends StatelessWidget {
 class _BoardPreview extends StatelessWidget {
   const _BoardPreview({
     required this.boardKey,
+    required this.positionKey,
     required this.label,
     required this.icon,
     required this.color,
@@ -309,6 +332,7 @@ class _BoardPreview extends StatelessWidget {
   });
 
   final Key boardKey;
+  final GlobalKey positionKey;
   final String label;
   final IconData icon;
   final Color color;
@@ -346,33 +370,38 @@ class _BoardPreview extends StatelessWidget {
                 child: SizedBox.square(
                   key: boardKey,
                   dimension: boardSize,
-                  child: GridView.builder(
-                    physics: const NeverScrollableScrollPhysics(),
-                    gridDelegate:
-                        const SliverGridDelegateWithFixedCrossAxisCount(
-                      crossAxisCount: 3,
-                      mainAxisSpacing: AppSpacing.xs,
-                      crossAxisSpacing: AppSpacing.xs,
+                  child: KeyedSubtree(
+                    key: positionKey,
+                    child: GridView.builder(
+                      physics: const NeverScrollableScrollPhysics(),
+                      gridDelegate:
+                          const SliverGridDelegateWithFixedCrossAxisCount(
+                        crossAxisCount: 3,
+                        mainAxisSpacing: AppSpacing.xs,
+                        crossAxisSpacing: AppSpacing.xs,
+                      ),
+                      itemCount: 9,
+                      itemBuilder: (context, index) {
+                        final row = index ~/ 3;
+                        final column = index % 3;
+                        final sourceIndex =
+                            reverseRows ? (2 - row) * 3 + column : index;
+                        final unitKey = UnitKey(side: side, slot: sourceIndex);
+                        final uv = unitStates[unitKey];
+                        return BattleTile(
+                          slot: sourceIndex,
+                          unitSide: uv != null
+                              ? (side == mySide
+                                  ? UnitSide.ally
+                                  : UnitSide.enemy)
+                              : null,
+                          unitState: uv,
+                          tileWidth: tileWidth,
+                          tileHeight: tileHeight,
+                          boardHeight: boardHeight,
+                        );
+                      },
                     ),
-                    itemCount: 9,
-                    itemBuilder: (context, index) {
-                      final row = index ~/ 3;
-                      final column = index % 3;
-                      final sourceIndex =
-                          reverseRows ? (2 - row) * 3 + column : index;
-                      final unitKey = UnitKey(side: side, slot: sourceIndex);
-                      final uv = unitStates[unitKey];
-                      return BattleTile(
-                        slot: sourceIndex,
-                        unitSide: uv != null
-                            ? (side == mySide ? UnitSide.ally : UnitSide.enemy)
-                            : null,
-                        unitState: uv,
-                        tileWidth: tileWidth,
-                        tileHeight: tileHeight,
-                        boardHeight: boardHeight,
-                      );
-                    },
                   ),
                 ),
               );
