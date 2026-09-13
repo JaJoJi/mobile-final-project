@@ -241,7 +241,7 @@ class UnitAvatar extends StatelessWidget {
                       ),
                     ),
                   ),
-                if (variant == UnitAvatarVariant.board &&
+                if (isBoardPiece &&
                     hp != null &&
                     maxHp != null)
                   Positioned(

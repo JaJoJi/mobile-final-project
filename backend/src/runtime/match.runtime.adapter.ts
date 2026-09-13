@@ -633,6 +633,23 @@ export class MatchRuntimeAdapter {
     );
   }
 
+  /**
+   * Returns the cached combat result if the match is in `battle` phase.
+   * Used by WsGateway to re-send missed combat events to a reconnecting client.
+   */
+  async getCombatResultForReconnect(matchId: string): Promise<{
+    round: number;
+    events: Record<string, unknown>[];
+  } | null> {
+    const runtime = await this.findRuntime(matchId);
+    if (!runtime || runtime.phase !== 'battle' || runtime.combatRound !== runtime.round) {
+      return null;
+    }
+    const events = await this.pubsub.getCombatResult(matchId);
+    if (!events) return null;
+    return { round: runtime.round, events: events as unknown as Record<string, unknown>[] };
+  }
+
   private sideFor(runtime: MatchRuntimeState, userId: string): 'p1' | 'p2' {
     if (runtime.player1Id === userId) return 'p1';
     if (runtime.player2Id === userId) return 'p2';

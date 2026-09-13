@@ -21,6 +21,14 @@ describe('applyDamage (docs/05 §3)', () => {
         target: target.instanceId,
         damage: 20,
         targetHpAfter: 80,
+        attackerSide: 'p1',
+        attackerSlot: 0,
+        attackerUnitId: 'fighter',
+        attackerStar: 0,
+        targetSide: 'p2',
+        targetSlot: 0,
+        targetUnitId: 'fighter',
+        targetStar: 0,
       },
     ]);
   });
@@ -45,7 +53,17 @@ describe('applyDamage (docs/05 §3)', () => {
     expect(tank.alive).toBe(true);
     expect(tank.revivedThisRound).toBe(true);
     expect(events).toEqual([
-      { type: 'revive', cycle: 1, tick: 5, unit: tank.instanceId, hpAfter: 75 },
+      {
+        type: 'revive',
+        cycle: 1,
+        tick: 5,
+        unit: tank.instanceId,
+        hpAfter: 75,
+        unitSide: 'p2',
+        unitSlot: 4,
+        unitUnitId: 'tank',
+        unitStar: 1,
+      },
     ]);
   });
 

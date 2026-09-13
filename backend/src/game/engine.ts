@@ -14,6 +14,7 @@ import {
   CombatEvent,
   Side,
   UnitInstance,
+  snapshotAllUnits,
 } from './types';
 import { makeRng } from './seeded-rng';
 
@@ -53,23 +54,28 @@ export function runBattle(state: BattleState): CombatEvent[] {
 
       for (const unit of acting) {
         if (!unit.alive) continue; // killed earlier in this same tick
+        const idx = events.length;
         unitAct(unit, sim, cycle, tick, events);
+        // Attach snapshot to all events produced by this unitAct.
+        for (let i = idx; i < events.length; i++) {
+          events[i] = attachSnapshot(events[i], sim);
+        }
       }
     }
 
-    events.push({ type: 'cycle_end', cycle });
+    events.push(attachSnapshot({ type: 'cycle_end', cycle }, sim));
 
     const p1Alive = sim.p1Units.some((u) => u.alive);
     const p2Alive = sim.p2Units.some((u) => u.alive);
     if (!p1Alive || !p2Alive) {
       const winner: Side | null =
         !p1Alive && !p2Alive ? null : !p1Alive ? 'p2' : 'p1';
-      events.push({ type: 'battle_end', cycle, winner });
+      events.push(attachSnapshot({ type: 'battle_end', cycle, winner }, sim));
       return events;
     }
   }
 
-  events.push({ type: 'battle_end', cycle: MAX_CYCLES, winner: null });
+  events.push(attachSnapshot({ type: 'battle_end', cycle: MAX_CYCLES, winner: null }, sim));
   return events;
 }
 
@@ -83,6 +89,14 @@ function cloneUnit(u: UnitInstance): UnitInstance {
 }
 
 const currentSpd = (u: UnitInstance): number => u.effectiveSpd ?? spdFor(u.unitId);
+
+/**
+ * Attach the current board snapshot to an event. Called after every event
+ * push so the FE can render directly from the snapshot.
+ */
+function attachSnapshot<T extends CombatEvent>(event: T, sim: BattleSim): T {
+  return { ...event, unitStates: snapshotAllUnits(sim) } as T;
+}
 
 /**
  * Tie-tick ordering (`§6`): all `initSide` units first (then the other
