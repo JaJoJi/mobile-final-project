@@ -83,6 +83,7 @@ sealed class CombatEvent {
       final v = j[k] as String?;
       return v == null ? null : UnitId.fromJson(v);
     }
+
     MatchSide? side(String k) {
       final v = j[k] as String?;
       if (v == 'p1') return MatchSide.p1;
@@ -555,7 +556,9 @@ class CombatBoardState {
       (i) {
         if (i >= list.length) return null;
         final entry = list[i];
-        return entry is Map<String, dynamic> ? CombatUnit.fromJson(entry) : null;
+        return entry is Map<String, dynamic>
+            ? CombatUnit.fromJson(entry)
+            : null;
       },
       growable: false,
     );
@@ -594,8 +597,7 @@ class CombatEventBatch {
           .map(CombatEvent.fromJson)
           .toList(growable: false),
       initialBoard: j['initialBoard'] != null
-          ? CombatBoardState.fromJson(
-              j['initialBoard'] as Map<String, dynamic>)
+          ? CombatBoardState.fromJson(j['initialBoard'] as Map<String, dynamic>)
           : null,
     );
   }

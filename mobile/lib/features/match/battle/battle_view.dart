@@ -107,7 +107,7 @@ class _BattleViewState extends ConsumerState<BattleView>
     _staleDetected = false;
     _acked = false;
     _controller.loadBatch(batch);
-    final filtered = _controller.state.batch!.events;
+    final filtered = _controller.events!;
     final totalMs = filtered.length * kCombatEventDuration.inMilliseconds;
     developer.log(
       'battle batch loaded: match=${batch.matchId} round=${batch.round} '
@@ -158,21 +158,18 @@ class _BattleViewState extends ConsumerState<BattleView>
           events: view.batch!.events,
           playheadIndex: view.playheadIndex,
           playerBoard: widget.match.roster.board,
-          opponentBoard: widget.match.opponent.boardSummary
-              .asMap()
-              .entries
-              .map((entry) {
-                final o = entry.value;
-                if (o == null) return null;
-                return Unit(
-                  instanceId: 'opponent-${entry.key}-${o.unitId.name}',
-                  unitId: o.unitId,
-                  star: o.star,
-                  hp: unitMaxHp(o.unitId),
-                  maxHp: unitMaxHp(o.unitId),
-                );
-              })
-              .toList(),
+          opponentBoard:
+              widget.match.opponent.boardSummary.asMap().entries.map((entry) {
+            final o = entry.value;
+            if (o == null) return null;
+            return Unit(
+              instanceId: 'opponent-${entry.key}-${o.unitId.name}',
+              unitId: o.unitId,
+              star: o.star,
+              hp: unitMaxHp(o.unitId),
+              maxHp: unitMaxHp(o.unitId),
+            );
+          }).toList(),
         ),
       );
     }
@@ -196,8 +193,7 @@ class _BattleViewState extends ConsumerState<BattleView>
             child: GameAssetButton(
               key: const ValueKey('skip-combat-button'),
               onPressed: widget.skipSubmitted ? null : widget.onSkip,
-              disabledReason:
-                  widget.skipSubmitted ? 'ส่งผลการทดสอบแล้ว' : null,
+              disabledReason: widget.skipSubmitted ? 'ส่งผลการทดสอบแล้ว' : null,
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
@@ -245,7 +241,8 @@ class _BattleStage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final orientation = MediaQuery.orientationOf(context);
-    final enemySide = match.yourSide == MatchSide.p1 ? MatchSide.p2 : MatchSide.p1;
+    final enemySide =
+        match.yourSide == MatchSide.p1 ? MatchSide.p2 : MatchSide.p1;
     final mine = _BoardPreview(
       boardKey: const ValueKey('battle-player-board'),
       label: 'คุณ',
@@ -368,9 +365,7 @@ class _BoardPreview extends StatelessWidget {
                       return BattleTile(
                         slot: sourceIndex,
                         unitSide: uv != null
-                            ? (side == mySide
-                                ? UnitSide.ally
-                                : UnitSide.enemy)
+                            ? (side == mySide ? UnitSide.ally : UnitSide.enemy)
                             : null,
                         unitState: uv,
                         tileWidth: tileWidth,
@@ -413,8 +408,7 @@ class BattleTile extends StatefulWidget {
   State<BattleTile> createState() => _BattleTileState();
 }
 
-class _BattleTileState extends State<BattleTile>
-    with TickerProviderStateMixin {
+class _BattleTileState extends State<BattleTile> with TickerProviderStateMixin {
   late final AnimationController _lungeCtrl;
   late final Animation<double> _lungeAnim;
   late final AnimationController _projCtrl;
@@ -427,7 +421,6 @@ class _BattleTileState extends State<BattleTile>
   late final Animation<double> _healBubbleAnim;
   bool _wasLunging = false;
   bool _wasShooting = false;
-  bool _wasFloating = false;
   int? _lastFloatingDamage;
   int? _lastDamageIndex;
   int? _lastHealIndex;
@@ -495,8 +488,6 @@ class _BattleTileState extends State<BattleTile>
       _floatCtrl.forward(from: 0);
     }
     _lastFloatingDamage = floatingAmount;
-    _wasFloating = hasFloating;
-
     // Hit shake: trigger on new damage event index.
     final damageIdx = widget.unitState?.lastDamageEventIndex;
     if (damageIdx != null && damageIdx != _lastDamageIndex) {
@@ -620,12 +611,8 @@ class _BattleTileState extends State<BattleTile>
                           uv.projectileIcon,
                           size: 24,
                           color: isAlly
-                              ? Theme.of(context)
-                                  .extension<GameTheme>()!
-                                  .ally
-                              : Theme.of(context)
-                                  .extension<GameTheme>()!
-                                  .enemy,
+                              ? Theme.of(context).extension<GameTheme>()!.ally
+                              : Theme.of(context).extension<GameTheme>()!.enemy,
                         ),
                       ),
                     );
@@ -673,7 +660,7 @@ class _BattleTileState extends State<BattleTile>
                               ? Container(
                                   padding: const EdgeInsets.all(4),
                                   decoration: BoxDecoration(
-                                    color: Colors.green.withOpacity(0.3),
+                                    color: Colors.green.withValues(alpha: 0.3),
                                     shape: BoxShape.circle,
                                   ),
                                   child: Text(

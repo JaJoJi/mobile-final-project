@@ -158,3 +158,29 @@ describe('match_pair.lua — atomic FIFO pop (R4/R5)', () => {
     expect(await redis.eval(src, 1, q)).toEqual(['early', 'mid']);
   });
 });
+
+describe('ws_rate_limit.lua — shared sliding-window counter (P1-BE-01)', () => {
+  let redis: InstanceType<typeof RedisMock>;
+  const src = load('ws_rate_limit');
+  const hits = 'rate:ws:{user-1}:hits';
+  const sequence = 'rate:ws:{user-1}:seq';
+
+  beforeEach(async () => {
+    jest.spyOn(Date, 'now').mockReturnValue(1_726_000_000_000);
+    redis = new RedisMock();
+    await redis.flushall();
+  });
+
+  afterEach(() => {
+    jest.restoreAllMocks();
+  });
+
+  it('counts every hit atomically and expires its bookkeeping keys', async () => {
+    expect(await redis.eval(src, 2, hits, sequence, 1000)).toBe(1);
+    expect(await redis.eval(src, 2, hits, sequence, 1000)).toBe(2);
+    expect(await redis.eval(src, 2, hits, sequence, 1000)).toBe(3);
+    expect(await redis.zcard(hits)).toBe(3);
+    expect(await redis.pttl(hits)).toBeGreaterThan(0);
+    expect(await redis.pttl(sequence)).toBeGreaterThan(0);
+  });
+});

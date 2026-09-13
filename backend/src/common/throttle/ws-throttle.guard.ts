@@ -1,6 +1,7 @@
 import { CanActivate, ExecutionContext, Injectable } from '@nestjs/common';
 import { WsException } from '@nestjs/websockets';
 import type { Socket } from 'socket.io';
+import { RedisService } from '../../redis/redis.service';
 
 /**
  * Per-user WS message rate limit — P1-BE-01 (#113).
@@ -10,58 +11,42 @@ import type { Socket } from 'socket.io';
  * the message is dropped (the guard throws before the handler runs; the
  * throw is turned into `game:error` by `WsGameExceptionFilter`).
  *
- * State is a per-process in-memory map keyed by userId. That's enough:
- * a single user's socket is pinned to one instance for the life of the
- * connection (per-user dedup in the gateway), so their messages all land
- * on the same process. Entries are pruned lazily on the user's next
- * message and on disconnect via `forget()`.
+ * The sliding window lives in Redis and is mutated by one Lua script, so the
+ * limit remains per-user when sockets for that user reach different Nest
+ * replicas. Redis TIME avoids host-clock skew and short TTLs clean up idle
+ * users without process-local maps or disconnect bookkeeping.
  */
 @Injectable()
 export class WsThrottleGuard implements CanActivate {
   private readonly windowMs = 1000;
-  private readonly limit = Number(process.env.WS_MSG_PER_SEC ?? 30);
-  private readonly hits = new Map<string, number[]>();
-  private lastSweep = 0;
+  private readonly limit = positiveInt(process.env.WS_MSG_PER_SEC, 30);
 
-  canActivate(context: ExecutionContext): boolean {
+  constructor(private readonly redis: RedisService) {}
+
+  async canActivate(context: ExecutionContext): Promise<boolean> {
     if (context.getType() !== 'ws') return true;
 
     const client = context.switchToWs().getClient<Socket>();
     const userId =
       (client.data?.user?.sub as string | undefined) ?? client.id;
 
-    const now = Date.now();
-    this.sweep(now);
+    // Hash tags keep both keys in one Redis Cluster slot if the deployment is
+    // upgraded from the current single Redis instance later.
+    const tag = `{${userId}}`;
+    const recent = await this.redis.eval<number>(
+      'ws_rate_limit',
+      [`rate:ws:${tag}:hits`, `rate:ws:${tag}:seq`],
+      [this.windowMs],
+    );
 
-    const cutoff = now - this.windowMs;
-    const recent = (this.hits.get(userId) ?? []).filter((t) => t > cutoff);
-    recent.push(now);
-    this.hits.set(userId, recent);
-
-    if (recent.length > this.limit) {
+    if (recent > this.limit) {
       throw new WsException({ code: 'rate.limited', message: 'slow down' });
     }
     return true;
   }
+}
 
-  /** Drop a user's window explicitly (e.g. on disconnect). */
-  forget(userId: string): void {
-    this.hits.delete(userId);
-  }
-
-  /**
-   * Every ~10s, drop users whose most recent message is older than the
-   * window — covers clients that disconnect and never come back, so the
-   * map can't grow without bound.
-   */
-  private sweep(now: number): void {
-    if (now - this.lastSweep < 10_000) return;
-    this.lastSweep = now;
-    const cutoff = now - this.windowMs;
-    for (const [userId, times] of this.hits) {
-      if (times.length === 0 || times[times.length - 1] <= cutoff) {
-        this.hits.delete(userId);
-      }
-    }
-  }
+function positiveInt(raw: string | undefined, fallback: number): number {
+  const parsed = Number(raw);
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : fallback;
 }

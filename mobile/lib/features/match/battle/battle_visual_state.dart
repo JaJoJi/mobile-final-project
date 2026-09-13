@@ -69,8 +69,10 @@ class UnitVisualState {
   final bool alive;
   final bool isLunging;
   final int? lungeTargetSlot;
+
   /// Normalized horizontal lunge direction (-1 = left, +1 = right).
   final double lungeDx;
+
   /// Normalized vertical lunge direction (-1 = up toward enemy, +1 = down).
   final double lungeDy;
   final bool isShooting;
@@ -413,7 +415,9 @@ class BattleVisualState {
     double? playheadProgress,
   }) =>
       BattleVisualState(
-        batch: identical(batch, _sentinel) ? this.batch : batch as CombatEventBatch?,
+        batch: identical(batch, _sentinel)
+            ? this.batch
+            : batch as CombatEventBatch?,
         playheadIndex: playheadIndex ?? this.playheadIndex,
         playheadProgress: playheadProgress ?? this.playheadProgress,
       );
