@@ -5,7 +5,7 @@
 /// snapshot, eliminating phantom-unit bugs caused by state divergence.
 library;
 
-import 'package:flutter/material.dart' show IconData, Icons;
+import 'package:flutter/material.dart' show Color, IconData, Icons;
 
 import '../../../shared/models/combat_event.dart';
 import '../../../shared/models/match_state.dart' show MatchSide;
@@ -30,9 +30,17 @@ class UnitKey {
   String toString() => 'UnitKey(${side.name}, $slot)';
 }
 
+/// Persistent debuff status on a unit.
+class UnitDebuff {
+  const UnitDebuff({required this.type, required this.color});
+
+  final String type;
+  final Color color;
+}
+
 /// Per-unit visual state derived from the server snapshot at the current
 /// playhead position. Consumed by [BattleTile] to render the correct
-/// sprite, HP bar, and alive/dead alpha.
+/// sprite, HP bar, and alive/dead state.
 class UnitVisualState {
   const UnitVisualState({
     required this.unitId,
@@ -49,6 +57,9 @@ class UnitVisualState {
     this.projectileIcon = Icons.arrow_forward,
     this.floatingDamage,
     this.floatingIsHeal = false,
+    this.healEventIndex,
+    this.lastDamageEventIndex,
+    this.debuff,
   });
 
   final UnitId unitId;
@@ -68,12 +79,29 @@ class UnitVisualState {
   final int? floatingDamage;
   final bool floatingIsHeal;
 
+  /// Index of the heal/lifesteal event currently active on this unit.
+  /// [BattleTile] uses this as a trigger key for the heal bubble animation.
+  final int? healEventIndex;
+
+  /// Index of the most recent damage event targeting this unit.
+  /// [BattleTile] uses this as a trigger key for the hit shake animation.
+  final int? lastDamageEventIndex;
+
+  /// Active debuff on this unit (e.g. slow). Persistent until the debuff
+  /// expires (precomputed via healer attack scan).
+  final UnitDebuff? debuff;
+
   double get hpFraction => maxHp <= 0 ? 0 : (hp / maxHp).clamp(0.0, 1.0);
 }
 
 /// Derive per-unit visual states by using the server-authoritative
 /// `unitStates` snapshot from the most recent event at or before the
 /// playhead. The FE no longer tracks state locally.
+///
+/// Additionally precomputes:
+/// - Debuff expirations (slow clears when the healer attacks again)
+/// - Heal event trigger keys (for transient bubble animation)
+/// - Damage event trigger keys (for hit shake animation)
 Map<UnitKey, UnitVisualState> deriveUnitStates({
   required List<CombatEvent> events,
   required int playheadIndex,
@@ -108,6 +136,67 @@ Map<UnitKey, UnitVisualState> deriveUnitStates({
     );
   }
 
+  // --- Precompute debuff expirations ---
+  // Slow persists until the Healer attacks again (per combat spec §2.3).
+  // Build: slowStart[healerInstanceId] = [{ targetKey, applyIndex }].
+  final slowStart = <String, List<_SlowEntry>>{};
+  for (var i = 0; i < events.length; i++) {
+    final e = events[i];
+    if (e is SlowEvent && e.by != null && e.targetSide != null && e.targetSlot != null) {
+      final key = UnitKey(side: e.targetSide!, slot: e.targetSlot!);
+      slowStart.putIfAbsent(e.by!, () => []).add(_SlowEntry(key, i));
+    }
+  }
+  // debuffExpiry[targetKey] = event index where debuff clears.
+  final debuffExpiry = <UnitKey, int>{};
+  for (final entry in slowStart.entries) {
+    final healerId = entry.key;
+    final targets = entry.value;
+    // Find the next attack by this healer after each slow apply.
+    for (final slow in targets) {
+      for (var i = slow.index + 1; i < events.length; i++) {
+        final e = events[i];
+        if (e is AttackEvent && e.attacker == healerId) {
+          debuffExpiry[slow.key] = i;
+          break;
+        }
+      }
+    }
+  }
+
+  // --- Precompute heal event trigger keys ---
+  // healEventIndex[unitKey] = most recent heal/lifesteal event index ≤ limit.
+  final healEventIndex = <UnitKey, int>{};
+  for (var i = 0; i <= limit; i++) {
+    final e = events[i];
+    UnitKey? target;
+    if (e is HealEvent && e.targetSide != null && e.targetSlot != null) {
+      target = UnitKey(side: e.targetSide!, slot: e.targetSlot!);
+    } else if (e is LifestealEvent && e.unitSide != null && e.unitSlot != null) {
+      target = UnitKey(side: e.unitSide!, slot: e.unitSlot!);
+    }
+    if (target != null) {
+      healEventIndex[target] = i;
+    }
+  }
+
+  // --- Precompute last damage event trigger keys ---
+  // lastDamage[unitKey] = most recent attack/pierce event index targeting
+  // this unit at or before limit.
+  final lastDamage = <UnitKey, int>{};
+  for (var i = 0; i <= limit; i++) {
+    final e = events[i];
+    UnitKey? target;
+    if (e is AttackEvent && e.targetSide != null && e.targetSlot != null) {
+      target = UnitKey(side: e.targetSide!, slot: e.targetSlot!);
+    } else if (e is PierceEvent && e.targetSide != null && e.targetSlot != null) {
+      target = UnitKey(side: e.targetSide!, slot: e.targetSlot!);
+    }
+    if (target != null) {
+      lastDamage[target] = i;
+    }
+  }
+
   // Apply animation flags from the current event (lunge, shoot, floating).
   if (events.isNotEmpty && limit < events.length) {
     final current = events[limit];
@@ -135,16 +224,12 @@ Map<UnitKey, UnitVisualState> deriveUnitStates({
           final existing = map[key];
           if (existing != null) {
             if (isMelee && current.targetSlot != null) {
-              // Melee always attacks cross-board, so vertical direction
-              // is simply toward the opponent side.
               final attackerSlot = current.attackerSlot!;
               final targetSlot = current.targetSlot!;
               final aCol = attackerSlot % 3;
               final tCol = targetSlot % 3;
               var dCol = (tCol - aCol).toDouble();
-              // Normalize horizontal to -1..+1.
               if (dCol.abs() > 1) dCol = dCol > 0 ? 1.0 : -1.0;
-              // Vertical: player lunges UP, enemy lunges DOWN.
               final dRow = current.attackerSide == MatchSide.p2 ? 1.0 : -1.0;
               map[key] = UnitVisualState(
                 unitId: existing.unitId,
@@ -201,6 +286,63 @@ Map<UnitKey, UnitVisualState> deriveUnitStates({
       default:
         break;
     }
+  }
+
+  // --- Enrich with computed trigger keys and debuff state ---
+  for (final entry in map.entries) {
+    final key = entry.key;
+    final existing = entry.value;
+
+    // Active debuff check: applied at or before limit, not yet expired.
+    UnitDebuff? debuff;
+    final expiryIdx = debuffExpiry[key];
+    if (expiryIdx != null) {
+      // Debuff expires at expiryIdx; still active before that.
+      // We need the apply index to confirm it was applied before limit.
+      for (var i = 0; i <= limit; i++) {
+        final e = events[i];
+        if (e is SlowEvent &&
+            e.targetSide == key.side &&
+            e.targetSlot == key.slot) {
+          if (i < expiryIdx && expiryIdx > limit) {
+            debuff = const UnitDebuff(type: 'slow', color: Color(0xFF42A5F5));
+          }
+          break;
+        }
+      }
+    } else {
+      // No expiry found — debuff persists indefinitely (healer never
+      // attacked again). Check if any slow was applied before limit.
+      for (var i = 0; i <= limit; i++) {
+        final e = events[i];
+        if (e is SlowEvent &&
+            e.targetSide == key.side &&
+            e.targetSlot == key.slot) {
+          debuff = const UnitDebuff(type: 'slow', color: Color(0xFF42A5F5));
+          break;
+        }
+      }
+    }
+
+    map[key] = UnitVisualState(
+      unitId: existing.unitId,
+      star: existing.star,
+      hp: existing.hp,
+      maxHp: existing.maxHp,
+      alive: existing.alive,
+      isLunging: existing.isLunging,
+      lungeTargetSlot: existing.lungeTargetSlot,
+      lungeDx: existing.lungeDx,
+      lungeDy: existing.lungeDy,
+      isShooting: existing.isShooting,
+      projectileTargetSlot: existing.projectileTargetSlot,
+      projectileIcon: existing.projectileIcon,
+      floatingDamage: existing.floatingDamage,
+      floatingIsHeal: existing.floatingIsHeal,
+      healEventIndex: healEventIndex[key],
+      lastDamageEventIndex: lastDamage[key],
+      debuff: debuff,
+    );
   }
 
   return map;
@@ -278,3 +420,9 @@ class BattleVisualState {
 }
 
 const _sentinel = Object();
+
+class _SlowEntry {
+  const _SlowEntry(this.key, this.index);
+  final UnitKey key;
+  final int index;
+}

@@ -421,10 +421,16 @@ class _BattleTileState extends State<BattleTile>
   late final Animation<double> _projAnim;
   late final AnimationController _floatCtrl;
   late final Animation<double> _floatAnim;
+  late final AnimationController _shakeCtrl;
+  late final Animation<double> _shakeAnim;
+  late final AnimationController _healBubbleCtrl;
+  late final Animation<double> _healBubbleAnim;
   bool _wasLunging = false;
   bool _wasShooting = false;
   bool _wasFloating = false;
   int? _lastFloatingDamage;
+  int? _lastDamageIndex;
+  int? _lastHealIndex;
 
   @override
   void initState() {
@@ -450,6 +456,22 @@ class _BattleTileState extends State<BattleTile>
     _floatAnim = Tween<double>(begin: 0, end: 1).animate(
       CurvedAnimation(parent: _floatCtrl, curve: AppMotion.standard),
     );
+    // Hit shake: constant intensity, ~200ms, horizontal only.
+    _shakeCtrl = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 200),
+    );
+    _shakeAnim = Tween<double>(begin: 0, end: 1).animate(
+      CurvedAnimation(parent: _shakeCtrl, curve: Curves.easeOut),
+    );
+    // Heal bubble: expanding green circle, ~600ms, emit-and-dispose.
+    _healBubbleCtrl = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 600),
+    );
+    _healBubbleAnim = Tween<double>(begin: 0, end: 1).animate(
+      CurvedAnimation(parent: _healBubbleCtrl, curve: AppMotion.standard),
+    );
   }
 
   @override
@@ -474,6 +496,20 @@ class _BattleTileState extends State<BattleTile>
     }
     _lastFloatingDamage = floatingAmount;
     _wasFloating = hasFloating;
+
+    // Hit shake: trigger on new damage event index.
+    final damageIdx = widget.unitState?.lastDamageEventIndex;
+    if (damageIdx != null && damageIdx != _lastDamageIndex) {
+      _shakeCtrl.forward(from: 0);
+    }
+    _lastDamageIndex = damageIdx;
+
+    // Heal bubble: trigger on new heal event index.
+    final healIdx = widget.unitState?.healEventIndex;
+    if (healIdx != null && healIdx != _lastHealIndex) {
+      _healBubbleCtrl.forward(from: 0);
+    }
+    _lastHealIndex = healIdx;
   }
 
   @override
@@ -481,6 +517,8 @@ class _BattleTileState extends State<BattleTile>
     _lungeCtrl.dispose();
     _projCtrl.dispose();
     _floatCtrl.dispose();
+    _shakeCtrl.dispose();
+    _healBubbleCtrl.dispose();
     super.dispose();
   }
 
@@ -492,11 +530,13 @@ class _BattleTileState extends State<BattleTile>
       opacity: uv == null ? 0.3 : (isAlive ? 1.0 : 0.3),
       duration: const Duration(milliseconds: 200),
       child: AnimatedBuilder(
-        animation: Listenable.merge([_lungeAnim, _projAnim]),
+        animation: Listenable.merge([
+          _lungeAnim,
+          _projAnim,
+          _shakeAnim,
+        ]),
         builder: (context, child) {
           // Lunge: travel 80% of the way to the target tile and back.
-          // Vertical direction is derived from board position:
-          // ally board → UP toward opponent, enemy board → DOWN toward player.
           final lungeDx = widget.unitState?.lungeDx ?? 0;
           final lungeDy = widget.unitSide == UnitSide.ally ? -1.0 : 1.0;
           final progress = _lungeAnim.value;
@@ -504,8 +544,17 @@ class _BattleTileState extends State<BattleTile>
             lungeDx * widget.tileWidth * 0.8 * progress,
             lungeDy * widget.tileHeight * 0.8 * progress,
           );
+          // Hit shake: constant 6px horizontal offset, oscillating.
+          final shakeProgress = _shakeAnim.value;
+          final shakeOffset = shakeProgress > 0
+              ? Offset(
+                  6 * (1 - shakeProgress) *
+                      (shakeProgress < 0.5 ? 1.0 : -1.0),
+                  0,
+                )
+              : Offset.zero;
           return Transform.translate(
-            offset: lungeOffset,
+            offset: lungeOffset + shakeOffset,
             child: child,
           );
         },
@@ -530,6 +579,27 @@ class _BattleTileState extends State<BattleTile>
                       expand: true,
                     ),
             ),
+            // Debuff tint overlay — persistent blue wash when debuff active.
+            if (uv?.debuff != null)
+              Positioned.fill(
+                child: DecoratedBox(
+                  decoration: BoxDecoration(
+                    color: uv!.debuff!.color.withOpacity(0.15),
+                    borderRadius: BorderRadius.circular(4),
+                  ),
+                ),
+              ),
+            // Debuff badge — small icon in top-right corner.
+            if (uv?.debuff != null)
+              const Positioned(
+                top: 2,
+                right: 2,
+                child: Icon(
+                  Icons.speed,
+                  size: 12,
+                  color: Color(0xFF42A5F5),
+                ),
+              ),
             // Projectile overlay.
             if (uv != null && uv.isShooting)
               Positioned.fill(
@@ -538,7 +608,6 @@ class _BattleTileState extends State<BattleTile>
                   builder: (context, _) {
                     final isAlly = widget.unitSide == UnitSide.ally;
                     final progress = _projAnim.value;
-                    // Travel full board distance toward the target.
                     final travelX =
                         (widget.unitState?.lungeDx ?? 0) * widget.tileWidth * 1.2;
                     final travelY =
@@ -557,6 +626,29 @@ class _BattleTileState extends State<BattleTile>
                               : Theme.of(context)
                                   .extension<GameTheme>()!
                                   .enemy,
+                        ),
+                      ),
+                    );
+                  },
+                ),
+              ),
+            // Heal bubble — expanding green circle, emit-and-dispose.
+            if (uv != null && uv.healEventIndex != null)
+              Positioned.fill(
+                child: AnimatedBuilder(
+                  animation: _healBubbleAnim,
+                  builder: (context, _) {
+                    final progress = _healBubbleAnim.value;
+                    final radius = widget.tileWidth * 0.6 * progress;
+                    return Center(
+                      child: Container(
+                        width: radius * 2,
+                        height: radius * 2,
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          color: Colors.green.withOpacity(
+                            (0.3 * (1.0 - progress)).clamp(0.0, 1.0),
+                          ),
                         ),
                       ),
                     );
