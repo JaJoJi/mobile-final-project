@@ -86,9 +86,7 @@ class BattlePlaybackController extends StateNotifier<BattleVisualState> {
     final effective = batch.events
         .where(
           (e) =>
-              e is! CycleEndEvent &&
-              e is! BattleEndEvent &&
-              e is! DeathEvent,
+              e is! CycleEndEvent && e is! BattleEndEvent && e is! DeathEvent,
         )
         .toList(growable: false);
     state = BattleVisualState(

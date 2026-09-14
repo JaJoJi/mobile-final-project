@@ -446,7 +446,8 @@ void main() {
     await tester.pump(const Duration(seconds: 1));
   });
 
-  testWidgets('reduced motion does not fast-forward the replay', (tester) async {
+  testWidgets('reduced motion does not fast-forward the replay',
+      (tester) async {
     // The platform's "disable animations" setting makes Flutter run every
     // AnimationBehavior.normal controller at 5% of its duration. The
     // playhead is a media timeline, so that turned a 45s replay into 2.25s

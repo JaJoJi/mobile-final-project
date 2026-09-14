@@ -4,8 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 
 void main() {
   group('BattlePlaybackController.loadBatch', () {
-    test('drops death events — the paired attack already carries the kill',
-        () {
+    test('drops death events — the paired attack already carries the kill', () {
       // `applyDamage` (backend/src/game/damage.ts) emits a `death` event
       // immediately followed by its own `attack` event for the SAME
       // lethal hit — the `attack` event alone already carries

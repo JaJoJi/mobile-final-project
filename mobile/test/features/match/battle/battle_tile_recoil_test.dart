@@ -80,8 +80,7 @@ void main() {
     expect(offset.y, 0);
   });
 
-  testWidgets(
-      'recoil still plays under reduced motion, not squashed to 5%',
+  testWidgets('recoil still plays under reduced motion, not squashed to 5%',
       (tester) async {
     // Flutter runs every AnimationBehavior.normal controller at 5% of its
     // duration while the platform reports "disable animations" — a 125ms
