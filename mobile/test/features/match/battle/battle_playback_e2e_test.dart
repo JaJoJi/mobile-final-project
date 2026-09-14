@@ -1,5 +1,6 @@
 import 'package:auto_chess_mobile/core/ws/ws_client.dart';
 import 'package:auto_chess_mobile/core/ws/ws_providers.dart';
+import 'package:auto_chess_mobile/features/match/battle/battle_playback_controller.dart';
 import 'package:auto_chess_mobile/features/match/battle/battle_view.dart';
 import 'package:auto_chess_mobile/features/match/match_screen.dart';
 import 'package:auto_chess_mobile/shared/models/game_events.dart';
@@ -236,7 +237,6 @@ void main() {
     });
     await tester.pump();
 
-    // 30 events -> 30s of playback at the preferred 1s/event.
     transport.emitFromServer(GameEvents.combatEvents, {
       'matchId': 'm1',
       'round': 1,
@@ -250,26 +250,30 @@ void main() {
     bool ackSent() =>
         transport.sent.any((m) => m.event == GameActions.matchCombatDone);
 
+    // Derived from the real constants so retuning combat pacing doesn't
+    // silently invalidate this test.
+    final total = combatPlaybackDuration(30);
+
     // A couple of seconds in, the replay is barely started — acking here
     // is what made rounds end at ~5% of playback.
     await tester.pump(const Duration(seconds: 2));
     expect(
       ackSent(),
       isFalse,
-      reason: 'combat_done was sent ~2s into a ~30s replay',
+      reason: 'combat_done was sent ~2s into a $total replay',
     );
 
-    await tester.pump(const Duration(seconds: 10));
+    await tester.pump(total ~/ 2);
     expect(
       ackSent(),
       isFalse,
-      reason: 'combat_done was sent 12s into a ~30s replay',
+      reason: 'combat_done was sent halfway through a $total replay',
     );
 
     // Once the replay is over (plus the 500ms battle_end freeze) it should
     // ack, so the round can advance without waiting for the server's
     // 60s fallback.
-    await tester.pump(const Duration(seconds: 20));
+    await tester.pump(total + const Duration(seconds: 2));
     expect(
       ackSent(),
       isTrue,

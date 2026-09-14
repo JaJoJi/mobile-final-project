@@ -13,20 +13,27 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../shared/models/combat_event.dart';
 import 'battle_visual_state.dart';
 
-/// Preferred duration for each combat event on the playhead. Bumped from
-/// the original 600ms (locked Step 2 plan) to 1000ms after live testing
-/// showed combat resolving too fast to follow (P4-FE-01 follow-up).
+/// Preferred duration for each combat event on the playhead. Raised from
+/// the original 600ms (locked Step 2 plan) over successive rounds of live
+/// testing — 600 → 1000 → 1600ms — because combat kept reading as too
+/// fast to follow once the melee travel animation landed (P4-FE-01).
+/// Each attack now owns ~1.6s, which the attacker spends travelling to
+/// its target and back.
 ///
 /// This is a *preferred* rate, not a guarantee — see [kMaxCombatPlayback]
-/// and [combatPlaybackDuration].
-const Duration kCombatEventDuration = Duration(milliseconds: 1000);
+/// and [combatPlaybackDuration]. It is also the single knob for combat
+/// pacing: nothing else hardcodes a per-event duration.
+const Duration kCombatEventDuration = Duration(milliseconds: 1600);
 
 /// Hard ceiling on one round's replay. The server abandons a round after
 /// `COMBAT_DONE_TIMEOUT_MS` (60s) if it hasn't received both clients'
 /// `combat_done` acks, so a replay longer than that hangs the match: a
-/// real 77-event round at the preferred rate would run 77s. Long rounds
-/// compress rather than overrun.
-const Duration kMaxCombatPlayback = Duration(seconds: 30);
+/// real 77-event round at the preferred rate would run over two minutes.
+/// Long rounds compress rather than overrun.
+///
+/// Kept comfortably under the server's 60s so a slow client still acks in
+/// time; raise [kCombatEventDuration] for pacing before raising this.
+const Duration kMaxCombatPlayback = Duration(seconds: 45);
 
 /// Total playback time for [eventCount] events: the preferred rate, or a
 /// compressed rate when that would exceed [kMaxCombatPlayback].

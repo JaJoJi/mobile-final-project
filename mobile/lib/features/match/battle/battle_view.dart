@@ -807,30 +807,13 @@ class _BatchSummary extends StatelessWidget {
         style: TextStyle(fontSize: 12),
       );
     }
-    // TEMPORARY diagnostic (P4-FE-01): says what the overlay is being
-    // asked to draw right now, so "nobody walks over to attack" can be
-    // told apart from "no melee event ever reaches the playhead".
-    // Remove once the melee travel is confirmed working on a real match.
-    final current = currentEventEffect(batch.events, view.playheadProgress);
-    final ev = current?.event;
-    final String debug;
-    if (ev == null) {
-      debug = 'ev=none';
-    } else if (ev is AttackEvent) {
-      final id = ev.attackerUnitId;
-      final melee = id == UnitId.fighter || id == UnitId.tank;
-      debug = 'ev=attack by=${id?.name ?? "?"} melee=$melee '
-          'slots=${ev.attackerSlot}->${ev.targetSlot}';
-    } else {
-      debug = 'ev=${ev.runtimeType}';
-    }
     return Text(
       'batch loaded · round ${batch.round} · ${batch.events.length} events · '
       'playhead ${(view.playheadProgress * 100).toStringAsFixed(0)}% '
-      'index ${view.playheadIndex}\n$debug',
+      'index ${view.playheadIndex}',
       key: const ValueKey('battle-batch-summary'),
       textAlign: TextAlign.center,
-      style: const TextStyle(fontSize: 11),
+      style: const TextStyle(fontSize: 12),
     );
   }
 }
