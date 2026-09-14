@@ -86,6 +86,17 @@ class _BattleViewState extends ConsumerState<BattleView>
   Duration? _playbackStart;
   Duration _playbackTotal = Duration.zero;
 
+  /// How far into the replay this client already was when it loaded the
+  /// batch, measured from the server's own `endedAt` timestamp.
+  ///
+  /// Anchoring playback to a *server* instant rather than to local batch
+  /// arrival is what keeps the two clients showing the same moment: a
+  /// client that mounts late (or whose batch arrives late) starts partway
+  /// in and catches up, instead of restarting the replay from 0 while the
+  /// other player is already finishing. Both clients compare against the
+  /// same `endedAt`, so they agree to within their mutual clock skew.
+  Duration _playbackOffset = Duration.zero;
+
   /// Round whose batch is already loaded, so the two delivery paths (the
   /// stream listener and the post-frame replay) can't start playback twice.
   int? _loadedRound;
@@ -172,11 +183,19 @@ class _BattleViewState extends ConsumerState<BattleView>
       name: 'BattleView',
     );
     _playbackTotal = Duration(milliseconds: totalMs);
+    // Start where the server says this replay already is, not at 0.
+    _playbackOffset = Duration(
+      milliseconds: batch.endedAt <= 0
+          ? 0
+          : (DateTime.now().millisecondsSinceEpoch - batch.endedAt)
+              .clamp(0, totalMs),
+    );
     _playbackStart = SchedulerBinding.instance.currentSystemFrameTimeStamp;
-    // The controller only drives repaints now — position comes from wall
-    // time in [_pushPlayhead], so a throttled tab self-corrects.
+    final remaining = _playbackTotal - _playbackOffset;
+    // The controller only drives repaints now — position comes from the
+    // clock in [_pushPlayhead], so a throttled tab self-corrects.
     _playhead
-      ..duration = _playbackTotal
+      ..duration = remaining
       ..forward(from: 0);
     // Ack on a timer, not on animation completion: a background tab gets
     // no animation frames at all, so a frame-driven ack would never fire
@@ -184,7 +203,7 @@ class _BattleViewState extends ConsumerState<BattleView>
     // Browsers throttle background timers but do still run them.
     _ackTimer?.cancel();
     _ackTimer = Timer(
-      _playbackTotal + const Duration(milliseconds: 500),
+      remaining + const Duration(milliseconds: 500),
       _ack,
     );
     setState(() {}); // refresh the playhead listener binding below
@@ -302,9 +321,9 @@ class _BattleViewState extends ConsumerState<BattleView>
       _controller.seekTo(_playhead.value);
       return;
     }
-    final elapsedMs =
-        (SchedulerBinding.instance.currentSystemFrameTimeStamp - start)
-            .inMilliseconds;
+    final elapsedMs = (_playbackOffset +
+            (SchedulerBinding.instance.currentSystemFrameTimeStamp - start))
+        .inMilliseconds;
     _controller.seekTo((elapsedMs / totalMs).clamp(0.0, 1.0));
   }
 }
