@@ -147,7 +147,18 @@ class _BattleViewState extends ConsumerState<BattleView>
   void _maybeAcceptBatch(CombatEventBatch? batch) {
     if (batch == null) return;
     if (batch.matchId != widget.matchId) return;
-    if (batch.round != widget.match.round) return;
+    // Only *older* rounds are rejected. `widget.match.round` comes from
+    // `game:match:state`, which the server publishes separately from the
+    // `game:match:phase` event that opens the battle — so during a battle
+    // the two can legitimately disagree by one round, and requiring an
+    // exact match dropped the batch for good: the stream listener fires
+    // only on *new* values and the post-frame replay only runs at mount,
+    // so it never came back, nobody acked `combat_done`, and the match
+    // sat until the server's 60s combat timeout resolved the round.
+    //
+    // Accepting anything not stale is safe because the server emits one
+    // batch per round and [_loadedRound] already rejects a repeat.
+    if (batch.round < widget.match.round) return;
     if (_loadedRound == batch.round) return; // already playing this one
     _loadedRound = batch.round;
     _onBatch(batch);
@@ -182,19 +193,27 @@ class _BattleViewState extends ConsumerState<BattleView>
     _controller.loadBatch(batch);
     final filtered = _controller.events!;
     final totalMs = combatPlaybackDuration(filtered.length).inMilliseconds;
+    _playbackTotal = Duration(milliseconds: totalMs);
+    // Start where the server says this replay already is, not at 0 — but
+    // never trust that gap with more than [kMaxPlaybackCatchUp] of the
+    // replay, because it is measured across two machines' clocks. See the
+    // constant for why an uncapped version resolved rounds in ~2s.
+    final sinceEndedMs = batch.endedAt <= 0
+        ? 0
+        : DateTime.now().millisecondsSinceEpoch - batch.endedAt;
+    _playbackOffset = Duration(
+      milliseconds:
+          sinceEndedMs.clamp(0, kMaxPlaybackCatchUp.inMilliseconds).clamp(
+                0,
+                totalMs,
+              ),
+    );
     developer.log(
       'battle batch loaded: match=${batch.matchId} round=${batch.round} '
       'events=${filtered.length} (of ${batch.events.length}) '
-      'cycleCount=${batch.cycleCount} playbackMs=$totalMs',
+      'cycleCount=${batch.cycleCount} playbackMs=$totalMs '
+      'sinceEndedMs=$sinceEndedMs offsetMs=${_playbackOffset.inMilliseconds}',
       name: 'BattleView',
-    );
-    _playbackTotal = Duration(milliseconds: totalMs);
-    // Start where the server says this replay already is, not at 0.
-    _playbackOffset = Duration(
-      milliseconds: batch.endedAt <= 0
-          ? 0
-          : (DateTime.now().millisecondsSinceEpoch - batch.endedAt)
-              .clamp(0, totalMs),
     );
     _playbackStart = SchedulerBinding.instance.currentSystemFrameTimeStamp;
     final remaining = _playbackTotal - _playbackOffset;

@@ -35,6 +35,30 @@ const Duration kCombatEventDuration = Duration(milliseconds: 1600);
 /// time; raise [kCombatEventDuration] for pacing before raising this.
 const Duration kMaxCombatPlayback = Duration(seconds: 45);
 
+/// Most of a replay a late client is allowed to fast-forward past so it
+/// can line up with the client that got the batch first.
+///
+/// Catch-up exists to absorb *delivery* latency — the tens of
+/// milliseconds between the server publishing a batch and a client
+/// painting its first frame of it — by comparing the server's `endedAt`
+/// against the client's own clock. Those are two different machines'
+/// wall clocks, and nothing keeps them in step: a backend container
+/// whose clock has drifted, or a batch that sat in a throttled tab,
+/// makes the difference arbitrarily large.
+///
+/// Capping it is what stops that difference from being mistaken for
+/// "this replay is already over". Without a cap, any disagreement larger
+/// than one replay skipped combat entirely and acked `combat_done`
+/// roughly two seconds in, so the round resolved before a single attack
+/// was drawn.
+///
+/// The cost of the cap is that a genuine mid-replay reconnect now
+/// over-plays instead of catching up, and may miss the server's
+/// `COMBAT_DONE_TIMEOUT_MS` window — in which case the server advances
+/// the round itself. Playing combat and occasionally falling back to the
+/// server timeout is the better failure of the two.
+const Duration kMaxPlaybackCatchUp = Duration(seconds: 3);
+
 /// Total playback time for [eventCount] events: the preferred rate, or a
 /// compressed rate when that would exceed [kMaxCombatPlayback].
 Duration combatPlaybackDuration(int eventCount) {

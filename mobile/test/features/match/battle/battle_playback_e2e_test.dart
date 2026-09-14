@@ -300,4 +300,143 @@ void main() {
     await tester.pumpWidget(const SizedBox.shrink());
     await tester.pump(const Duration(seconds: 1));
   });
+
+  testWidgets('a stale endedAt cannot skip the replay and ack immediately',
+      (tester) async {
+    // The regression this pins down: `endedAt` is the *server's* wall
+    // clock, compared against the *browser's*. The catch-up offset was
+    // clamped only to the replay length, so any disagreement bigger than
+    // one replay (a container clock that drifted, a batch delivered late)
+    // saturated the clamp, left `remaining` at ~0, and made the client ack
+    // `combat_done` about two seconds in — every round of a real match
+    // advanced 1.6-2.9s after its batch was published, whatever the event
+    // count, and the server's 60s fallback always found the round already
+    // resolved.
+    final transport = FakeWsTransport();
+    final client = WsClient(
+      url: 'ws://localhost',
+      getAccessToken: () async => 'token',
+      transport: transport,
+    );
+    addTearDown(client.dispose);
+    final connected = client.connect();
+    transport.serverConnect();
+    await connected;
+    _seedMatch(transport);
+
+    await pumpScreen(
+      tester,
+      const MatchScreen(matchId: 'm1'),
+      overrides: [wsClientProvider.overrideWithValue(client)],
+      surfaceSize: const Size(390, 844),
+    );
+    transport.emitFromServer(GameEvents.matchPhase, {
+      'matchId': 'm1',
+      'phase': 'battle',
+      'round': 1,
+      'timer': 0,
+      'players': [
+        {'id': 'p1', 'hp': 100, 'gold': 5, 'ready': true},
+        {'id': 'p2', 'hp': 100, 'gold': 5, 'ready': true},
+      ],
+    });
+    await tester.pump();
+
+    transport.emitFromServer(GameEvents.combatEvents, {
+      'matchId': 'm1',
+      'round': 1,
+      'cycleCount': 1,
+      // Ten minutes in the past — far more than any replay is long.
+      'endedAt': DateTime.now().millisecondsSinceEpoch - 600 * 1000,
+      'events': [for (var i = 1; i <= 20; i++) _attack(i, 100 - i)],
+    });
+    await tester.pump();
+    await tester.pump();
+
+    bool ackSent() =>
+        transport.sent.any((m) => m.event == GameActions.matchCombatDone);
+
+    final total = combatPlaybackDuration(20);
+    await tester.pump(const Duration(seconds: 3));
+    expect(
+      ackSent(),
+      isFalse,
+      reason: 'combat_done was sent 3s into a $total replay because the '
+          'stale endedAt consumed the whole playback budget',
+    );
+
+    // And it must still be a real replay, not a frozen frame.
+    final summary = tester
+        .widget<Text>(find.byKey(const ValueKey('battle-batch-summary')))
+        .data!;
+    expect(
+      summary.contains('playhead 100%'),
+      isFalse,
+      reason: 'playhead jumped straight to the end: $summary',
+    );
+
+    await tester.pumpWidget(const SizedBox.shrink());
+    await tester.pump(const Duration(seconds: 1));
+  });
+
+  testWidgets('a batch that arrives before the round update still plays',
+      (tester) async {
+    // `game:combat:events` and the `match:phase` bump that moves
+    // `match.round` forward are two separate publishes; the batch can win.
+    // Dropping it on the round mismatch stranded the round entirely — the
+    // stream listener only fires on *new* values, so it never came back
+    // and nobody ever acked, leaving the match to sit out the server's
+    // 60s combat timeout.
+    final transport = FakeWsTransport();
+    final client = WsClient(
+      url: 'ws://localhost',
+      getAccessToken: () async => 'token',
+      transport: transport,
+    );
+    addTearDown(client.dispose);
+    final connected = client.connect();
+    transport.serverConnect();
+    await connected;
+    _seedMatch(transport);
+
+    await pumpScreen(
+      tester,
+      const MatchScreen(matchId: 'm1'),
+      overrides: [wsClientProvider.overrideWithValue(client)],
+      surfaceSize: const Size(390, 844),
+    );
+
+    // Round 2's batch lands while the screen still believes it is round 1.
+    transport.emitFromServer(GameEvents.combatEvents, {
+      'matchId': 'm1',
+      'round': 2,
+      'cycleCount': 1,
+      'endedAt': 0,
+      'events': [for (var i = 1; i <= 8; i++) _attack(i, 100 - i)],
+    });
+    await tester.pump();
+
+    // Only now does the phase update carrying round 2 arrive.
+    transport.emitFromServer(GameEvents.matchPhase, {
+      'matchId': 'm1',
+      'phase': 'battle',
+      'round': 2,
+      'timer': 0,
+      'players': [
+        {'id': 'p1', 'hp': 100, 'gold': 5, 'ready': true},
+        {'id': 'p2', 'hp': 100, 'gold': 5, 'ready': true},
+      ],
+    });
+    await tester.pump();
+    await tester.pump();
+
+    expect(
+      find.textContaining('batch loaded'),
+      findsOneWidget,
+      reason: 'the early batch was dropped and never replayed',
+    );
+
+    await tester.pumpWidget(const SizedBox.shrink());
+    await tester.pump(const Duration(seconds: 1));
+  });
 }
