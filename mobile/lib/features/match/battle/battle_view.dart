@@ -67,7 +67,18 @@ class _BattleViewState extends ConsumerState<BattleView>
   late final AnimationController _playhead;
   late final BattlePlaybackController _controller;
   Timer? _staleTimer;
+  Timer? _ackTimer;
   bool _staleDetected = false;
+
+  /// Wall-clock anchor for playback. The playhead's *position* is derived
+  /// from elapsed real time, not from accumulated animation frames:
+  /// browsers suspend `requestAnimationFrame` entirely in a background
+  /// tab, which would otherwise freeze one player's replay at 0% while
+  /// the other runs to 100% (and desync the two clients permanently).
+  /// Anchoring to wall time means a tab that was hidden simply jumps to
+  /// the correct position on its next frame.
+  DateTime? _playbackStart;
+  Duration _playbackTotal = Duration.zero;
   final GlobalKey _myBoardKey = GlobalKey();
   final GlobalKey _opponentBoardKey = GlobalKey();
 
@@ -107,6 +118,7 @@ class _BattleViewState extends ConsumerState<BattleView>
   @override
   void dispose() {
     _staleTimer?.cancel();
+    _ackTimer?.cancel();
     _playhead.removeStatusListener(_onPlayheadStatusChanged);
     _playhead.removeListener(_pushPlayhead);
     _playhead.dispose();
@@ -138,21 +150,39 @@ class _BattleViewState extends ConsumerState<BattleView>
       'cycleCount=${batch.cycleCount} playbackMs=$totalMs',
       name: 'BattleView',
     );
+    _playbackTotal = Duration(milliseconds: totalMs);
+    _playbackStart = DateTime.now();
+    // The controller only drives repaints now — position comes from wall
+    // time in [_pushPlayhead], so a throttled tab self-corrects.
     _playhead
-      ..duration = Duration(milliseconds: totalMs)
+      ..duration = _playbackTotal
       ..forward(from: 0);
+    // Ack on a timer, not on animation completion: a background tab gets
+    // no animation frames at all, so a frame-driven ack would never fire
+    // and the round would hang until the server's 60s combat timeout.
+    // Browsers throttle background timers but do still run them.
+    _ackTimer?.cancel();
+    _ackTimer = Timer(
+      _playbackTotal + const Duration(milliseconds: 500),
+      _ack,
+    );
     setState(() {}); // refresh the playhead listener binding below
   }
 
   bool _acked = false;
 
+  /// Idempotent — may be reached from either the ack timer or the
+  /// animation completing, whichever happens first.
+  void _ack() {
+    if (_acked || !mounted) return;
+    _acked = true;
+    widget.onSkip();
+  }
+
   void _onPlayheadStatusChanged(AnimationStatus status) {
-    if (_playhead.isCompleted && !_acked) {
-      _acked = true;
+    if (_playhead.isCompleted) {
       // Freeze 500ms (battle_end spec), then ack.
-      Future<void>.delayed(const Duration(milliseconds: 500), () {
-        if (mounted) widget.onSkip();
-      });
+      Future<void>.delayed(const Duration(milliseconds: 500), _ack);
     }
   }
 
@@ -244,7 +274,14 @@ class _BattleViewState extends ConsumerState<BattleView>
   }
 
   void _pushPlayhead() {
-    _controller.seekTo(_playhead.value);
+    final start = _playbackStart;
+    final totalMs = _playbackTotal.inMilliseconds;
+    if (start == null || totalMs <= 0) {
+      _controller.seekTo(_playhead.value);
+      return;
+    }
+    final elapsedMs = DateTime.now().difference(start).inMilliseconds;
+    _controller.seekTo((elapsedMs / totalMs).clamp(0.0, 1.0));
   }
 }
 
@@ -458,10 +495,10 @@ class _BattleTileState extends State<BattleTile> with TickerProviderStateMixin {
   int? _lastHealIndex;
   int? _lastRecoilIndex;
 
-  /// Small in-place nudge distance (px) — deliberately not a real
-  /// cross-board travel distance (that's CombatEffectsOverlay's job).
-  /// Just enough to read as "this unit just attacked."
-  static const double _recoilDistance = 10;
+  /// In-place nudge distance (px) — deliberately not a real cross-board
+  /// travel distance (that's CombatEffectsOverlay's job), just enough to
+  /// clearly read as "this unit just attacked" on a ~97px tile.
+  static const double _recoilDistance = 18;
 
   @override
   void initState() {
