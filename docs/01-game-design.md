@@ -48,7 +48,7 @@ Four unit types. Each has stats and a star-upgrade path.
 |---|---|---|---|---|---|
 | Fighter | 1g | 100 | 15 | 20 | All-rounder (sustain) |
 | Healer | 1g | 70 | 6 | 50 | Support / sustain |
-| Ranger | 2g | 60 | 12 | 90 | DPS carry |
+| Ranger | 2g | 60 | 12 | 67 | DPS carry |
 | Tank | 2g | 150 | 8 | 0 | Frontline |
 
 *MVP placeholder stats; tune via playtest.*

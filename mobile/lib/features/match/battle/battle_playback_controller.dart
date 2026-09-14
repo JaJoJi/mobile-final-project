@@ -13,10 +13,58 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../shared/models/combat_event.dart';
 import 'battle_visual_state.dart';
 
-/// One-shot duration for every combat event on the playhead. Per the
-/// locked Step 2 plan, 600 ms is the single global constant; speed
-/// multipliers are explicitly out of scope for the MVP.
-const Duration kCombatEventDuration = Duration(milliseconds: 600);
+/// Preferred duration for each combat event on the playhead. Raised from
+/// the original 600ms (locked Step 2 plan) over successive rounds of live
+/// testing — 600 → 1000 → 1600ms — because combat kept reading as too
+/// fast to follow once the melee travel animation landed (P4-FE-01).
+/// Each attack now owns ~1.6s, which the attacker spends travelling to
+/// its target and back.
+///
+/// This is a *preferred* rate, not a guarantee — see [kMaxCombatPlayback]
+/// and [combatPlaybackDuration]. It is also the single knob for combat
+/// pacing: nothing else hardcodes a per-event duration.
+const Duration kCombatEventDuration = Duration(milliseconds: 1600);
+
+/// Hard ceiling on one round's replay. The server abandons a round after
+/// `COMBAT_DONE_TIMEOUT_MS` (60s) if it hasn't received both clients'
+/// `combat_done` acks, so a replay longer than that hangs the match: a
+/// real 77-event round at the preferred rate would run over two minutes.
+/// Long rounds compress rather than overrun.
+///
+/// Kept comfortably under the server's 60s so a slow client still acks in
+/// time; raise [kCombatEventDuration] for pacing before raising this.
+const Duration kMaxCombatPlayback = Duration(seconds: 45);
+
+/// Most of a replay a late client is allowed to fast-forward past so it
+/// can line up with the client that got the batch first.
+///
+/// Catch-up exists to absorb *delivery* latency — the tens of
+/// milliseconds between the server publishing a batch and a client
+/// painting its first frame of it — by comparing the server's `endedAt`
+/// against the client's own clock. Those are two different machines'
+/// wall clocks, and nothing keeps them in step: a backend container
+/// whose clock has drifted, or a batch that sat in a throttled tab,
+/// makes the difference arbitrarily large.
+///
+/// Capping it is what stops that difference from being mistaken for
+/// "this replay is already over". Without a cap, any disagreement larger
+/// than one replay skipped combat entirely and acked `combat_done`
+/// roughly two seconds in, so the round resolved before a single attack
+/// was drawn.
+///
+/// The cost of the cap is that a genuine mid-replay reconnect now
+/// over-plays instead of catching up, and may miss the server's
+/// `COMBAT_DONE_TIMEOUT_MS` window — in which case the server advances
+/// the round itself. Playing combat and occasionally falling back to the
+/// server timeout is the better failure of the two.
+const Duration kMaxPlaybackCatchUp = Duration(seconds: 3);
+
+/// Total playback time for [eventCount] events: the preferred rate, or a
+/// compressed rate when that would exceed [kMaxCombatPlayback].
+Duration combatPlaybackDuration(int eventCount) {
+  final preferred = kCombatEventDuration * eventCount;
+  return preferred > kMaxCombatPlayback ? kMaxCombatPlayback : preferred;
+}
 
 class BattlePlaybackController extends StateNotifier<BattleVisualState> {
   BattlePlaybackController() : super(BattleVisualState.empty);

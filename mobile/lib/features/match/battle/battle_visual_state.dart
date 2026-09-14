@@ -5,7 +5,7 @@
 /// snapshot, eliminating phantom-unit bugs caused by state divergence.
 library;
 
-import 'package:flutter/material.dart' show Color, IconData, Icons;
+import 'package:flutter/material.dart' show Color;
 
 import '../../../shared/models/combat_event.dart';
 import '../../../shared/models/match_state.dart' show MatchSide;
@@ -48,17 +48,14 @@ class UnitVisualState {
     required this.hp,
     required this.maxHp,
     required this.alive,
-    this.isLunging = false,
-    this.lungeTargetSlot,
-    this.lungeDx = 0,
-    this.lungeDy = 0,
-    this.isShooting = false,
-    this.projectileTargetSlot,
-    this.projectileIcon = Icons.arrow_forward,
     this.floatingDamage,
     this.floatingIsHeal = false,
     this.healEventIndex,
     this.lastDamageEventIndex,
+    this.recoilEventIndex,
+    this.recoilDx = 0,
+    this.recoilDy = 0,
+    this.isMeleeAttacking = false,
     this.debuff,
   });
 
@@ -67,17 +64,6 @@ class UnitVisualState {
   final int hp;
   final int maxHp;
   final bool alive;
-  final bool isLunging;
-  final int? lungeTargetSlot;
-
-  /// Normalized horizontal lunge direction (-1 = left, +1 = right).
-  final double lungeDx;
-
-  /// Normalized vertical lunge direction (-1 = up toward enemy, +1 = down).
-  final double lungeDy;
-  final bool isShooting;
-  final int? projectileTargetSlot;
-  final IconData projectileIcon;
   final int? floatingDamage;
   final bool floatingIsHeal;
 
@@ -88,6 +74,27 @@ class UnitVisualState {
   /// Index of the most recent damage event targeting this unit.
   /// [BattleTile] uses this as a trigger key for the hit shake animation.
   final int? lastDamageEventIndex;
+
+  /// Index of the most recent melee attack event this unit was the
+  /// attacker in. [BattleTile] uses this as a trigger key for a small
+  /// in-place recoil — the cross-board attack streak itself lives in
+  /// [CombatEffectsOverlay], but the attacker's own sprite needs to move
+  /// too for the attack to read clearly (P4-FE-01 follow-up).
+  final int? recoilEventIndex;
+
+  /// Normalized recoil direction toward the target (-1 = left, +1 =
+  /// right); 0 when this unit isn't a melee attacker.
+  final double recoilDx;
+
+  /// Normalized recoil direction toward the target (-1 = up toward
+  /// enemy, +1 = down); 0 when this unit isn't a melee attacker.
+  final double recoilDy;
+
+  /// True only while this unit is the melee attacker of the event playing
+  /// *right now*. [CombatEffectsOverlay] draws its sprite travelling to
+  /// the target during that window, so the home tile hides its own copy
+  /// to avoid rendering the unit twice.
+  final bool isMeleeAttacking;
 
   /// Active debuff on this unit (e.g. slow). Persistent until the debuff
   /// expires (precomputed via healer attack scan).
@@ -109,6 +116,7 @@ Map<UnitKey, UnitVisualState> deriveUnitStates({
   required int playheadIndex,
   required List<Unit?> playerBoard,
   required List<Unit?> opponentBoard,
+  required MatchSide mySide,
 }) {
   if (events.isEmpty) return const {};
 
@@ -203,13 +211,52 @@ Map<UnitKey, UnitVisualState> deriveUnitStates({
     }
   }
 
-  // Apply animation flags from the current event (lunge, shoot, floating).
+  // --- Precompute melee-attacker recoil trigger keys ---
+  // recoil[attackerKey] = most recent melee attack index this unit was
+  // the attacker in (≤ limit), plus the normalized direction toward its
+  // target — same column/row-direction formula the removed cross-board
+  // lunge used, just for a small in-place nudge now (P4-FE-01 follow-up).
+  final recoil = <UnitKey, ({int index, double dx, double dy})>{};
+  for (var i = 0; i <= limit; i++) {
+    final e = events[i];
+    if (e is! AttackEvent) continue;
+    final attackerSide = e.attackerSide;
+    final attackerSlot = e.attackerSlot;
+    final attackerUnitId = e.attackerUnitId;
+    final targetSlot = e.targetSlot;
+    if (attackerSide == null ||
+        attackerSlot == null ||
+        attackerUnitId == null ||
+        targetSlot == null) {
+      continue;
+    }
+    final isMelee =
+        attackerUnitId == UnitId.fighter || attackerUnitId == UnitId.tank;
+    if (!isMelee) continue;
+    final aCol = attackerSlot % 3;
+    final tCol = targetSlot % 3;
+    var dCol = (tCol - aCol).toDouble();
+    if (dCol.abs() > 1) dCol = dCol > 0 ? 1.0 : -1.0;
+    // Viewer-relative, NOT absolute side: every client renders its own
+    // board at the bottom and the opponent's on top, so "toward the
+    // enemy" is up (-1) for the viewer's own units and down (+1) for the
+    // opponent's — regardless of whether the viewer happens to be p1 or
+    // p2. Keying this off the absolute side instead made every recoil
+    // point backwards for whichever player was p2.
+    final dRow = attackerSide == mySide ? -1.0 : 1.0;
+    recoil[UnitKey(side: attackerSide, slot: attackerSlot)] =
+        (index: i, dx: dCol, dy: dRow);
+  }
+
+  // Apply floating damage/heal from the current event.
   if (events.isNotEmpty && limit < events.length) {
     final current = events[limit];
 
     switch (current) {
       case AttackEvent():
-        // Floating damage on target.
+        // Floating damage on target. Lunge/projectile visuals are driven
+        // directly from the event stream by CombatEffectsOverlay, not
+        // from UnitVisualState (P4-FE-01).
         _setFloating(
           current.targetSide,
           current.targetSlot,
@@ -217,54 +264,6 @@ Map<UnitKey, UnitVisualState> deriveUnitStates({
           false,
           map,
         );
-        // Lunging / shooting on attacker.
-        if (current.attackerSlot != null &&
-            current.attackerSide != null &&
-            current.attackerUnitId != null) {
-          final isMelee = current.attackerUnitId == UnitId.fighter ||
-              current.attackerUnitId == UnitId.tank;
-          final key = UnitKey(
-            side: current.attackerSide!,
-            slot: current.attackerSlot!,
-          );
-          final existing = map[key];
-          if (existing != null) {
-            if (isMelee && current.targetSlot != null) {
-              final attackerSlot = current.attackerSlot!;
-              final targetSlot = current.targetSlot!;
-              final aCol = attackerSlot % 3;
-              final tCol = targetSlot % 3;
-              var dCol = (tCol - aCol).toDouble();
-              if (dCol.abs() > 1) dCol = dCol > 0 ? 1.0 : -1.0;
-              final dRow = current.attackerSide == MatchSide.p2 ? 1.0 : -1.0;
-              map[key] = UnitVisualState(
-                unitId: existing.unitId,
-                star: existing.star,
-                hp: existing.hp,
-                maxHp: existing.maxHp,
-                alive: existing.alive,
-                isLunging: true,
-                lungeTargetSlot: current.targetSlot,
-                lungeDx: dCol,
-                lungeDy: dRow,
-              );
-            } else {
-              final icon = current.attackerUnitId == UnitId.ranger
-                  ? Icons.arrow_forward
-                  : Icons.bolt;
-              map[key] = UnitVisualState(
-                unitId: existing.unitId,
-                star: existing.star,
-                hp: existing.hp,
-                maxHp: existing.maxHp,
-                alive: existing.alive,
-                isShooting: true,
-                projectileTargetSlot: current.targetSlot,
-                projectileIcon: icon,
-              );
-            }
-          }
-        }
       case HealEvent():
         _setFloating(
           current.targetSide,
@@ -330,23 +329,21 @@ Map<UnitKey, UnitVisualState> deriveUnitStates({
       }
     }
 
+    final r = recoil[key];
     map[key] = UnitVisualState(
       unitId: existing.unitId,
       star: existing.star,
       hp: existing.hp,
       maxHp: existing.maxHp,
       alive: existing.alive,
-      isLunging: existing.isLunging,
-      lungeTargetSlot: existing.lungeTargetSlot,
-      lungeDx: existing.lungeDx,
-      lungeDy: existing.lungeDy,
-      isShooting: existing.isShooting,
-      projectileTargetSlot: existing.projectileTargetSlot,
-      projectileIcon: existing.projectileIcon,
       floatingDamage: existing.floatingDamage,
       floatingIsHeal: existing.floatingIsHeal,
       healEventIndex: healEventIndex[key],
       lastDamageEventIndex: lastDamage[key],
+      recoilEventIndex: r?.index,
+      recoilDx: r?.dx ?? 0,
+      recoilDy: r?.dy ?? 0,
+      isMeleeAttacking: r != null && r.index == limit,
       debuff: debuff,
     );
   }

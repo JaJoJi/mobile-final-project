@@ -48,14 +48,36 @@ describe('runBattle — cycle model (docs/05 §1)', () => {
     );
   });
 
-  it('a faster unit acts more often — Ranger (SPD 90) acts 10× per cycle', () => {
+  it('a faster unit acts more often — Ranger acts 3× per cycle', () => {
     const p1 = [makeUnit({ unitId: 'ranger', slot: 0, side: 'p1', hp: 100000 })];
     const p2 = [makeUnit({ unitId: 'fighter', slot: 0, side: 'p2', hp: 100000 })];
     const events = runBattle(makeBattleState({ p1Units: p1, p2Units: p2 }));
     const rangerAttacks = eventsOfType(events, 'attack').filter(
       (e) => (e as { attacker: string }).attacker === p1[0].instanceId,
     );
-    expect(rangerAttacks).toHaveLength(300); // 10 per cycle × 30
+    expect(rangerAttacks).toHaveLength(90); // 3 per cycle × 30
+  });
+
+  it('an even board of starting units does not resolve inside one cycle', () => {
+    // The shape the clients actually replay. With Ranger at SPD 90 each
+    // ranger acted ten times a cycle for 12 damage, so two of them put out
+    // 240 damage before the first `cycle_end` — more than a whole starting
+    // board's HP. Real matches ended at `battle_end` cycle 1 with the
+    // winner's units barely scratched, which is not something a replay can
+    // show, and it ran a match out in about six near-instant rounds.
+    const p1 = [
+      makeUnit({ unitId: 'fighter', slot: 0, side: 'p1' }),
+      makeUnit({ unitId: 'ranger', slot: 6, side: 'p1', hp: 60 }),
+      makeUnit({ unitId: 'ranger', slot: 8, side: 'p1', hp: 60 }),
+    ];
+    const p2 = [
+      makeUnit({ unitId: 'fighter', slot: 0, side: 'p2' }),
+      makeUnit({ unitId: 'ranger', slot: 6, side: 'p2', hp: 60 }),
+      makeUnit({ unitId: 'ranger', slot: 8, side: 'p2', hp: 60 }),
+    ];
+    const end = lastEvent(runBattle(makeBattleState({ p1Units: p1, p2Units: p2 })));
+    expect(end).toMatchObject({ type: 'battle_end' });
+    expect((end as { cycle: number }).cycle).toBeGreaterThanOrEqual(3);
   });
 });
 

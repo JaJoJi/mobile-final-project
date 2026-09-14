@@ -781,7 +781,8 @@ class _UnitInfo {
             role: 'สร้างความเสียหายระยะไกล',
             hp: 60,
             atk: 12,
-            spd: 90,
+            // Mirrors UNIT_BASE_STATS in backend/src/game/constants.ts.
+            spd: 67,
             ability: switch (star) {
               1 => 'ความเสียหาย 10% ทะลุไปยังศัตรูด้านหลัง',
               2 => 'เล็งศัตรู HP ต่ำสุดได้จากทุกช่อง',
