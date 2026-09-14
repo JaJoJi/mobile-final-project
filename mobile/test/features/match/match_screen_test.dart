@@ -806,6 +806,51 @@ void main() {
     expect(find.byType(ListView), findsNothing);
     expect(tester.takeException(), isNull);
   });
+
+  testWidgets(
+      'shop cards keep their card proportions on a wide desktop viewport',
+      (tester) async {
+    // A desktop browser window puts the shop panel in landscape's
+    // Expanded flex:4 column, which is exactly as tall as the board
+    // beside it — on a wide, short-on-content shop that column runs to
+    // hundreds of pixels taller than 5 cards actually need. The row that
+    // laid the cards out used `CrossAxisAlignment.stretch`, forcing each
+    // card to fill that whole leftover height while its width stayed
+    // fixed at a fifth of the (much narrower) panel — reported live as
+    // cards rendering as tall, narrow strips instead of cards.
+    final transport = FakeWsTransport();
+    final client = WsClient(
+      url: 'ws://localhost',
+      getAccessToken: () async => 'token',
+      transport: transport,
+    );
+    addTearDown(client.dispose);
+    final connected = client.connect();
+    transport.serverConnect();
+    await connected;
+    _seed(transport);
+
+    await pumpScreen(
+      tester,
+      const MatchScreen(matchId: 'm1'),
+      overrides: [wsClientProvider.overrideWithValue(client)],
+      surfaceSize: const Size(1160, 900),
+    );
+    await tester.pump();
+
+    final firstShopCard = find.byKey(const ValueKey('shop-0'));
+    expect(firstShopCard, findsOneWidget);
+    final size = tester.getSize(firstShopCard);
+    // The card's own asset is a 64:96 (width:height) portrait card, so
+    // height should track width at roughly that ratio (~1.5x) — not the
+    // ~8x this bug produced on a short, wide shop column.
+    expect(
+      size.height,
+      lessThan(size.width * 2),
+      reason: 'shop card stretched to fill the panel height instead of '
+          'keeping its card aspect ratio: $size',
+    );
+  });
 }
 
 void _seed(

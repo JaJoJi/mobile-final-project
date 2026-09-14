@@ -150,18 +150,25 @@ class _ShopCardState extends State<ShopCard> with TickerProviderStateMixin {
                     ? (pressed) => setState(() => _pressed = pressed)
                     : null,
                 borderRadius: AppRadius.allMd,
-                child: SizedBox.expand(
-                  child: UnitAvatar(
-                    unitId: offer.unitId.toJson(),
-                    star: offer.star,
-                    variant: UnitAvatarVariant.shop,
-                    size: UnitAvatarSize.lg,
-                    expand: true,
-                    price: price,
-                    state: !affordable
-                        ? UnitAvatarState.unaffordable
-                        : UnitAvatarState.normal,
-                  ),
+                // Not `SizedBox.expand`: that forces *both* dimensions
+                // tight, which defeats `UnitAvatar`'s own internal
+                // `AspectRatio` (64:96 for the shop variant) the moment
+                // an ancestor hands this card more height than its width
+                // calls for — exactly what a wide desktop viewport does,
+                // since the shop panel is as tall as the board beside it
+                // regardless of how few cards it holds. `expand: true`
+                // alone already fills the *width* UnitAvatar is given
+                // and derives its own height from that.
+                child: UnitAvatar(
+                  unitId: offer.unitId.toJson(),
+                  star: offer.star,
+                  variant: UnitAvatarVariant.shop,
+                  size: UnitAvatarSize.lg,
+                  expand: true,
+                  price: price,
+                  state: !affordable
+                      ? UnitAvatarState.unaffordable
+                      : UnitAvatarState.normal,
                 ),
               ),
             ),

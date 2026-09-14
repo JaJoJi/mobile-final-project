@@ -116,32 +116,44 @@ class _ShopTabState extends State<ShopTab> {
             ),
             const SizedBox(height: AppSpacing.xs),
             Expanded(
-              child: LayoutBuilder(
-                builder: (context, constraints) {
-                  const gap = AppSpacing.xs;
-                  final cardWidth = (constraints.maxWidth - (gap * 4)) / 5;
-                  return Row(
-                    key: const ValueKey('shop-card-row'),
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      ...List.generate(5, (index) {
-                        final offer =
-                            index < offers.length ? offers[index] : null;
-                        return Padding(
-                          padding: EdgeInsets.only(right: index == 4 ? 0 : gap),
-                          child: ShopCard(
-                            key: ValueKey('shop-$index'),
-                            offer: offer,
-                            gold: widget.roster.gold,
-                            enabled: widget.enabled,
-                            width: cardWidth,
-                            onBuy: () => widget.onBuy(index),
-                          ),
-                        );
-                      }),
-                    ],
-                  );
-                },
+              // A landscape/desktop viewport gives this panel the same
+              // height as the board beside it, whether or not 5 cards
+              // need that much room — `Center` lets the row keep the
+              // height its own aspect ratio calls for and sit in the
+              // middle of whatever is left, instead of the row being
+              // stretched to fill it (reported live as cards rendering
+              // as tall, narrow strips instead of cards). On a snug
+              // portrait layout, where there's nothing to center within,
+              // this changes nothing.
+              child: Center(
+                child: LayoutBuilder(
+                  builder: (context, constraints) {
+                    const gap = AppSpacing.xs;
+                    final cardWidth = (constraints.maxWidth - (gap * 4)) / 5;
+                    return Row(
+                      key: const ValueKey('shop-card-row'),
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        ...List.generate(5, (index) {
+                          final offer =
+                              index < offers.length ? offers[index] : null;
+                          return Padding(
+                            padding:
+                                EdgeInsets.only(right: index == 4 ? 0 : gap),
+                            child: ShopCard(
+                              key: ValueKey('shop-$index'),
+                              offer: offer,
+                              gold: widget.roster.gold,
+                              enabled: widget.enabled,
+                              width: cardWidth,
+                              onBuy: () => widget.onBuy(index),
+                            ),
+                          );
+                        }),
+                      ],
+                    );
+                  },
+                ),
               ),
             ),
           ],
