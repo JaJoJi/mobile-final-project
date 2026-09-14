@@ -250,6 +250,7 @@ class _MatchContent extends StatelessWidget {
                         roster: match.roster,
                         enabled: view.canAct,
                         refreshUsed: view.refreshUsed,
+                        vertical: orientation == Orientation.landscape,
                         onBuy: (index) {
                           audio.play(GameSfx.purchase);
                           controller.buy(index);
@@ -319,10 +320,16 @@ class _PlanningHost extends StatelessWidget {
       child: orientation == Orientation.landscape
           ? Row(
               children: [
-                Expanded(flex: 6, child: board),
+                // The shop column is exactly as tall as the board beside
+                // it regardless of how few cards it holds, so a narrower
+                // share works fine once the cards stack vertically
+                // (`ShopTab.vertical`) — freeing width for the board,
+                // which is the thing players actually look at during
+                // combat.
+                Expanded(flex: 7, child: board),
                 const SizedBox(width: AppSpacing.sm),
                 Expanded(
-                  flex: 4,
+                  flex: 3,
                   child: ColoredBox(color: panelColor, child: shop),
                 ),
               ],
