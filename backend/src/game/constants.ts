@@ -6,7 +6,7 @@ import type { Star, UnitId } from './types';
  *   | Unit    | HP  | ATK | SPD |
  *   | fighter | 100 | 15  | 20  |
  *   | healer  | 70  | 6   | 50  |
- *   | ranger  | 60  | 12  | 90  |
+ *   | ranger  | 60  | 12  | 67  |
  *   | tank    | 150 | 8   | 0   |
  *
  * HP is not read from here at runtime — the orchestrator (P0-BE-13) puts
@@ -22,7 +22,7 @@ export interface UnitBaseStats {
 export const UNIT_BASE_STATS: Record<UnitId, UnitBaseStats> = {
   fighter: { hp: 100, atk: 15, spd: 20 },
   healer: { hp: 70, atk: 6, spd: 50 },
-  ranger: { hp: 60, atk: 12, spd: 90 },
+  ranger: { hp: 60, atk: 12, spd: 67 },
   tank: { hp: 150, atk: 8, spd: 0 },
 };
 
@@ -55,6 +55,22 @@ export function atkFor(unitId: UnitId, star: Star): number {
   return Math.floor(UNIT_BASE_STATS[unitId].atk * mult);
 }
 
+/**
+ * SPD is an *actions per cycle* dial, not a linear stat: a unit acts every
+ * `100 - spd` ticks, so the top of the range is extremely steep. At the
+ * MVP's original SPD 90 a ranger acted ten times a cycle for 12 damage —
+ * 120 damage per cycle against a fighter's 15 — and two of them wiped a
+ * whole starting board before the first `cycle_end`. Real matches ended at
+ * `battle_end` cycle 1 with the winner's units barely scratched, which is
+ * nothing for the client to replay, and a match was over in about six
+ * near-instant rounds.
+ *
+ * SPD 67 puts the ranger at 3 actions per cycle (36 damage), still the
+ * highest output on the board and still a 60 HP glass cannon, but battles
+ * now run the several cycles the replay is built to show. Per
+ * `docs/05 §1.1` these are playtest-tuned placeholders; keep the
+ * actions/cycle column in that table in step with any change here.
+ */
 export function spdFor(unitId: UnitId): number {
   return UNIT_BASE_STATS[unitId].spd;
 }
