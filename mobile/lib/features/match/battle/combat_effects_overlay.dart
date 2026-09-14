@@ -18,10 +18,19 @@ import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart' show RenderStack;
 
 import '../../../core/theme/app_spacing.dart';
+import '../../../core/widgets/unit_avatar.dart';
 import '../../../shared/models/combat_event.dart';
 import '../../../shared/models/match_state.dart';
 import '../../../shared/models/unit.dart';
 import 'combat_effects_math.dart';
+
+/// Side length of one tile on the board behind [boardKey], or `null` if
+/// it isn't laid out yet. Mirrors `tileLocalCenter`'s grid assumptions.
+double? _tileSize(GlobalKey boardKey) {
+  final board = boardKey.currentContext?.findRenderObject() as RenderBox?;
+  if (board == null || !board.hasSize) return null;
+  return (board.size.width - 2 * AppSpacing.xs) / 3;
+}
 
 /// Center of board [slot], expressed in [ancestor]'s local coordinate
 /// space instead of the screen's global space. Resolving relative to a
@@ -145,6 +154,39 @@ class CombatEffectsOverlay extends StatelessWidget {
     final progress =
         isMelee ? triangleWave(current.subProgress) : current.subProgress;
     final position = Offset.lerp(attackerLocal, targetLocal, progress)!;
+
+    // Melee reads as the unit itself charging the target and returning,
+    // so draw the attacker's actual sprite travelling the path (its home
+    // tile hides itself meanwhile — see `UnitVisualState.isMeleeAttacking`).
+    // Ranged keeps a small projectile mark, which is what it should be.
+    if (isMelee) {
+      final size = _tileSize(
+        attackerSide == mySide ? myBoardKey : opponentBoardKey,
+      );
+      if (size == null) return null;
+      return Stack(
+        children: [
+          Positioned(
+            left: position.dx - size / 2,
+            top: position.dy - size / 2,
+            width: size,
+            height: size,
+            child: IgnorePointer(
+              key: const ValueKey('lunge-traveler'),
+              child: UnitAvatar(
+                unitId: attackerUnitId.toJson(),
+                star: event.attackerStar ?? 0,
+                variant: UnitAvatarVariant.replay,
+                side: attackerSide == mySide ? UnitSide.ally : UnitSide.enemy,
+                hp: 1,
+                maxHp: 1,
+                expand: true,
+              ),
+            ),
+          ),
+        ],
+      );
+    }
 
     // A self-contained `Stack` + `Positioned` pair, scoped to this
     // widget's own subtree, so the `Positioned` below always has a valid

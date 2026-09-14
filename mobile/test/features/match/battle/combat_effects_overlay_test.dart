@@ -1,3 +1,4 @@
+import 'package:auto_chess_mobile/core/theme/app_theme.dart';
 import 'package:auto_chess_mobile/features/match/battle/combat_effects_overlay.dart';
 import 'package:auto_chess_mobile/shared/models/combat_event.dart';
 import 'package:auto_chess_mobile/shared/models/match_state.dart';
@@ -55,6 +56,7 @@ void main() {
 
   Widget buildTree(double progress, {CombatEventBatch? eventsBatch}) {
     return MaterialApp(
+      theme: buildTheme(Brightness.light),
       home: Scaffold(
         body: Stack(
           children: [
@@ -85,12 +87,13 @@ void main() {
     );
   }
 
-  testWidgets('lunge streak appears during its event window', (tester) async {
+  testWidgets('melee attacker sprite travels during its event window',
+      (tester) async {
     await tester.pumpWidget(buildTree(0.5));
-    expect(find.byKey(const ValueKey('lunge-streak')), findsOneWidget);
+    expect(find.byKey(const ValueKey('lunge-traveler')), findsOneWidget);
   });
 
-  testWidgets('lunge streak is gone once the batch has finished',
+  testWidgets('melee traveler is gone once the batch has finished',
       (tester) async {
     await tester.pumpWidget(buildTree(1.0));
     // At subProgress 1.0 the triangle wave is back at 0 (attacker position)
@@ -99,6 +102,7 @@ void main() {
     await tester.pumpWidget(buildTree(0.0));
     await tester.pumpWidget(
       MaterialApp(
+        theme: buildTheme(Brightness.light),
         home: Scaffold(
           body: Stack(
             children: [
@@ -128,16 +132,16 @@ void main() {
         ),
       ),
     );
-    expect(find.byKey(const ValueKey('lunge-streak')), findsNothing);
+    expect(find.byKey(const ValueKey('lunge-traveler')), findsNothing);
   });
 
-  testWidgets('lunge streak sits at the target tile at the peak of the wave',
+  testWidgets('melee traveler sits at the target tile at the peak of the wave',
       (tester) async {
     // 1 event total: playheadProgress 0.5 -> subProgress 0.5 ->
     // triangleWave(0.5) == 1.0 (fully at target).
     await tester.pumpWidget(buildTree(0.5));
     final iconCenter =
-        tester.getCenter(find.byKey(const ValueKey('lunge-streak')));
+        tester.getCenter(find.byKey(const ValueKey('lunge-traveler')));
     // Target is slot 4 (center tile) of the opponent board, which spans
     // y in [300, 600] on screen -> its center tile center is at (150, 450).
     expect(iconCenter.dx, closeTo(150, 5));
@@ -156,7 +160,7 @@ void main() {
     // Confirms melee/ranged branching selects the ranged icon, not the
     // melee one.
     expect(find.byKey(const ValueKey('projectile-mark')), findsOneWidget);
-    expect(find.byKey(const ValueKey('lunge-streak')), findsNothing);
+    expect(find.byKey(const ValueKey('lunge-traveler')), findsNothing);
 
     final iconCenter =
         tester.getCenter(find.byKey(const ValueKey('projectile-mark')));
@@ -182,6 +186,7 @@ void main() {
     final unlaidOutKey = GlobalKey();
     await tester.pumpWidget(
       MaterialApp(
+        theme: buildTheme(Brightness.light),
         home: Scaffold(
           body: Stack(
             children: [
@@ -197,6 +202,6 @@ void main() {
         ),
       ),
     );
-    expect(find.byKey(const ValueKey('lunge-streak')), findsNothing);
+    expect(find.byKey(const ValueKey('lunge-traveler')), findsNothing);
   });
 }

@@ -638,7 +638,10 @@ class _BattleTileState extends State<BattleTile> with TickerProviderStateMixin {
             StoneBoardTile(
               slot: widget.slot,
               unitSide: widget.unitSide,
-              child: uv == null
+              // While this unit is mid-attack its sprite is drawn by
+              // CombatEffectsOverlay travelling to the target, so the tile
+              // leaves its square empty rather than showing it twice.
+              child: uv == null || uv.isMeleeAttacking
                   ? null
                   : UnitAvatar(
                       unitId: uv.unitId.toJson(),

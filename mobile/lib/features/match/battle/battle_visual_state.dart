@@ -55,6 +55,7 @@ class UnitVisualState {
     this.recoilEventIndex,
     this.recoilDx = 0,
     this.recoilDy = 0,
+    this.isMeleeAttacking = false,
     this.debuff,
   });
 
@@ -88,6 +89,12 @@ class UnitVisualState {
   /// Normalized recoil direction toward the target (-1 = up toward
   /// enemy, +1 = down); 0 when this unit isn't a melee attacker.
   final double recoilDy;
+
+  /// True only while this unit is the melee attacker of the event playing
+  /// *right now*. [CombatEffectsOverlay] draws its sprite travelling to
+  /// the target during that window, so the home tile hides its own copy
+  /// to avoid rendering the unit twice.
+  final bool isMeleeAttacking;
 
   /// Active debuff on this unit (e.g. slow). Persistent until the debuff
   /// expires (precomputed via healer attack scan).
@@ -339,6 +346,7 @@ Map<UnitKey, UnitVisualState> deriveUnitStates({
       recoilEventIndex: r?.index,
       recoilDx: r?.dx ?? 0,
       recoilDy: r?.dy ?? 0,
+      isMeleeAttacking: r != null && r.index == limit,
       debuff: debuff,
     );
   }
