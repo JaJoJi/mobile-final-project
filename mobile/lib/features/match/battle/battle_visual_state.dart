@@ -52,6 +52,9 @@ class UnitVisualState {
     this.floatingIsHeal = false,
     this.healEventIndex,
     this.lastDamageEventIndex,
+    this.recoilEventIndex,
+    this.recoilDx = 0,
+    this.recoilDy = 0,
     this.debuff,
   });
 
@@ -70,6 +73,21 @@ class UnitVisualState {
   /// Index of the most recent damage event targeting this unit.
   /// [BattleTile] uses this as a trigger key for the hit shake animation.
   final int? lastDamageEventIndex;
+
+  /// Index of the most recent melee attack event this unit was the
+  /// attacker in. [BattleTile] uses this as a trigger key for a small
+  /// in-place recoil — the cross-board attack streak itself lives in
+  /// [CombatEffectsOverlay], but the attacker's own sprite needs to move
+  /// too for the attack to read clearly (P4-FE-01 follow-up).
+  final int? recoilEventIndex;
+
+  /// Normalized recoil direction toward the target (-1 = left, +1 =
+  /// right); 0 when this unit isn't a melee attacker.
+  final double recoilDx;
+
+  /// Normalized recoil direction toward the target (-1 = up toward
+  /// enemy, +1 = down); 0 when this unit isn't a melee attacker.
+  final double recoilDy;
 
   /// Active debuff on this unit (e.g. slow). Persistent until the debuff
   /// expires (precomputed via healer attack scan).
@@ -188,6 +206,37 @@ Map<UnitKey, UnitVisualState> deriveUnitStates({
     }
   }
 
+  // --- Precompute melee-attacker recoil trigger keys ---
+  // recoil[attackerKey] = most recent melee attack index this unit was
+  // the attacker in (≤ limit), plus the normalized direction toward its
+  // target — same column/row-direction formula the removed cross-board
+  // lunge used, just for a small in-place nudge now (P4-FE-01 follow-up).
+  final recoil = <UnitKey, ({int index, double dx, double dy})>{};
+  for (var i = 0; i <= limit; i++) {
+    final e = events[i];
+    if (e is! AttackEvent) continue;
+    final attackerSide = e.attackerSide;
+    final attackerSlot = e.attackerSlot;
+    final attackerUnitId = e.attackerUnitId;
+    final targetSlot = e.targetSlot;
+    if (attackerSide == null ||
+        attackerSlot == null ||
+        attackerUnitId == null ||
+        targetSlot == null) {
+      continue;
+    }
+    final isMelee =
+        attackerUnitId == UnitId.fighter || attackerUnitId == UnitId.tank;
+    if (!isMelee) continue;
+    final aCol = attackerSlot % 3;
+    final tCol = targetSlot % 3;
+    var dCol = (tCol - aCol).toDouble();
+    if (dCol.abs() > 1) dCol = dCol > 0 ? 1.0 : -1.0;
+    final dRow = attackerSide == MatchSide.p2 ? 1.0 : -1.0;
+    recoil[UnitKey(side: attackerSide, slot: attackerSlot)] =
+        (index: i, dx: dCol, dy: dRow);
+  }
+
   // Apply floating damage/heal from the current event.
   if (events.isNotEmpty && limit < events.length) {
     final current = events[limit];
@@ -269,6 +318,7 @@ Map<UnitKey, UnitVisualState> deriveUnitStates({
       }
     }
 
+    final r = recoil[key];
     map[key] = UnitVisualState(
       unitId: existing.unitId,
       star: existing.star,
@@ -279,6 +329,9 @@ Map<UnitKey, UnitVisualState> deriveUnitStates({
       floatingIsHeal: existing.floatingIsHeal,
       healEventIndex: healEventIndex[key],
       lastDamageEventIndex: lastDamage[key],
+      recoilEventIndex: r?.index,
+      recoilDx: r?.dx ?? 0,
+      recoilDy: r?.dy ?? 0,
       debuff: debuff,
     );
   }

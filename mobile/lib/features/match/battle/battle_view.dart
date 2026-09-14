@@ -450,10 +450,18 @@ class _BattleTileState extends State<BattleTile> with TickerProviderStateMixin {
   late final Animation<double> _shakeAnim;
   late final AnimationController _healBubbleCtrl;
   late final Animation<double> _healBubbleAnim;
+  late final AnimationController _recoilCtrl;
+  late final Animation<double> _recoilAnim;
   bool _wasFloating = false;
   int? _lastFloatingDamage;
   int? _lastDamageIndex;
   int? _lastHealIndex;
+  int? _lastRecoilIndex;
+
+  /// Small in-place nudge distance (px) — deliberately not a real
+  /// cross-board travel distance (that's CombatEffectsOverlay's job).
+  /// Just enough to read as "this unit just attacked."
+  static const double _recoilDistance = 10;
 
   @override
   void initState() {
@@ -481,6 +489,14 @@ class _BattleTileState extends State<BattleTile> with TickerProviderStateMixin {
     _healBubbleAnim = Tween<double>(begin: 0, end: 1).animate(
       CurvedAnimation(parent: _healBubbleCtrl, curve: AppMotion.standard),
     );
+    // Recoil: small there-and-back nudge, ~250ms total.
+    _recoilCtrl = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 125),
+    );
+    _recoilAnim = Tween<double>(begin: 0, end: 1).animate(
+      CurvedAnimation(parent: _recoilCtrl, curve: Curves.easeInOut),
+    );
   }
 
   @override
@@ -507,6 +523,13 @@ class _BattleTileState extends State<BattleTile> with TickerProviderStateMixin {
       _healBubbleCtrl.forward(from: 0);
     }
     _lastHealIndex = healIdx;
+
+    // Recoil: trigger on new melee-attack event index for this unit.
+    final recoilIdx = widget.unitState?.recoilEventIndex;
+    if (recoilIdx != null && recoilIdx != _lastRecoilIndex) {
+      _recoilCtrl.forward(from: 0).then((_) => _recoilCtrl.reverse());
+    }
+    _lastRecoilIndex = recoilIdx;
   }
 
   @override
@@ -514,6 +537,7 @@ class _BattleTileState extends State<BattleTile> with TickerProviderStateMixin {
     _floatCtrl.dispose();
     _shakeCtrl.dispose();
     _healBubbleCtrl.dispose();
+    _recoilCtrl.dispose();
     super.dispose();
   }
 
@@ -525,7 +549,7 @@ class _BattleTileState extends State<BattleTile> with TickerProviderStateMixin {
       opacity: uv == null ? 0.3 : (isAlive ? 1.0 : 0.3),
       duration: const Duration(milliseconds: 200),
       child: AnimatedBuilder(
-        animation: _shakeAnim,
+        animation: Listenable.merge([_shakeAnim, _recoilAnim]),
         builder: (context, child) {
           // Hit shake: constant 6px horizontal offset, oscillating.
           final shakeProgress = _shakeAnim.value;
@@ -535,8 +559,17 @@ class _BattleTileState extends State<BattleTile> with TickerProviderStateMixin {
                   0,
                 )
               : Offset.zero;
+          // Recoil: small in-place nudge toward the target, there-and-back.
+          final recoilOffset = Offset(
+            (widget.unitState?.recoilDx ?? 0) *
+                _recoilDistance *
+                _recoilAnim.value,
+            (widget.unitState?.recoilDy ?? 0) *
+                _recoilDistance *
+                _recoilAnim.value,
+          );
           return Transform.translate(
-            offset: shakeOffset,
+            offset: shakeOffset + recoilOffset,
             child: child,
           );
         },
