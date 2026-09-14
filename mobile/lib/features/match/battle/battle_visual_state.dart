@@ -117,14 +117,30 @@ Map<UnitKey, UnitVisualState> deriveUnitStates({
   required List<Unit?> playerBoard,
   required List<Unit?> opponentBoard,
   required MatchSide mySide,
+  bool currentEventLanded = true,
 }) {
   if (events.isEmpty) return const {};
 
   final limit = playheadIndex.clamp(0, events.length - 1);
 
-  // Find the most recent event at or before the playhead that has a snapshot.
+  // The event at [limit] is the one being *played*. Its outcome only
+  // belongs on the board once the attack it describes actually connects —
+  // see `impactFraction`. Until then the target still shows the previous
+  // hit, so a projectile is not flying toward a unit whose HP already
+  // dropped when it was fired (#215).
+  //
+  // Only outcomes move; the attacker's own animation state below stays
+  // keyed off [limit], or the shot would be fired by a unit that never
+  // moved.
+  final landedLimit = currentEventLanded ? limit : limit - 1;
+
+  // Find the most recent event at or before the playhead that has a
+  // snapshot. Falls back to [limit] on the very first event of a batch,
+  // where nothing has landed yet and there is no earlier snapshot to show
+  // — one event of slightly-ahead HP beats a board that blinks out.
+  final snapshotLimit = landedLimit < 0 ? limit : landedLimit;
   CombatEvent? snapshotEvent;
-  for (var i = limit; i >= 0; i--) {
+  for (var i = snapshotLimit; i >= 0; i--) {
     if (events[i].unitStates != null && events[i].unitStates!.isNotEmpty) {
       snapshotEvent = events[i];
       break;
@@ -177,7 +193,7 @@ Map<UnitKey, UnitVisualState> deriveUnitStates({
   // --- Precompute heal event trigger keys ---
   // healEventIndex[unitKey] = most recent heal/lifesteal event index ≤ limit.
   final healEventIndex = <UnitKey, int>{};
-  for (var i = 0; i <= limit; i++) {
+  for (var i = 0; i <= landedLimit; i++) {
     final e = events[i];
     UnitKey? target;
     if (e is HealEvent && e.targetSide != null && e.targetSlot != null) {
@@ -196,7 +212,7 @@ Map<UnitKey, UnitVisualState> deriveUnitStates({
   // lastDamage[unitKey] = most recent attack/pierce event index targeting
   // this unit at or before limit.
   final lastDamage = <UnitKey, int>{};
-  for (var i = 0; i <= limit; i++) {
+  for (var i = 0; i <= landedLimit; i++) {
     final e = events[i];
     UnitKey? target;
     if (e is AttackEvent && e.targetSide != null && e.targetSlot != null) {
@@ -248,8 +264,8 @@ Map<UnitKey, UnitVisualState> deriveUnitStates({
         (index: i, dx: dCol, dy: dRow);
   }
 
-  // Apply floating damage/heal from the current event.
-  if (events.isNotEmpty && limit < events.length) {
+  // Apply floating damage/heal from the current event, once it has landed.
+  if (currentEventLanded && limit < events.length) {
     final current = events[limit];
 
     switch (current) {
