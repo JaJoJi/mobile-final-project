@@ -13,10 +13,12 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../shared/models/combat_event.dart';
 import 'battle_visual_state.dart';
 
-/// One-shot duration for every combat event on the playhead. Per the
-/// locked Step 2 plan, 600 ms is the single global constant; speed
-/// multipliers are explicitly out of scope for the MVP.
-const Duration kCombatEventDuration = Duration(milliseconds: 600);
+/// One-shot duration for every combat event on the playhead — the single
+/// global constant driving all combat playback speed; speed multipliers
+/// are explicitly out of scope for the MVP. Bumped from the original
+/// 600ms (locked Step 2 plan) to 1000ms after live testing showed combat
+/// resolving too fast to follow (P4-FE-01 follow-up).
+const Duration kCombatEventDuration = Duration(milliseconds: 1000);
 
 class BattlePlaybackController extends StateNotifier<BattleVisualState> {
   BattlePlaybackController() : super(BattleVisualState.empty);
