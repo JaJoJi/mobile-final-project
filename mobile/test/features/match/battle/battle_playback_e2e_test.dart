@@ -439,4 +439,101 @@ void main() {
     await tester.pumpWidget(const SizedBox.shrink());
     await tester.pump(const Duration(seconds: 1));
   });
+
+  testWidgets('reduced motion does not fast-forward the replay', (tester) async {
+    // The platform's "disable animations" setting makes Flutter run every
+    // AnimationBehavior.normal controller at 5% of its duration. The
+    // playhead is a media timeline, so that turned a 45s replay into 2.25s
+    // and acked `combat_done` before anything was drawn — client traces
+    // showed `ack SENT reason=playhead-complete` 2.76s after
+    // `willPlayMs=44923`, and every early round advance in the server log
+    // matches `playbackMs * 0.05 + 500ms`.
+    tester.binding.platformDispatcher.accessibilityFeaturesTestValue =
+        const FakeAccessibilityFeatures(disableAnimations: true);
+    addTearDown(
+      tester.binding.platformDispatcher.clearAccessibilityFeaturesTestValue,
+    );
+
+    final transport = FakeWsTransport();
+    final client = WsClient(
+      url: 'ws://localhost',
+      getAccessToken: () async => 'token',
+      transport: transport,
+    );
+    addTearDown(client.dispose);
+    final connected = client.connect();
+    transport.serverConnect();
+    await connected;
+    _seedMatch(transport);
+
+    await pumpScreen(
+      tester,
+      const MatchScreen(matchId: 'm1'),
+      overrides: [wsClientProvider.overrideWithValue(client)],
+      surfaceSize: const Size(390, 844),
+    );
+    transport.emitFromServer(GameEvents.matchPhase, {
+      'matchId': 'm1',
+      'phase': 'battle',
+      'round': 1,
+      'timer': 0,
+      'players': [
+        {'id': 'p1', 'hp': 100, 'gold': 5, 'ready': true},
+        {'id': 'p2', 'hp': 100, 'gold': 5, 'ready': true},
+      ],
+    });
+    await tester.pump();
+
+    transport.emitFromServer(GameEvents.combatEvents, {
+      'matchId': 'm1',
+      'round': 1,
+      'cycleCount': 1,
+      'endedAt': 0,
+      'events': [for (var i = 1; i <= 30; i++) _attack(i, 100 - i)],
+    });
+    await tester.pump();
+    await tester.pump();
+
+    bool ackSent() =>
+        transport.sent.any((m) => m.event == GameActions.matchCombatDone);
+
+    String summary() => tester
+        .widget<Text>(find.byKey(const ValueKey('battle-batch-summary')))
+        .data!;
+
+    final total = combatPlaybackDuration(30);
+    // Comfortably past the 5%-scaled duration this used to finish in.
+    await tester.pump(total ~/ 10);
+    expect(
+      ackSent(),
+      isFalse,
+      reason: 'combat_done was sent a tenth of the way into a $total replay',
+    );
+
+    // The controller is what repaints the board, so a controller that
+    // finished at 5% leaves the replay frozen there even once the ack is
+    // held back. Walk to the middle and require the playhead to have
+    // actually travelled — this is the half the ack assertions miss.
+    for (var i = 0; i < 25; i++) {
+      await tester.pump(total ~/ 50);
+    }
+    expect(ackSent(), isFalse, reason: 'combat_done was sent at 60% of $total');
+    final midway = summary();
+    final percent =
+        int.parse(RegExp(r'playhead (\d+)%').firstMatch(midway)!.group(1)!);
+    expect(
+      percent,
+      inInclusiveRange(30, 90),
+      reason: 'playhead froze or jumped instead of tracking the clock '
+          'halfway through a $total replay: $midway',
+    );
+
+    for (var i = 0; i < 30; i++) {
+      await tester.pump(total ~/ 50);
+    }
+    expect(ackSent(), isTrue, reason: 'the replay finished but never acked');
+
+    await tester.pumpWidget(const SizedBox.shrink());
+    await tester.pump(const Duration(seconds: 1));
+  });
 }

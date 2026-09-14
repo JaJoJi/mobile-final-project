@@ -120,6 +120,14 @@ class _BattleViewState extends ConsumerState<BattleView>
     _playhead = AnimationController(
       vsync: this,
       duration: kCombatEventDuration,
+      // The playhead is a media timeline, not decoration. Under the
+      // platform's reduced-motion setting Flutter scales every
+      // `AnimationBehavior.normal` controller to 5% of its duration, so a
+      // 45s replay finished in 2.25s and acked `combat_done` before a
+      // single attack was drawn — every early round advance in the server
+      // log matches `playbackMs * 0.05 + 500ms` exactly. `preserve` is
+      // what opts a functional animation out of that scaling.
+      animationBehavior: AnimationBehavior.preserve,
     );
     _playhead.addStatusListener(_onPlayheadStatusChanged);
     _playhead.addListener(_pushPlayhead);
@@ -280,6 +288,18 @@ class _BattleViewState extends ConsumerState<BattleView>
 
   void _onPlayheadStatusChanged(AnimationStatus status) {
     if (_playhead.isCompleted) {
+      // The controller only drives repaints; [_pushPlayhead]'s wall clock
+      // owns the real position. If the two ever disagree, believe the
+      // clock and leave the round to [_ackTimer] — acking on a controller
+      // that finished early is what let reduced-motion end rounds in 2.25s.
+      final progress = _clockProgress();
+      if (progress != null && progress < 0.999) {
+        combatTrace(
+          'playhead completed EARLY at ${(progress * 100).round()}% of the '
+          'clock — ignoring, ack left to the timer',
+        );
+        return;
+      }
       // Freeze 500ms (battle_end spec), then ack.
       Future<void>.delayed(
         const Duration(milliseconds: 500),
@@ -389,6 +409,18 @@ class _BattleViewState extends ConsumerState<BattleView>
     );
   }
 
+  /// Replay position from wall time, or `null` when no batch is loaded.
+  /// This — not the [AnimationController]'s own value — is the authority
+  /// on how far the replay has actually got.
+  double? _clockProgress() {
+    final start = _playbackStart;
+    final totalMs = _playbackTotal.inMilliseconds;
+    if (start == null || totalMs <= 0) return null;
+    final elapsed = _playbackOffset +
+        (SchedulerBinding.instance.currentSystemFrameTimeStamp - start);
+    return (elapsed.inMilliseconds / totalMs).clamp(0.0, 1.0);
+  }
+
   void _pushPlayhead() {
     final start = _playbackStart;
     final totalMs = _playbackTotal.inMilliseconds;
@@ -399,7 +431,7 @@ class _BattleViewState extends ConsumerState<BattleView>
     final elapsedMs = (_playbackOffset +
             (SchedulerBinding.instance.currentSystemFrameTimeStamp - start))
         .inMilliseconds;
-    final progress = (elapsedMs / totalMs).clamp(0.0, 1.0);
+    final progress = _clockProgress() ?? 0.0;
     // One line per quarter of the replay, so the trace shows how far the
     // playhead actually travelled before the round was resolved without
     // flooding the console at 60fps.
