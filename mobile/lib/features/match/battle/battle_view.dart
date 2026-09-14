@@ -79,6 +79,10 @@ class _BattleViewState extends ConsumerState<BattleView>
   /// the correct position on its next frame.
   DateTime? _playbackStart;
   Duration _playbackTotal = Duration.zero;
+
+  /// Round whose batch is already loaded, so the two delivery paths (the
+  /// stream listener and the post-frame replay) can't start playback twice.
+  int? _loadedRound;
   final GlobalKey _myBoardKey = GlobalKey();
   final GlobalKey _opponentBoardKey = GlobalKey();
 
@@ -94,25 +98,36 @@ class _BattleViewState extends ConsumerState<BattleView>
     _controller = ref.read(battlePlaybackProvider(widget.matchId).notifier);
     _startStaleTimer();
 
-    // `combatEventsProvider` is not autoDispose and keeps consuming the WS
-    // stream in the background even while no BattleView is mounted (e.g.
-    // during the shop/planning phase) — so a batch that arrives right
-    // before this widget mounts would otherwise be missed entirely.
-    // `listenManual` (initState-safe, unlike `ref.listen` in build, which
-    // explicitly does not support `fireImmediately`) replays whatever
-    // value the provider already holds at mount time; the `batch.round`
-    // guard below makes this safe against a stale previous round's batch.
     ref.listenManual<AsyncValue<CombatEventBatch>>(
       combatEventsProvider,
-      (prev, next) {
-        final batch = next.valueOrNull;
-        if (batch == null) return;
-        if (batch.matchId != widget.matchId) return;
-        if (batch.round != widget.match.round) return;
-        _onBatch(batch);
-      },
-      fireImmediately: true,
+      (prev, next) => _maybeAcceptBatch(next.valueOrNull),
     );
+
+    // `combatEventsProvider` is not autoDispose and keeps consuming the WS
+    // stream in the background even while no BattleView is mounted (e.g.
+    // during the shop/planning phase), so a batch that arrived just before
+    // this widget mounted would never reach the listener above — it only
+    // fires on *subsequent* values. Replay whatever the provider already
+    // holds, but do it after this frame: delivering it synchronously here
+    // (what `fireImmediately: true` does) reaches `loadBatch` -> a
+    // StateNotifier write -> `setState` while this widget is still
+    // mounting, which Flutter throws on. That exception surfaced only as
+    // an unhandled promise rejection and aborted `_onBatch` partway, so
+    // playback never started at all (playhead pinned at 0%).
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      _maybeAcceptBatch(ref.read(combatEventsProvider).valueOrNull);
+    });
+  }
+
+  /// Guarded entry point for a batch from either delivery path.
+  void _maybeAcceptBatch(CombatEventBatch? batch) {
+    if (batch == null) return;
+    if (batch.matchId != widget.matchId) return;
+    if (batch.round != widget.match.round) return;
+    if (_loadedRound == batch.round) return; // already playing this one
+    _loadedRound = batch.round;
+    _onBatch(batch);
   }
 
   @override
@@ -143,7 +158,7 @@ class _BattleViewState extends ConsumerState<BattleView>
     _acked = false;
     _controller.loadBatch(batch);
     final filtered = _controller.state.batch!.events;
-    final totalMs = filtered.length * kCombatEventDuration.inMilliseconds;
+    final totalMs = combatPlaybackDuration(filtered.length).inMilliseconds;
     developer.log(
       'battle batch loaded: match=${batch.matchId} round=${batch.round} '
       'events=${filtered.length} (of ${batch.events.length}) '
