@@ -16,12 +16,12 @@
 library;
 
 import 'dart:async';
-import 'dart:developer' as developer;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart' show SchedulerBinding;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../core/debug/combat_trace.dart';
 import '../../../core/theme/app_motion.dart';
 import '../../../core/theme/app_spacing.dart';
 import '../../../core/theme/game_theme.dart';
@@ -112,6 +112,11 @@ class _BattleViewState extends ConsumerState<BattleView>
   @override
   void initState() {
     super.initState();
+    combatTrace(
+      'BattleView.mount match=${widget.matchId} '
+      'matchStateRound=${widget.match.round} '
+      'skipSubmitted=${widget.skipSubmitted}',
+    );
     _playhead = AnimationController(
       vsync: this,
       duration: kCombatEventDuration,
@@ -158,7 +163,13 @@ class _BattleViewState extends ConsumerState<BattleView>
     //
     // Accepting anything not stale is safe because the server emits one
     // batch per round and [_loadedRound] already rejects a repeat.
-    if (batch.round < widget.match.round) return;
+    if (batch.round < widget.match.round) {
+      combatTrace(
+        'batch REJECTED stale round=${batch.round} '
+        'matchStateRound=${widget.match.round}',
+      );
+      return;
+    }
     if (_loadedRound == batch.round) return; // already playing this one
     _loadedRound = batch.round;
     _onBatch(batch);
@@ -166,6 +177,11 @@ class _BattleViewState extends ConsumerState<BattleView>
 
   @override
   void dispose() {
+    combatTrace(
+      'BattleView.unmount match=${widget.matchId} '
+      'loadedRound=$_loadedRound acked=$_acked '
+      'playhead=${(_playhead.value * 100).round()}%',
+    );
     _staleTimer?.cancel();
     _ackTimer?.cancel();
     _playhead.removeStatusListener(_onPlayheadStatusChanged);
@@ -208,15 +224,19 @@ class _BattleViewState extends ConsumerState<BattleView>
                 totalMs,
               ),
     );
-    developer.log(
-      'battle batch loaded: match=${batch.matchId} round=${batch.round} '
-      'events=${filtered.length} (of ${batch.events.length}) '
-      'cycleCount=${batch.cycleCount} playbackMs=$totalMs '
-      'sinceEndedMs=$sinceEndedMs offsetMs=${_playbackOffset.inMilliseconds}',
-      name: 'BattleView',
-    );
     _playbackStart = SchedulerBinding.instance.currentSystemFrameTimeStamp;
     final remaining = _playbackTotal - _playbackOffset;
+    _lastMilestone = -1;
+    combatTrace(
+      'batch LOADED match=${batch.matchId} round=${batch.round} '
+      'events=${filtered.length}/${batch.events.length} '
+      'cycles=${batch.cycleCount} playbackMs=$totalMs '
+      'endedAt=${batch.endedAt} nowMs=${DateTime.now().millisecondsSinceEpoch} '
+      'sinceEndedMs=$sinceEndedMs '
+      'catchUpMs=${_playbackOffset.inMilliseconds} '
+      'willPlayMs=${remaining.inMilliseconds} '
+      'ackInMs=${remaining.inMilliseconds + 500}',
+    );
     // The controller only drives repaints now — position comes from the
     // clock in [_pushPlayhead], so a throttled tab self-corrects.
     _playhead
@@ -229,25 +249,42 @@ class _BattleViewState extends ConsumerState<BattleView>
     _ackTimer?.cancel();
     _ackTimer = Timer(
       remaining + const Duration(milliseconds: 500),
-      _ack,
+      () => _ack('ack-timer'),
     );
     setState(() {}); // refresh the playhead listener binding below
   }
 
   bool _acked = false;
 
+  /// Last quarter of the replay already traced by [_pushPlayhead].
+  int _lastMilestone = -1;
+
   /// Idempotent — may be reached from either the ack timer or the
-  /// animation completing, whichever happens first.
-  void _ack() {
-    if (_acked || !mounted) return;
+  /// animation completing, whichever happens first. [reason] says which,
+  /// so the trace distinguishes "the replay finished" from "the replay
+  /// was never given any time to run".
+  void _ack(String reason) {
+    if (_acked || !mounted) {
+      combatTrace('ack IGNORED reason=$reason acked=$_acked mounted=$mounted');
+      return;
+    }
     _acked = true;
+    combatTrace(
+      'ack SENT reason=$reason round=$_loadedRound '
+      'playhead=${(_playhead.value * 100).round()}% '
+      'plannedPlaybackMs=${_playbackTotal.inMilliseconds} '
+      'catchUpMs=${_playbackOffset.inMilliseconds}',
+    );
     widget.onSkip();
   }
 
   void _onPlayheadStatusChanged(AnimationStatus status) {
     if (_playhead.isCompleted) {
       // Freeze 500ms (battle_end spec), then ack.
-      Future<void>.delayed(const Duration(milliseconds: 500), _ack);
+      Future<void>.delayed(
+        const Duration(milliseconds: 500),
+        () => _ack('playhead-complete'),
+      );
     }
   }
 
@@ -362,7 +399,22 @@ class _BattleViewState extends ConsumerState<BattleView>
     final elapsedMs = (_playbackOffset +
             (SchedulerBinding.instance.currentSystemFrameTimeStamp - start))
         .inMilliseconds;
-    _controller.seekTo((elapsedMs / totalMs).clamp(0.0, 1.0));
+    final progress = (elapsedMs / totalMs).clamp(0.0, 1.0);
+    // One line per quarter of the replay, so the trace shows how far the
+    // playhead actually travelled before the round was resolved without
+    // flooding the console at 60fps.
+    final eventCount = _controller.events?.length ?? 0;
+    final milestone = (progress * 4).floor();
+    if (milestone > _lastMilestone && eventCount > 0) {
+      _lastMilestone = milestone;
+      combatTrace(
+        'playhead ${(progress * 100).round()}% round=$_loadedRound '
+        'elapsedMs=$elapsedMs ofMs=$totalMs '
+        'event=${((progress * eventCount).floor() + 1).clamp(1, eventCount)}'
+        '/$eventCount',
+      );
+    }
+    _controller.seekTo(progress);
   }
 }
 

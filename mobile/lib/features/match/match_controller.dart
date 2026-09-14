@@ -3,6 +3,7 @@ import 'dart:math';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../core/debug/combat_trace.dart';
 import '../../core/ws/ws_client.dart';
 import '../../core/ws/ws_providers.dart';
 import '../../shared/models/game_events.dart';
@@ -123,6 +124,11 @@ class MatchController extends StateNotifier<MatchViewState> {
   void _onPhase(MatchPhaseEvent event) {
     if (event.matchId != matchId) return;
     final roundChanged = state.phase?.round != event.round;
+    combatTrace(
+      'phase ${state.phase?.phase.name ?? '-'}(r${state.phase?.round ?? '-'}) '
+      '-> ${event.phase.name}(r${event.round}) timer=${event.timer} '
+      'roundChanged=$roundChanged',
+    );
     final side = state.match?.yourSide;
     final readyFromServer = side == null ? null : _phaseReady(event, side);
     state = state.copyWith(
@@ -165,11 +171,15 @@ class MatchController extends StateNotifier<MatchViewState> {
   }
 
   void _onDamage(MatchDamageEvent event) {
-    if (event.matchId == matchId) state = state.copyWith(damage: event);
+    if (event.matchId != matchId) return;
+    combatTrace('round DAMAGE round=${event.round} winner=${event.winner}');
+    state = state.copyWith(damage: event);
   }
 
   void _onEnd(MatchEndEvent event) {
-    if (event.matchId == matchId) state = state.copyWith(end: event);
+    if (event.matchId != matchId) return;
+    combatTrace('match END winner=${event.winnerId} reason=${event.reason}');
+    state = state.copyWith(end: event);
   }
 
   void _onError(GameError error) {
@@ -294,11 +304,18 @@ class MatchController extends StateNotifier<MatchViewState> {
   /// so one player cannot force the other player to skip.
   void skipCombat() {
     final phase = state.phase;
-    if (phase?.phase != GamePhase.battle || state.combatDoneSubmitted) return;
+    if (phase?.phase != GamePhase.battle || state.combatDoneSubmitted) {
+      combatTrace(
+        'combat_done NOT sent phase=${phase?.phase.name} '
+        'alreadySubmitted=${state.combatDoneSubmitted}',
+      );
+      return;
+    }
+    combatTrace('combat_done -> server round=${phase!.round}');
     state = state.copyWith(combatDoneSubmitted: true, clearError: true);
     _client.emit(GameActions.matchCombatDone, {
       'matchId': matchId,
-      'round': phase!.round,
+      'round': phase.round,
       'clientActionId': _actionId(),
     });
   }
