@@ -203,4 +203,83 @@ void main() {
       reason: 'attacker tile never translated; offsets were $offsets',
     );
   });
+
+  testWidgets('combat_done is not acked until the replay has actually played',
+      (tester) async {
+    final transport = FakeWsTransport();
+    final client = WsClient(
+      url: 'ws://localhost',
+      getAccessToken: () async => 'token',
+      transport: transport,
+    );
+    addTearDown(client.dispose);
+    final connected = client.connect();
+    transport.serverConnect();
+    await connected;
+    _seedMatch(transport);
+
+    await pumpScreen(
+      tester,
+      const MatchScreen(matchId: 'm1'),
+      overrides: [wsClientProvider.overrideWithValue(client)],
+      surfaceSize: const Size(390, 844),
+    );
+    transport.emitFromServer(GameEvents.matchPhase, {
+      'matchId': 'm1',
+      'phase': 'battle',
+      'round': 1,
+      'timer': 0,
+      'players': [
+        {'id': 'p1', 'hp': 100, 'gold': 5, 'ready': true},
+        {'id': 'p2', 'hp': 100, 'gold': 5, 'ready': true},
+      ],
+    });
+    await tester.pump();
+
+    // 30 events -> 30s of playback at the preferred 1s/event.
+    transport.emitFromServer(GameEvents.combatEvents, {
+      'matchId': 'm1',
+      'round': 1,
+      'cycleCount': 1,
+      'endedAt': 0,
+      'events': [for (var i = 1; i <= 30; i++) _attack(i, 100 - i)],
+    });
+    await tester.pump();
+    await tester.pump();
+
+    bool ackSent() =>
+        transport.sent.any((m) => m.event == GameActions.matchCombatDone);
+
+    // A couple of seconds in, the replay is barely started — acking here
+    // is what made rounds end at ~5% of playback.
+    await tester.pump(const Duration(seconds: 2));
+    expect(
+      ackSent(),
+      isFalse,
+      reason: 'combat_done was sent ~2s into a ~30s replay',
+    );
+
+    await tester.pump(const Duration(seconds: 10));
+    expect(
+      ackSent(),
+      isFalse,
+      reason: 'combat_done was sent 12s into a ~30s replay',
+    );
+
+    // Once the replay is over (plus the 500ms battle_end freeze) it should
+    // ack, so the round can advance without waiting for the server's
+    // 60s fallback.
+    await tester.pump(const Duration(seconds: 20));
+    expect(
+      ackSent(),
+      isTrue,
+      reason: 'combat_done was never sent, so the round would hang until '
+          'the server timeout',
+    );
+
+    // Tear the tree down so BattleView cancels its timers, then drain the
+    // 500ms battle_end freeze the completion path schedules.
+    await tester.pumpWidget(const SizedBox.shrink());
+    await tester.pump(const Duration(seconds: 1));
+  });
 }
