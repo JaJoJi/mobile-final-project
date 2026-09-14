@@ -558,10 +558,12 @@ class _BattleTileState extends State<BattleTile> with TickerProviderStateMixin {
   int? _lastHealIndex;
   int? _lastRecoilIndex;
 
-  /// In-place nudge distance (px) — deliberately not a real cross-board
-  /// travel distance (that's CombatEffectsOverlay's job), just enough to
-  /// clearly read as "this unit just attacked" on a ~97px tile.
-  static const double _recoilDistance = 18;
+  /// In-place nudge distance, as a fraction of the tile — deliberately
+  /// not a real cross-board travel distance (that's
+  /// CombatEffectsOverlay's job), just enough to read as "this unit just
+  /// attacked". Proportional rather than a fixed pixel count so it keeps
+  /// the same visual weight on a phone and a tablet.
+  static const double _recoilTileFraction = 0.18;
 
   @override
   void initState() {
@@ -664,10 +666,11 @@ class _BattleTileState extends State<BattleTile> with TickerProviderStateMixin {
           // so which screen axis that maps to depends on how the two
           // boards are arranged: stacked in portrait, side-by-side
           // (mine left, opponent right) in landscape.
+          final recoilDistance = widget.tileWidth * _recoilTileFraction;
           final recoilTravel =
-              (widget.unitState?.recoilDy ?? 0) * _recoilDistance;
+              (widget.unitState?.recoilDy ?? 0) * recoilDistance;
           final recoilLean =
-              (widget.unitState?.recoilDx ?? 0) * _recoilDistance * 0.5;
+              (widget.unitState?.recoilDx ?? 0) * recoilDistance * 0.5;
           final isPortrait =
               MediaQuery.orientationOf(context) == Orientation.portrait;
           final recoilOffset = (isPortrait

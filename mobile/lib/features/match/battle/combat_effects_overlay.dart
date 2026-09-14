@@ -188,6 +188,13 @@ class CombatEffectsOverlay extends StatelessWidget {
       );
     }
 
+    // Sized against the measured tile rather than a fixed pixel count, so
+    // the projectile keeps the same visual weight on a phone and a tablet.
+    final projectileSize =
+        (_tileSize(attackerSide == mySide ? myBoardKey : opponentBoardKey) ??
+                60) *
+            0.4;
+
     // A self-contained `Stack` + `Positioned` pair, scoped to this
     // widget's own subtree, so the `Positioned` below always has a valid
     // `Stack` ancestor to apply `StackParentData` to regardless of how
@@ -195,12 +202,12 @@ class CombatEffectsOverlay extends StatelessWidget {
     return Stack(
       children: [
         Positioned(
-          left: position.dx - 12,
-          top: position.dy - 12,
+          left: position.dx - projectileSize / 2,
+          top: position.dy - projectileSize / 2,
           child: Icon(
             key: ValueKey(isMelee ? 'lunge-streak' : 'projectile-mark'),
             isMelee ? Icons.flash_on : Icons.arrow_forward,
-            size: 24,
+            size: projectileSize,
             color:
                 attackerSide == mySide ? Colors.blueAccent : Colors.redAccent,
           ),

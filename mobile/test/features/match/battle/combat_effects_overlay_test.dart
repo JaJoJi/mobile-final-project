@@ -181,6 +181,63 @@ void main() {
     expect(iconCenter.dy, closeTo(149.0, 5));
   });
 
+  testWidgets('traveller scales and repositions with the board size',
+      (tester) async {
+    // Same event, two very different board sizes: the traveller must be
+    // sized and placed from the measured board, not from fixed pixels.
+    Future<Rect> travellerRectFor(double boardSize) async {
+      final myKey = GlobalKey();
+      final oppKey = GlobalKey();
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: buildTheme(Brightness.light),
+          home: Scaffold(
+            body: Stack(
+              children: [
+                Positioned(
+                  left: 0,
+                  top: 0,
+                  width: boardSize,
+                  height: boardSize,
+                  child: SizedBox(key: myKey),
+                ),
+                Positioned(
+                  left: 0,
+                  top: boardSize,
+                  width: boardSize,
+                  height: boardSize,
+                  child: SizedBox(key: oppKey),
+                ),
+                CombatEffectsOverlay(
+                  batch: batch,
+                  playheadProgress: 0.5,
+                  myBoardKey: myKey,
+                  opponentBoardKey: oppKey,
+                  mySide: MatchSide.p1,
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+      return tester.getRect(find.byKey(const ValueKey('lunge-traveler')));
+    }
+
+    final small = await travellerRectFor(240);
+    final large = await travellerRectFor(480);
+
+    // Traveller is one tile wide. Tiles are the board minus its two fixed
+    // 4px gutters, split three ways — the gutters don't scale, so this is
+    // the exact expectation rather than a flat doubling.
+    double tileOf(double board) => (board - 2 * 4) / 3;
+    expect(small.width, closeTo(tileOf(240), 0.5));
+    expect(large.width, closeTo(tileOf(480), 0.5));
+
+    // At the peak of the wave it sits on the target tile, which is itself
+    // twice as far down on the bigger board.
+    expect(large.center.dy, closeTo(small.center.dy * 2, 2));
+  });
+
   testWidgets('renders nothing when a tile position cannot be resolved',
       (tester) async {
     final unlaidOutKey = GlobalKey();
