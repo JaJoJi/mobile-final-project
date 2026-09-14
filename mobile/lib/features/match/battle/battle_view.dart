@@ -685,6 +685,13 @@ class _BattleTileState extends State<BattleTile> with TickerProviderStateMixin {
     _floatCtrl = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 800),
+      // These four are functional combat feedback (hit shake, recoil, heal
+      // bubble, floating damage), not decoration. Without `preserve`,
+      // Flutter runs every AnimationBehavior.normal controller at 5% of
+      // its duration under the platform's reduced-motion setting — the
+      // same bug that made the playhead resolve rounds in ~2s. A 200ms
+      // shake at 5% is 10ms, invisible; a unit "just stands still" on hit.
+      animationBehavior: AnimationBehavior.preserve,
     );
     _floatAnim = Tween<double>(begin: 0, end: 1).animate(
       CurvedAnimation(parent: _floatCtrl, curve: AppMotion.standard),
@@ -693,6 +700,7 @@ class _BattleTileState extends State<BattleTile> with TickerProviderStateMixin {
     _shakeCtrl = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 200),
+      animationBehavior: AnimationBehavior.preserve,
     );
     _shakeAnim = Tween<double>(begin: 0, end: 1).animate(
       CurvedAnimation(parent: _shakeCtrl, curve: Curves.easeOut),
@@ -701,6 +709,7 @@ class _BattleTileState extends State<BattleTile> with TickerProviderStateMixin {
     _healBubbleCtrl = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 600),
+      animationBehavior: AnimationBehavior.preserve,
     );
     _healBubbleAnim = Tween<double>(begin: 0, end: 1).animate(
       CurvedAnimation(parent: _healBubbleCtrl, curve: AppMotion.standard),
@@ -709,6 +718,7 @@ class _BattleTileState extends State<BattleTile> with TickerProviderStateMixin {
     _recoilCtrl = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 125),
+      animationBehavior: AnimationBehavior.preserve,
     );
     _recoilAnim = Tween<double>(begin: 0, end: 1).animate(
       CurvedAnimation(parent: _recoilCtrl, curve: Curves.easeInOut),
