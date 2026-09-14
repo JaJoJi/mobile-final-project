@@ -101,6 +101,12 @@ class _BattleViewState extends ConsumerState<BattleView>
   /// Round whose batch is already loaded, so the two delivery paths (the
   /// stream listener and the post-frame replay) can't start playback twice.
   int? _loadedRound;
+
+  /// Memoised `deriveUnitStates` result, keyed by the batch it came from
+  /// and the event index it describes. See the note in [build].
+  CombatEventBatch? _cachedStatesBatch;
+  int? _cachedStatesIndex;
+  Map<UnitKey, UnitVisualState>? _cachedStates;
   final GlobalKey _myBoardKey = GlobalKey();
   final GlobalKey _opponentBoardKey = GlobalKey();
 
@@ -233,10 +239,22 @@ class _BattleViewState extends ConsumerState<BattleView>
     final game = Theme.of(context).extension<GameTheme>()!;
 
     // Derive per-unit visual states from server snapshots in events.
+    //
+    // This runs on every frame (the playhead pushes a new progress value
+    // each tick) but its result depends only on the batch and the current
+    // event *index*, which changes once per event — roughly every 1.6s
+    // rather than 60 times a second. `deriveUnitStates` walks the event
+    // list several times, once more per unit for the debuff scan, so
+    // recomputing it per frame was doing ~100x more work than needed and
+    // showed up as combat feeling sluggish. Cache it against the index.
     final unitStates = <UnitKey, UnitVisualState>{};
     if (view.batch != null) {
-      unitStates.addAll(
-        deriveUnitStates(
+      if (!identical(_cachedStatesBatch, view.batch) ||
+          _cachedStatesIndex != view.playheadIndex ||
+          _cachedStates == null) {
+        _cachedStatesBatch = view.batch;
+        _cachedStatesIndex = view.playheadIndex;
+        _cachedStates = deriveUnitStates(
           events: view.batch!.events,
           playheadIndex: view.playheadIndex,
           playerBoard: widget.match.roster.board,
@@ -253,8 +271,9 @@ class _BattleViewState extends ConsumerState<BattleView>
             );
           }).toList(),
           mySide: widget.match.yourSide,
-        ),
-      );
+        );
+      }
+      unitStates.addAll(_cachedStates!);
     }
 
     return Padding(
