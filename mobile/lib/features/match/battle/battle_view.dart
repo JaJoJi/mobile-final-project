@@ -19,6 +19,7 @@ import 'dart:async';
 import 'dart:developer' as developer;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/scheduler.dart' show SchedulerBinding;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/theme/app_motion.dart';
@@ -70,14 +71,19 @@ class _BattleViewState extends ConsumerState<BattleView>
   Timer? _ackTimer;
   bool _staleDetected = false;
 
-  /// Wall-clock anchor for playback. The playhead's *position* is derived
-  /// from elapsed real time, not from accumulated animation frames:
-  /// browsers suspend `requestAnimationFrame` entirely in a background
-  /// tab, which would otherwise freeze one player's replay at 0% while
-  /// the other runs to 100% (and desync the two clients permanently).
-  /// Anchoring to wall time means a tab that was hidden simply jumps to
-  /// the correct position on its next frame.
-  DateTime? _playbackStart;
+  /// Clock anchor for playback. The playhead's *position* is derived from
+  /// elapsed time, not from accumulated animation frames: browsers suspend
+  /// `requestAnimationFrame` entirely in a background tab, which would
+  /// otherwise freeze one player's replay at 0% while the other runs to
+  /// 100% (and desync the two clients permanently). Anchoring to a clock
+  /// means a tab that was hidden simply jumps to the correct position on
+  /// its next frame.
+  ///
+  /// Uses the frame timestamp rather than `DateTime.now()` so the same
+  /// code is deterministic under `flutter_test`'s fake clock — real
+  /// wall-clock time can't be advanced by `tester.pump`, which made this
+  /// untestable and the test for it flaky.
+  Duration? _playbackStart;
   Duration _playbackTotal = Duration.zero;
 
   /// Round whose batch is already loaded, so the two delivery paths (the
@@ -166,7 +172,7 @@ class _BattleViewState extends ConsumerState<BattleView>
       name: 'BattleView',
     );
     _playbackTotal = Duration(milliseconds: totalMs);
-    _playbackStart = DateTime.now();
+    _playbackStart = SchedulerBinding.instance.currentSystemFrameTimeStamp;
     // The controller only drives repaints now — position comes from wall
     // time in [_pushPlayhead], so a throttled tab self-corrects.
     _playhead
@@ -296,7 +302,9 @@ class _BattleViewState extends ConsumerState<BattleView>
       _controller.seekTo(_playhead.value);
       return;
     }
-    final elapsedMs = DateTime.now().difference(start).inMilliseconds;
+    final elapsedMs =
+        (SchedulerBinding.instance.currentSystemFrameTimeStamp - start)
+            .inMilliseconds;
     _controller.seekTo((elapsedMs / totalMs).clamp(0.0, 1.0));
   }
 }
