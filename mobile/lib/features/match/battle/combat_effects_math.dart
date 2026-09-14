@@ -10,6 +10,7 @@ library;
 import 'dart:ui' show Offset;
 
 import '../../../shared/models/combat_event.dart';
+import '../../../shared/models/unit.dart';
 
 /// The combat event active at [playheadProgress] (0.0-1.0 across the
 /// whole batch) and how far through that event's own fixed-duration
@@ -59,3 +60,44 @@ Offset tileLocalCenter({
     displayRow * (tileHeight + spacing) + tileHeight / 2,
   );
 }
+
+/// Where inside an event's window its outcome lands on the target — the
+/// moment the damage, the floating number and the hit shake belong.
+///
+/// Effects used to be applied for the whole of an event's window, so the
+/// target was already hit before the attacker had moved: a projectile
+/// flew toward a unit whose HP had dropped at launch (#215). Pinning the
+/// outcome to the moment of arrival is what makes a hit read as a hit.
+///
+/// Melee lands at the peak of [triangleWave], which is exactly where the
+/// travelling sprite stands on the target's tile. A projectile lands just
+/// short of the end of its flight, so it is still on screen when it
+/// connects and only then disappears. Anything without travel — heals,
+/// lifesteal, pierce, cycle bookkeeping — lands immediately.
+double impactFraction(CombatEvent event) {
+  if (event is! AttackEvent) return 0.0;
+  final attackerUnitId = event.attackerUnitId;
+  if (attackerUnitId == null) return 0.0;
+  final isMelee =
+      attackerUnitId == UnitId.fighter || attackerUnitId == UnitId.tank;
+  return isMelee ? 0.5 : kProjectileImpactFraction;
+}
+
+/// Fraction of an event's window a projectile spends in flight. The
+/// remainder is the beat after the hit, with the icon already gone —
+/// short of 1.0 so an impact is a distinct moment rather than something
+/// that happens as the next event starts.
+const double kProjectileImpactFraction = 0.9;
+
+/// Flight progress of a projectile from [subProgress] of its window: 0 at
+/// the muzzle, 1 standing on the target. The shot completes its travel at
+/// [kProjectileImpactFraction] rather than being still 10% short when it
+/// connects, so the icon really does reach the target tile before it
+/// disappears (#215).
+double projectileTravel(double subProgress) =>
+    (subProgress.clamp(0.0, 1.0) / kProjectileImpactFraction).clamp(0.0, 1.0);
+
+/// Whether [event]'s outcome has landed by [subProgress] of its window.
+/// A `null` event has nothing in flight.
+bool hasImpacted(CombatEvent? event, double subProgress) =>
+    event == null || subProgress >= impactFraction(event);

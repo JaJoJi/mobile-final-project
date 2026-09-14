@@ -217,6 +217,12 @@ void main() {
       reason: 'the melee traveller sprite was never rendered during a '
           'batch made entirely of fighter attacks',
     );
+
+    // HP now changes on impact rather than when the attack is queued, so
+    // the health bar's own 500ms animation can still be in flight here.
+    // Tear down and drain it so it isn't reported as a leaked timer.
+    await tester.pumpWidget(const SizedBox.shrink());
+    await tester.pump(const Duration(seconds: 1));
   });
 
   testWidgets('combat_done is not acked until the replay has actually played',

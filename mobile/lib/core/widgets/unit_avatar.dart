@@ -220,7 +220,22 @@ class UnitAvatar extends StatelessWidget {
               fit: StackFit.expand,
               children: [
                 Padding(
-                  padding: const EdgeInsets.all(AppSpacing.xxs),
+                  // The board/bench/replay frame is a perfect square
+                  // matching the source art's own 1:1 canvas, so
+                  // `BoxFit.contain` renders it edge-to-edge with none of
+                  // the shop variant's letterboxing to spare — every
+                  // `assets/images/units/*.png` draws its character with
+                  // only ~4% margin at the very top, which read as the
+                  // unit's head jammed against its tile at every size.
+                  // Extra top-only inset gives real headroom without
+                  // shrinking the piece from its resting position at the
+                  // bottom of the tile, the way it should stand.
+                  padding: const EdgeInsets.fromLTRB(
+                    AppSpacing.xxs,
+                    AppSpacing.sm,
+                    AppSpacing.xxs,
+                    AppSpacing.xxs,
+                  ),
                   child: _UnitArt(kind: kind, tint: tint, size: _width),
                 ),
                 if (star > 0)

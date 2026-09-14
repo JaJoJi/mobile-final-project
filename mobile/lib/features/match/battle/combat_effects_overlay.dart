@@ -151,8 +151,15 @@ class CombatEffectsOverlay extends StatelessWidget {
 
     final isMelee =
         attackerUnitId == UnitId.fighter || attackerUnitId == UnitId.tank;
-    final progress =
-        isMelee ? triangleWave(current.subProgress) : current.subProgress;
+    // A projectile is gone the instant it connects. Melee has no such cut
+    // — the attacker travels back to its own tile over the second half of
+    // the wave, which is the whole point of the lunge.
+    if (!isMelee && current.subProgress >= kProjectileImpactFraction) {
+      return null;
+    }
+    final progress = isMelee
+        ? triangleWave(current.subProgress)
+        : projectileTravel(current.subProgress);
     final position = Offset.lerp(attackerLocal, targetLocal, progress)!;
 
     // Melee reads as the unit itself charging the target and returning,
@@ -205,8 +212,11 @@ class CombatEffectsOverlay extends StatelessWidget {
           left: position.dx - projectileSize / 2,
           top: position.dy - projectileSize / 2,
           child: Icon(
-            key: ValueKey(isMelee ? 'lunge-streak' : 'projectile-mark'),
-            isMelee ? Icons.flash_on : Icons.arrow_forward,
+            key: const ValueKey('projectile-mark'),
+            // A ranger looses an arrow; a healer's basic attack is a bolt
+            // of magic. The per-tile projectile this overlay replaced drew
+            // that distinction and it was lost in the move (#215).
+            attackerUnitId == UnitId.ranger ? Icons.arrow_forward : Icons.bolt,
             size: projectileSize,
             color:
                 attackerSide == mySide ? Colors.blueAccent : Colors.redAccent,

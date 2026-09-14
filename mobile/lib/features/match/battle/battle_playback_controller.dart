@@ -71,11 +71,23 @@ class BattlePlaybackController extends StateNotifier<BattleVisualState> {
 
   /// Load a fresh batch from the server. Resets the playhead to 0.
   ///
-  /// Filters out `cycle_end` and `battle_end` events which have no visual
-  /// representation and would otherwise waste 600 ms each on the playhead.
+  /// Filters out `cycle_end`/`battle_end` (no visual representation,
+  /// would otherwise waste a full event slot on the playhead) and
+  /// `death` (the backend's `applyDamage` emits `death` immediately
+  /// before its own `attack` event for the SAME lethal hit — the
+  /// `attack` event already carries `targetHpAfter: 0` and a snapshot
+  /// with the target dead, so `death` has nothing left for the client to
+  /// show). Left in, `death` became its own playhead slot that revealed
+  /// the target as dead a full event *before* the attacker's own
+  /// travel/impact animation for that exact kill played, so every single
+  /// kill looked like a still-alive unit attacking a target the board
+  /// was already showing as dead.
   void loadBatch(CombatEventBatch batch) {
     final effective = batch.events
-        .where((e) => e is! CycleEndEvent && e is! BattleEndEvent)
+        .where(
+          (e) =>
+              e is! CycleEndEvent && e is! BattleEndEvent && e is! DeathEvent,
+        )
         .toList(growable: false);
     state = BattleVisualState(
       batch: CombatEventBatch(

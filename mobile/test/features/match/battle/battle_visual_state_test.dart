@@ -180,4 +180,140 @@ void main() {
       expect(attacker!.recoilEventIndex, 0);
     });
   });
+
+  group('a hit lands when the shot arrives, not when it is fired (#215)', () {
+    // Two ranger shots at the same target: the first has already landed,
+    // the second is the one in flight.
+    const first = AttackEvent(
+      cycle: 1,
+      tick: 1,
+      attacker: 'r1',
+      target: 't1',
+      damage: 12,
+      targetHpAfter: 88,
+      attackerSide: MatchSide.p1,
+      attackerSlot: 6,
+      attackerUnitId: UnitId.ranger,
+      targetSide: MatchSide.p2,
+      targetSlot: 0,
+      unitStates: [
+        UnitSnapshot(
+          instanceId: 't1',
+          unitId: UnitId.fighter,
+          star: 0,
+          hp: 88,
+          maxHp: 100,
+          slot: 0,
+          side: MatchSide.p2,
+          alive: true,
+        ),
+      ],
+    );
+    const second = AttackEvent(
+      cycle: 1,
+      tick: 2,
+      attacker: 'r1',
+      target: 't1',
+      damage: 12,
+      targetHpAfter: 76,
+      attackerSide: MatchSide.p1,
+      attackerSlot: 6,
+      attackerUnitId: UnitId.ranger,
+      targetSide: MatchSide.p2,
+      targetSlot: 0,
+      unitStates: [
+        UnitSnapshot(
+          instanceId: 't1',
+          unitId: UnitId.fighter,
+          star: 0,
+          hp: 76,
+          maxHp: 100,
+          slot: 0,
+          side: MatchSide.p2,
+          alive: true,
+        ),
+      ],
+    );
+
+    const targetKey = UnitKey(side: MatchSide.p2, slot: 0);
+
+    Map<UnitKey, UnitVisualState> derive({required bool landed}) =>
+        deriveUnitStates(
+          events: const [first, second],
+          playheadIndex: 1,
+          playerBoard: const [],
+          opponentBoard: const [],
+          mySide: MatchSide.p1,
+          currentEventLanded: landed,
+        );
+
+    test('mid-flight the target still shows the previous hit', () {
+      final target = derive(landed: false)[targetKey];
+      expect(
+        target?.hp,
+        88,
+        reason: 'HP dropped to the post-impact value while the projectile '
+            'was still travelling',
+      );
+      expect(
+        target?.floatingDamage,
+        isNull,
+        reason: 'the damage number appeared before the projectile arrived',
+      );
+      expect(
+        target?.lastDamageEventIndex,
+        0,
+        reason: 'the hit shake fired for an event still in flight',
+      );
+    });
+
+    test('on impact the hit lands', () {
+      final target = derive(landed: true)[targetKey];
+      expect(target?.hp, 76);
+      expect(target?.floatingDamage, 12);
+      expect(target?.lastDamageEventIndex, 1);
+    });
+
+    test('the attacker keeps animating while its shot is in flight', () {
+      // The attacker's own state is driven by the event being played, not
+      // by whether its outcome has landed — otherwise the shot would be
+      // fired by a unit that never moved.
+      const meleeInFlight = AttackEvent(
+        cycle: 1,
+        tick: 1,
+        attacker: 'f1',
+        target: 't1',
+        damage: 15,
+        targetHpAfter: 85,
+        attackerSide: MatchSide.p1,
+        attackerSlot: 0,
+        attackerUnitId: UnitId.fighter,
+        targetSide: MatchSide.p2,
+        targetSlot: 0,
+        unitStates: [
+          UnitSnapshot(
+            instanceId: 'f1',
+            unitId: UnitId.fighter,
+            star: 0,
+            hp: 100,
+            maxHp: 100,
+            slot: 0,
+            side: MatchSide.p1,
+            alive: true,
+          ),
+        ],
+      );
+      final map = deriveUnitStates(
+        events: const [meleeInFlight],
+        playheadIndex: 0,
+        playerBoard: const [],
+        opponentBoard: const [],
+        mySide: MatchSide.p1,
+        currentEventLanded: false,
+      );
+      final attacker = map[const UnitKey(side: MatchSide.p1, slot: 0)];
+      expect(attacker?.isMeleeAttacking, isTrue);
+      expect(attacker?.recoilEventIndex, 0);
+    });
+  });
 }

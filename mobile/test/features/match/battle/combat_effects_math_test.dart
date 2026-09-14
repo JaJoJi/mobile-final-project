@@ -112,4 +112,91 @@ void main() {
       expect(reversed.dy, closeTo(251.333, 0.01)); // row 0 -> displayed row 2
     });
   });
+
+  group('impactFraction', () {
+    const melee = AttackEvent(
+      cycle: 1,
+      tick: 1,
+      attacker: 'a',
+      target: 'b',
+      damage: 10,
+      targetHpAfter: 90,
+      attackerUnitId: UnitId.fighter,
+    );
+    const ranged = AttackEvent(
+      cycle: 1,
+      tick: 1,
+      attacker: 'a',
+      target: 'b',
+      damage: 10,
+      targetHpAfter: 90,
+      attackerUnitId: UnitId.ranger,
+    );
+    const heal = HealEvent(
+      cycle: 1,
+      tick: 1,
+      by: 'h',
+      target: 'b',
+      amount: 10,
+      targetHpAfter: 100,
+    );
+
+    test('a melee attack lands at the peak of its lunge', () {
+      // triangleWave peaks at 0.5, which is exactly where the attacker
+      // sprite is standing on the target's tile.
+      expect(impactFraction(melee), 0.5);
+    });
+
+    test('a projectile lands near the end of its flight, still on screen', () {
+      // The whole point of #215: the hit has to read as happening when
+      // the projectile arrives, and the projectile has to still be
+      // visible at that moment rather than already gone.
+      final f = impactFraction(ranged);
+      expect(f, greaterThan(0.5));
+      expect(f, lessThan(1.0));
+    });
+
+    test('a healer projectile flies as long as a ranger one', () {
+      const healerAttack = AttackEvent(
+        cycle: 1,
+        tick: 1,
+        attacker: 'a',
+        target: 'b',
+        damage: 6,
+        targetHpAfter: 94,
+        attackerUnitId: UnitId.healer,
+      );
+      expect(impactFraction(healerAttack), impactFraction(ranged));
+    });
+
+    test('an event with no travel lands immediately', () {
+      expect(impactFraction(heal), 0.0);
+    });
+  });
+
+  group('hasImpacted', () {
+    const ranged = AttackEvent(
+      cycle: 1,
+      tick: 1,
+      attacker: 'a',
+      target: 'b',
+      damage: 10,
+      targetHpAfter: 90,
+      attackerUnitId: UnitId.ranger,
+    );
+
+    test('is false while the projectile is still in flight', () {
+      expect(hasImpacted(ranged, 0.0), isFalse);
+      expect(hasImpacted(ranged, 0.5), isFalse);
+    });
+
+    test('is true from the impact point onward', () {
+      expect(hasImpacted(ranged, impactFraction(ranged)), isTrue);
+      expect(hasImpacted(ranged, 1.0), isTrue);
+    });
+
+    test('a null event has nothing left in flight', () {
+      expect(hasImpacted(null, 0.0), isTrue);
+    });
+  });
 }

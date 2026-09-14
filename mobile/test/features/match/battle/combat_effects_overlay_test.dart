@@ -1,4 +1,5 @@
 import 'package:auto_chess_mobile/core/theme/app_theme.dart';
+import 'package:auto_chess_mobile/features/match/battle/combat_effects_math.dart';
 import 'package:auto_chess_mobile/features/match/battle/combat_effects_overlay.dart';
 import 'package:auto_chess_mobile/shared/models/combat_event.dart';
 import 'package:auto_chess_mobile/shared/models/match_state.dart';
@@ -149,12 +150,14 @@ void main() {
   });
 
   testWidgets(
-      'projectile mark moves linearly with subProgress, not the triangle wave',
-      (tester) async {
-    // 1 event total: playheadProgress 0.25 -> subProgress 0.25. The
-    // ranger's attackerUnitId makes `isMelee` false, so the widget should
-    // use `current.subProgress` directly (linear) rather than
-    // `triangleWave(subProgress)`.
+      'projectile mark moves linearly with flight progress, not the '
+      'triangle wave', (tester) async {
+    // 1 event total: playheadProgress 0.25 -> subProgress 0.25 ->
+    // projectileTravel(0.25) = 0.25 / kProjectileImpactFraction (#215: a
+    // projectile completes its whole flight by the impact point, not by
+    // subProgress 1.0). The ranger's attackerUnitId makes `isMelee`
+    // false, so the widget should use that flight fraction directly
+    // (linear) rather than `triangleWave(subProgress)`.
     await tester.pumpWidget(buildTree(0.25, eventsBatch: rangedBatch));
 
     // Confirms melee/ranged branching selects the ranged icon, not the
@@ -168,17 +171,16 @@ void main() {
     // (0,0)-(300,300) -> tile center (48.667, 48.667). Target is slot 4
     // (center tile) of the opponent board, which spans y in [300, 600]
     // -> tile center (150, 450).
-    //
-    // Linear lerp at t = 0.25:
-    //   x = 48.667 + 0.25 * (150 - 48.667)   = 74.0
-    //   y = 48.667 + 0.25 * (450 - 48.667)   = 149.0
+    final t = projectileTravel(0.25);
+    final expectedX = 48.667 + t * (150 - 48.667);
+    final expectedY = 48.667 + t * (450 - 48.667);
     //
     // If the melee (triangle-wave) branch were used by mistake,
     // triangleWave(0.25) == 0.5, putting the icon at (99.333, 249.333)
-    // instead -- clearly distinct from the linear expectation below, so
-    // this assertion actually proves which branch ran.
-    expect(iconCenter.dx, closeTo(74.0, 5));
-    expect(iconCenter.dy, closeTo(149.0, 5));
+    // instead -- clearly distinct from the expectation below, so this
+    // assertion actually proves which branch ran.
+    expect(iconCenter.dx, closeTo(expectedX, 5));
+    expect(iconCenter.dy, closeTo(expectedY, 5));
   });
 
   testWidgets('traveller scales and repositions with the board size',
@@ -272,5 +274,125 @@ void main() {
       ),
     );
     expect(find.byKey(const ValueKey('lunge-traveler')), findsNothing);
+  });
+
+  testWidgets('a projectile reaches the target tile before it disappears',
+      (tester) async {
+    // AC: "lands on or very near the target tile before disappearing".
+    // One event, so playheadProgress *is* subProgress; sample at the
+    // impact point, which is deliberately short of 1.0 so the icon is
+    // still drawn on the frame the hit registers.
+    await tester.pumpWidget(
+      buildTree(kProjectileImpactFraction - 0.01, eventsBatch: rangedBatch),
+    );
+    final mark = find.byKey(const ValueKey('projectile-mark'));
+    expect(mark, findsOneWidget);
+    final centre = tester.getCenter(mark);
+    // Target is slot 4 of the opponent board, which the harness lays out
+    // at y in [300, 600] -> its middle tile's centre is (150, 450).
+    expect(centre.dx, closeTo(150, 8));
+    expect(centre.dy, closeTo(450, 8));
+
+    // AC: "disappears instantly on impact" — no fade, no lingering.
+    await tester.pumpWidget(
+      buildTree(kProjectileImpactFraction, eventsBatch: rangedBatch),
+    );
+    expect(find.byKey(const ValueKey('projectile-mark')), findsNothing);
+  });
+
+  testWidgets('a healer shoots a bolt, a ranger an arrow', (tester) async {
+    // The per-tile projectile this overlay replaced picked the icon by
+    // unit; the distinction was lost in the move.
+    await tester.pumpWidget(buildTree(0.25, eventsBatch: rangedBatch));
+    expect(
+      tester.widget<Icon>(find.byKey(const ValueKey('projectile-mark'))).icon,
+      Icons.arrow_forward,
+    );
+
+    const healerAttack = AttackEvent(
+      cycle: 1,
+      tick: 1,
+      attacker: 'a',
+      target: 'b',
+      damage: 6,
+      targetHpAfter: 94,
+      attackerSide: MatchSide.p1,
+      attackerSlot: 0,
+      attackerUnitId: UnitId.healer,
+      targetSide: MatchSide.p2,
+      targetSlot: 4,
+    );
+    await tester.pumpWidget(
+      buildTree(
+        0.25,
+        eventsBatch: const CombatEventBatch(
+          matchId: 'm1',
+          round: 1,
+          cycleCount: 1,
+          endedAt: 0,
+          events: [healerAttack],
+        ),
+      ),
+    );
+    expect(
+      tester.widget<Icon>(find.byKey(const ValueKey('projectile-mark'))).icon,
+      Icons.bolt,
+    );
+  });
+
+  testWidgets('an enemy projectile flies down toward the viewer',
+      (tester) async {
+    // AC: works for both ally (bottom board -> up) and enemy (top board
+    // -> down). Same event mirrored: p2 shoots at p1, viewed as p1, so
+    // the shot must travel from the opponent's board into the viewer's.
+    const incoming = AttackEvent(
+      cycle: 1,
+      tick: 1,
+      attacker: 'a',
+      target: 'b',
+      damage: 10,
+      targetHpAfter: 90,
+      attackerSide: MatchSide.p2,
+      attackerSlot: 0,
+      attackerUnitId: UnitId.ranger,
+      targetSide: MatchSide.p1,
+      targetSlot: 4,
+    );
+    await tester.pumpWidget(
+      buildTree(
+        0.25,
+        eventsBatch: const CombatEventBatch(
+          matchId: 'm1',
+          round: 1,
+          cycleCount: 1,
+          endedAt: 0,
+          events: [incoming],
+        ),
+      ),
+    );
+    final early =
+        tester.getCenter(find.byKey(const ValueKey('projectile-mark')));
+
+    await tester.pumpWidget(
+      buildTree(
+        kProjectileImpactFraction - 0.01,
+        eventsBatch: const CombatEventBatch(
+          matchId: 'm1',
+          round: 1,
+          cycleCount: 1,
+          endedAt: 0,
+          events: [incoming],
+        ),
+      ),
+    );
+    final late_ =
+        tester.getCenter(find.byKey(const ValueKey('projectile-mark')));
+
+    // The viewer's own board is the top one in this harness, so an
+    // incoming shot travels upward on screen — the point is that it moves
+    // *toward* the target's real tile, not a hardcoded direction.
+    expect(late_.dy, lessThan(early.dy));
+    expect(late_.dx, closeTo(150, 8));
+    expect(late_.dy, closeTo(150, 8));
   });
 }

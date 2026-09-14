@@ -35,6 +35,7 @@ import '../board/stone_board_tile.dart';
 import '../match_controller.dart' show unitMaxHp;
 import 'battle_playback_controller.dart';
 import 'battle_visual_state.dart';
+import 'combat_effects_math.dart';
 import 'combat_effects_overlay.dart';
 
 /// Family by `matchId` so navigating between match screens (multi-match
@@ -105,6 +106,7 @@ class _BattleViewState extends ConsumerState<BattleView>
   /// and the event index it describes. See the note in [build].
   CombatEventBatch? _cachedStatesBatch;
   int? _cachedStatesIndex;
+  bool? _cachedStatesLanded;
   Map<UnitKey, UnitVisualState>? _cachedStates;
   final GlobalKey _myBoardKey = GlobalKey();
   final GlobalKey _opponentBoardKey = GlobalKey();
@@ -321,17 +323,28 @@ class _BattleViewState extends ConsumerState<BattleView>
     // rather than 60 times a second. `deriveUnitStates` walks the event
     // list several times, once more per unit for the debuff scan, so
     // recomputing it per frame was doing ~100x more work than needed and
-    // showed up as combat feeling sluggish. Cache it against the index.
+    // showed up as combat feeling sluggish. Cache it against the index —
+    // plus the one other thing the result depends on, whether the event
+    // being played has connected yet, which flips once per event too.
     final unitStates = <UnitKey, UnitVisualState>{};
     if (view.batch != null) {
+      final current = currentEventEffect(
+        view.batch!.events,
+        view.playheadProgress,
+      );
+      final landed =
+          current == null || hasImpacted(current.event, current.subProgress);
       if (!identical(_cachedStatesBatch, view.batch) ||
           _cachedStatesIndex != view.playheadIndex ||
+          _cachedStatesLanded != landed ||
           _cachedStates == null) {
         _cachedStatesBatch = view.batch;
         _cachedStatesIndex = view.playheadIndex;
+        _cachedStatesLanded = landed;
         _cachedStates = deriveUnitStates(
           events: view.batch!.events,
           playheadIndex: view.playheadIndex,
+          currentEventLanded: landed,
           playerBoard: widget.match.roster.board,
           opponentBoard:
               widget.match.opponent.boardSummary.asMap().entries.map((entry) {
@@ -672,6 +685,13 @@ class _BattleTileState extends State<BattleTile> with TickerProviderStateMixin {
     _floatCtrl = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 800),
+      // These four are functional combat feedback (hit shake, recoil, heal
+      // bubble, floating damage), not decoration. Without `preserve`,
+      // Flutter runs every AnimationBehavior.normal controller at 5% of
+      // its duration under the platform's reduced-motion setting — the
+      // same bug that made the playhead resolve rounds in ~2s. A 200ms
+      // shake at 5% is 10ms, invisible; a unit "just stands still" on hit.
+      animationBehavior: AnimationBehavior.preserve,
     );
     _floatAnim = Tween<double>(begin: 0, end: 1).animate(
       CurvedAnimation(parent: _floatCtrl, curve: AppMotion.standard),
@@ -680,6 +700,7 @@ class _BattleTileState extends State<BattleTile> with TickerProviderStateMixin {
     _shakeCtrl = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 200),
+      animationBehavior: AnimationBehavior.preserve,
     );
     _shakeAnim = Tween<double>(begin: 0, end: 1).animate(
       CurvedAnimation(parent: _shakeCtrl, curve: Curves.easeOut),
@@ -688,6 +709,7 @@ class _BattleTileState extends State<BattleTile> with TickerProviderStateMixin {
     _healBubbleCtrl = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 600),
+      animationBehavior: AnimationBehavior.preserve,
     );
     _healBubbleAnim = Tween<double>(begin: 0, end: 1).animate(
       CurvedAnimation(parent: _healBubbleCtrl, curve: AppMotion.standard),
@@ -696,6 +718,7 @@ class _BattleTileState extends State<BattleTile> with TickerProviderStateMixin {
     _recoilCtrl = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 125),
+      animationBehavior: AnimationBehavior.preserve,
     );
     _recoilAnim = Tween<double>(begin: 0, end: 1).animate(
       CurvedAnimation(parent: _recoilCtrl, curve: Curves.easeInOut),
