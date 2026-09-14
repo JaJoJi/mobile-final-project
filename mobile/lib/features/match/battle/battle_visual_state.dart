@@ -109,6 +109,7 @@ Map<UnitKey, UnitVisualState> deriveUnitStates({
   required int playheadIndex,
   required List<Unit?> playerBoard,
   required List<Unit?> opponentBoard,
+  required MatchSide mySide,
 }) {
   if (events.isEmpty) return const {};
 
@@ -232,7 +233,13 @@ Map<UnitKey, UnitVisualState> deriveUnitStates({
     final tCol = targetSlot % 3;
     var dCol = (tCol - aCol).toDouble();
     if (dCol.abs() > 1) dCol = dCol > 0 ? 1.0 : -1.0;
-    final dRow = attackerSide == MatchSide.p2 ? 1.0 : -1.0;
+    // Viewer-relative, NOT absolute side: every client renders its own
+    // board at the bottom and the opponent's on top, so "toward the
+    // enemy" is up (-1) for the viewer's own units and down (+1) for the
+    // opponent's — regardless of whether the viewer happens to be p1 or
+    // p2. Keying this off the absolute side instead made every recoil
+    // point backwards for whichever player was p2.
+    final dRow = attackerSide == mySide ? -1.0 : 1.0;
     recoil[UnitKey(side: attackerSide, slot: attackerSlot)] =
         (index: i, dx: dCol, dy: dRow);
   }

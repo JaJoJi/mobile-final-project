@@ -49,14 +49,48 @@ void main() {
         playheadIndex: 0,
         playerBoard: const [],
         opponentBoard: const [],
+        mySide: MatchSide.p1,
       );
 
       final attacker = map[const UnitKey(side: MatchSide.p1, slot: 0)];
       expect(attacker, isNotNull);
       expect(attacker!.recoilEventIndex, 0);
-      // attacker col 0, target col 1 -> dCol +1; p1 attacking "up" -> dRow -1.
+      // attacker col 0, target col 1 -> dCol +1. Viewer is p1, so this is
+      // the viewer's own unit: it sits on the bottom board and nudges up.
       expect(attacker.recoilDx, 1.0);
       expect(attacker.recoilDy, -1.0);
+    });
+
+    test('recoil direction is relative to the viewer, not the absolute side',
+        () {
+      const event = AttackEvent(
+        cycle: 1,
+        tick: 1,
+        attacker: 'a1',
+        target: 'b1',
+        damage: 10,
+        targetHpAfter: 90,
+        attackerSide: MatchSide.p1,
+        attackerSlot: 0,
+        attackerUnitId: UnitId.fighter,
+        targetSide: MatchSide.p2,
+        targetSlot: 4,
+        unitStates: [_attackerSnapshot, _targetSnapshot],
+      );
+
+      // Same event, but seen by the p2 player: the p1 attacker is now the
+      // *opponent*, rendered on the top board, so it must nudge downward
+      // (toward the viewer's own board) rather than up.
+      final map = deriveUnitStates(
+        events: const [event],
+        playheadIndex: 0,
+        playerBoard: const [],
+        opponentBoard: const [],
+        mySide: MatchSide.p2,
+      );
+
+      final attacker = map[const UnitKey(side: MatchSide.p1, slot: 0)];
+      expect(attacker!.recoilDy, 1.0);
     });
 
     test('does not set a recoil trigger on a ranged attacker', () {
@@ -92,6 +126,7 @@ void main() {
         playheadIndex: 0,
         playerBoard: const [],
         opponentBoard: const [],
+        mySide: MatchSide.p1,
       );
 
       final attacker = map[const UnitKey(side: MatchSide.p1, slot: 0)];
@@ -138,6 +173,7 @@ void main() {
         playheadIndex: 1,
         playerBoard: const [],
         opponentBoard: const [],
+        mySide: MatchSide.p1,
       );
 
       final attacker = map[const UnitKey(side: MatchSide.p1, slot: 0)];

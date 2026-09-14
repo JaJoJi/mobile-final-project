@@ -211,6 +211,7 @@ class _BattleViewState extends ConsumerState<BattleView>
               maxHp: unitMaxHp(o.unitId),
             );
           }).toList(),
+          mySide: widget.match.yourSide,
         ),
       );
     }
@@ -597,14 +598,20 @@ class _BattleTileState extends State<BattleTile> with TickerProviderStateMixin {
                 )
               : Offset.zero;
           // Recoil: small in-place nudge toward the target, there-and-back.
-          final recoilOffset = Offset(
-            (widget.unitState?.recoilDx ?? 0) *
-                _recoilDistance *
-                _recoilAnim.value,
-            (widget.unitState?.recoilDy ?? 0) *
-                _recoilDistance *
-                _recoilAnim.value,
-          );
+          // `recoilDy` is "toward the enemy board" in the viewer's frame,
+          // so which screen axis that maps to depends on how the two
+          // boards are arranged: stacked in portrait, side-by-side
+          // (mine left, opponent right) in landscape.
+          final recoilTravel =
+              (widget.unitState?.recoilDy ?? 0) * _recoilDistance;
+          final recoilLean =
+              (widget.unitState?.recoilDx ?? 0) * _recoilDistance * 0.5;
+          final isPortrait =
+              MediaQuery.orientationOf(context) == Orientation.portrait;
+          final recoilOffset = (isPortrait
+                  ? Offset(recoilLean, recoilTravel)
+                  : Offset(-recoilTravel, recoilLean)) *
+              _recoilAnim.value;
           return Transform.translate(
             offset: shakeOffset + recoilOffset,
             child: child,
