@@ -179,9 +179,13 @@ void main() {
     // Walk the playhead forward and record what the attacker tile does.
     final offsets = <Offset>[];
     final summaries = <String>[];
+    var travellerSeen = 0;
     for (var i = 0; i < 40; i++) {
       await tester.pump(const Duration(milliseconds: 100));
       offsets.add(_attackerTileOffset(tester));
+      if (find.byKey(const ValueKey('lunge-traveler')).evaluate().isNotEmpty) {
+        travellerSeen++;
+      }
       final text = tester
           .widget<Text>(find.byKey(const ValueKey('battle-batch-summary')))
           .data!;
@@ -202,6 +206,16 @@ void main() {
       moved,
       isTrue,
       reason: 'attacker tile never translated; offsets were $offsets',
+    );
+
+    // 3. The melee attacker's sprite must actually be drawn travelling to
+    //    its target — the whole point of the feature, and the thing the
+    //    isolated overlay test can't prove about the real widget tree.
+    expect(
+      travellerSeen,
+      greaterThan(0),
+      reason: 'the melee traveller sprite was never rendered during a '
+          'batch made entirely of fighter attacks',
     );
   });
 
