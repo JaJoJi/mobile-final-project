@@ -82,6 +82,26 @@ class _BattleViewState extends ConsumerState<BattleView>
     _playhead.addListener(_pushPlayhead);
     _controller = ref.read(battlePlaybackProvider(widget.matchId).notifier);
     _startStaleTimer();
+
+    // `combatEventsProvider` is not autoDispose and keeps consuming the WS
+    // stream in the background even while no BattleView is mounted (e.g.
+    // during the shop/planning phase) — so a batch that arrives right
+    // before this widget mounts would otherwise be missed entirely.
+    // `listenManual` (initState-safe, unlike `ref.listen` in build, which
+    // explicitly does not support `fireImmediately`) replays whatever
+    // value the provider already holds at mount time; the `batch.round`
+    // guard below makes this safe against a stale previous round's batch.
+    ref.listenManual<AsyncValue<CombatEventBatch>>(
+      combatEventsProvider,
+      (prev, next) {
+        final batch = next.valueOrNull;
+        if (batch == null) return;
+        if (batch.matchId != widget.matchId) return;
+        if (batch.round != widget.match.round) return;
+        _onBatch(batch);
+      },
+      fireImmediately: true,
+    );
   }
 
   @override
@@ -138,18 +158,6 @@ class _BattleViewState extends ConsumerState<BattleView>
 
   @override
   Widget build(BuildContext context) {
-    // Listen for batches arriving from the server.
-    ref.listen<AsyncValue<CombatEventBatch>>(
-      combatEventsProvider,
-      (prev, next) {
-        final batch = next.valueOrNull;
-        if (batch == null) return;
-        if (batch.matchId != widget.matchId) return;
-        if (batch.round != widget.match.round) return;
-        _onBatch(batch);
-      },
-    );
-
     final view = ref.watch(battlePlaybackProvider(widget.matchId));
     final game = Theme.of(context).extension<GameTheme>()!;
 
