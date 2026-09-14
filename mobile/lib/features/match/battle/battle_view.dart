@@ -35,7 +35,6 @@ import '../board/stone_board_tile.dart';
 import '../match_controller.dart' show unitMaxHp;
 import 'battle_playback_controller.dart';
 import 'battle_visual_state.dart';
-import 'combat_effects_math.dart';
 import 'combat_effects_overlay.dart';
 
 /// Family by `matchId` so navigating between match screens (multi-match
@@ -181,7 +180,7 @@ class _BattleViewState extends ConsumerState<BattleView>
     _staleDetected = false;
     _acked = false;
     _controller.loadBatch(batch);
-    final filtered = _controller.state.batch!.events;
+    final filtered = _controller.events!;
     final totalMs = combatPlaybackDuration(filtered.length).inMilliseconds;
     developer.log(
       'battle batch loaded: match=${batch.matchId} round=${batch.round} '
@@ -552,7 +551,6 @@ class _BattleTileState extends State<BattleTile> with TickerProviderStateMixin {
   late final Animation<double> _healBubbleAnim;
   late final AnimationController _recoilCtrl;
   late final Animation<double> _recoilAnim;
-  bool _wasFloating = false;
   int? _lastFloatingDamage;
   int? _lastDamageIndex;
   int? _lastHealIndex;
@@ -610,8 +608,6 @@ class _BattleTileState extends State<BattleTile> with TickerProviderStateMixin {
       _floatCtrl.forward(from: 0);
     }
     _lastFloatingDamage = floatingAmount;
-    _wasFloating = hasFloating;
-
     // Hit shake: trigger on new damage event index.
     final damageIdx = widget.unitState?.lastDamageEventIndex;
     if (damageIdx != null && damageIdx != _lastDamageIndex) {
@@ -711,7 +707,7 @@ class _BattleTileState extends State<BattleTile> with TickerProviderStateMixin {
               Positioned.fill(
                 child: DecoratedBox(
                   decoration: BoxDecoration(
-                    color: uv!.debuff!.color.withOpacity(0.15),
+                    color: uv!.debuff!.color.withValues(alpha: 0.15),
                     borderRadius: BorderRadius.circular(4),
                   ),
                 ),
@@ -741,8 +737,8 @@ class _BattleTileState extends State<BattleTile> with TickerProviderStateMixin {
                         height: radius * 2,
                         decoration: BoxDecoration(
                           shape: BoxShape.circle,
-                          color: Colors.green.withOpacity(
-                            (0.3 * (1.0 - progress)).clamp(0.0, 1.0),
+                          color: Colors.green.withValues(
+                            alpha: (0.3 * (1.0 - progress)).clamp(0.0, 1.0),
                           ),
                         ),
                       ),
@@ -768,7 +764,7 @@ class _BattleTileState extends State<BattleTile> with TickerProviderStateMixin {
                               ? Container(
                                   padding: const EdgeInsets.all(4),
                                   decoration: BoxDecoration(
-                                    color: Colors.green.withOpacity(0.3),
+                                    color: Colors.green.withValues(alpha: 0.3),
                                     shape: BoxShape.circle,
                                   ),
                                   child: Text(

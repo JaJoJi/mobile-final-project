@@ -166,6 +166,8 @@ The backend is **stateless**. Mutable game state lives entirely in Redis; multip
 | `match:<matchId>:actionLog:<userId>` | HASH | Processed `clientActionId` values used to make retries a no-op. | 120 s |
 | `match:<matchId>:shop-lock:<userId>` | STRING | Short per-player mutex serializing concurrent shop actions across replicas. | 5 s |
 | `combat-lock:<matchId>` | STRING | `SET NX EX 30s`. Holds the right to call `engine.runBattle()` for this match. | 30 s |
+| `rate:ws:{<userId>}:hits` | ZSET | Sliding-window timestamps for the cross-instance per-user WS rate limit. | 2 s |
+| `rate:ws:{<userId>}:seq` | STRING | Sequence that makes same-millisecond WS rate-limit entries unique. | 2 s |
 | BullMQ keys | — | Delayed + repeatable jobs (phase timers, combat-done timeout, cleanup). | — |
 | Pub/Sub channel `match:<id>:events` | — | Fan-out for combat events and round events across all NestJS instances. | ephemeral |
 | Pub/Sub pattern `match:*:events` | — | Subscribed by every NestJS instance on startup. | — |
@@ -180,6 +182,7 @@ The backend is **stateless**. Mutable game state lives entirely in Redis; multip
 | Combat single-runner | `SET combat-lock:<id> <instanceId> NX EX 30` | Redis native (atomic) |
 | Combat-done ack | Lua `combat_done.lua`: HSET if absent, return count | Lua atomic |
 | Shop action commit | Per-player `SET NX PX` mutex + `action_log.lua` writes action id, runtime state, and shop state together | Lua atomic |
+| Per-user WS throttle | `ws_rate_limit.lua` sliding-window count using Redis `TIME` | Lua atomic |
 | Cross-instance WS fan-out | `PUBLISH match:<id>:events <json>` | Pub/Sub |
 
 ### 4.3 Matchmaking flow
@@ -497,7 +500,15 @@ redis.call('ZREM', KEYS[1], members[1], members[2])
 return members
 ```
 
-### 13.4 Why Lua and not WATCH/MULTI/EXEC?
+### 13.4 `ws_rate_limit.lua` — cross-instance sliding window
+
+The WS guard sends two keys with the same Redis hash tag (`{userId}`). The
+script uses Redis `TIME`, removes timestamps older than one second, adds a
+unique hit, refreshes both short TTLs, and returns the active count atomically.
+Keeping this state in Redis prevents a client from multiplying its allowance
+by opening sockets that land on different NestJS replicas.
+
+### 13.5 Why Lua and not WATCH/MULTI/EXEC?
 
 - Round-trips: a single `EVAL` is one round trip; WATCH/MULTI requires multiple.
 - Server-agnostic: works with any Redis client; workers across instances all use the same scripts.
