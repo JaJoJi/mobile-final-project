@@ -233,9 +233,21 @@ void main() {
     expect(small.width, closeTo(tileOf(240), 0.5));
     expect(large.width, closeTo(tileOf(480), 0.5));
 
-    // At the peak of the wave it sits on the target tile, which is itself
-    // twice as far down on the bigger board.
-    expect(large.center.dy, closeTo(small.center.dy * 2, 2));
+    // The point of the whole feature: at the peak of the wave the sprite
+    // is standing on the *target's* square, at any board size. Target is
+    // slot 4 (row 1, col 1) of the opponent board, which the harness lays
+    // out directly below the player's, and which renders with reversed
+    // rows — row 1 mirrors to itself, so it's the middle tile either way.
+    Offset expectedTargetCentre(double board) {
+      final tile = tileOf(board);
+      final centreInBoard = 1 * (tile + 4) + tile / 2;
+      return Offset(centreInBoard, board + centreInBoard);
+    }
+
+    expect(small.center.dx, closeTo(expectedTargetCentre(240).dx, 1));
+    expect(small.center.dy, closeTo(expectedTargetCentre(240).dy, 1));
+    expect(large.center.dx, closeTo(expectedTargetCentre(480).dx, 1));
+    expect(large.center.dy, closeTo(expectedTargetCentre(480).dy, 1));
   });
 
   testWidgets('renders nothing when a tile position cannot be resolved',
