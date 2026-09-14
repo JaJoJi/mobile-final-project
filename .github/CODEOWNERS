@@ -1,0 +1,17 @@
+# Reviewers are suggested automatically on matching PRs.
+# See https://docs.github.com/articles/about-code-owners
+
+# Backend
+/backend/    @JaJoJi @fiat222 @sanpipop
+
+# Frontend
+/mobile/     @JaJoJi @fiat222
+
+# Docs
+/docs/       @JaJoJi @fiat222
+
+# CI / infra
+/.github/            @JaJoJi @fiat222
+/docker-compose.yml  @JaJoJi @fiat222
+/nginx/              @JaJoJi @fiat222
+/Jenkinsfile         @JaJoJi @fiat222

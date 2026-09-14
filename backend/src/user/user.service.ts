@@ -1,6 +1,6 @@
 import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { EntityManager, In, Repository } from 'typeorm';
 import { User } from './user.entity';
 
 /**
@@ -16,8 +16,27 @@ export class UserService {
 
   constructor(@InjectRepository(User) private readonly users: Repository<User>) {}
 
-  findById(id: string): Promise<User | null> {
-    return this.users.findOne({ where: { id } });
+  private repository(manager?: EntityManager): Repository<User> {
+    return manager?.getRepository(User) ?? this.users;
+  }
+
+  findById(id: string, manager?: EntityManager): Promise<User | null> {
+    return this.repository(manager).findOne({ where: { id } });
+  }
+
+  findByIds(ids: string[], manager?: EntityManager): Promise<User[]> {
+    if (ids.length === 0) return Promise.resolve([]);
+    return this.repository(manager).findBy({ id: In(ids) });
+  }
+
+  findByIdsForUpdate(ids: string[], manager: EntityManager): Promise<User[]> {
+    if (ids.length === 0) return Promise.resolve([]);
+    return this.repository(manager)
+      .createQueryBuilder('user')
+      .setLock('pessimistic_write')
+      .where('user.id IN (:...ids)', { ids: [...ids].sort() })
+      .orderBy('user.id', 'ASC')
+      .getMany();
   }
 
   findByEmail(email: string): Promise<User | null> {
@@ -60,5 +79,17 @@ export class UserService {
       throw new NotFoundException(`user ${id} not found after update`);
     }
     return fresh;
+  }
+
+  /** Apply an ELO delta atomically and clamp the persisted rating at zero. */
+  async updateRating(id: string, delta: number, manager?: EntityManager): Promise<void> {
+    const result = await this.repository(manager)
+      .createQueryBuilder()
+      .update(User)
+      .set({ rating: () => 'GREATEST(0, "rating" + :delta)' })
+      .where('id = :id', { id })
+      .setParameters({ delta: Math.trunc(delta) })
+      .execute();
+    if (!result.affected) throw new NotFoundException(`user ${id} not found`);
   }
 }

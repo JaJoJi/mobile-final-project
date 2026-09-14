@@ -68,7 +68,7 @@
 - **US-3**: *As a player, I want to enter matchmaking* so I can find an opponent quickly.
 - **US-4**: *As a player, I want to see my shop with 5 units* so I can choose what to buy.
 - **US-5**: *As a player, I want to drag units from shop to board* so I can position them.
-- **US-6**: *As a player, I want units to auto-fuse when I buy duplicates* so I don't manage fusion manually.
+- **US-6**: *As a player, I want to fuse duplicates by dragging one matching unit onto another* so the upgrade is intentional and its destination is clear.
 - **US-7**: *As a player, I want to see live battle updates* so I can follow what's happening.
 - **US-8**: *As a player, I want to see who won the round* so I know whether I took damage.
 - **US-9**: *As a player, I want to see my match history* so I can review past games.

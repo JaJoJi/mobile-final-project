@@ -48,7 +48,7 @@ Four unit types. Each has stats and a star-upgrade path.
 |---|---|---|---|---|---|
 | Fighter | 1g | 100 | 15 | 20 | All-rounder (sustain) |
 | Healer | 1g | 70 | 6 | 50 | Support / sustain |
-| Ranger | 2g | 60 | 12 | 90 | DPS carry |
+| Ranger | 2g | 60 | 12 | 67 | DPS carry |
 | Tank | 2g | 150 | 8 | 0 | Frontline |
 
 *MVP placeholder stats; tune via playtest.*
@@ -78,8 +78,8 @@ When a unit picks an attack target:
 Two copies of a unit at the same star level consume both and yield **one** copy at the next level. Star level affects stats and unlocks abilities.
 
 Star-upgrade flow:
-- Buying from shop auto-fuses with an existing roster copy when possible.
-- A "Fuse now" button explicitly fuses two roster copies.
+- Buying from the shop always places the new copy in the reserve area.
+- Players fuse two same-type, same-star copies by dragging one onto the other.
 
 ### 3.4 Abilities (per star level)
 
@@ -127,7 +127,7 @@ All offers are 0★. Star upgrades happen only via fusion of two same-star copie
 - **Buy**: pay cost (in gold), unit enters roster.
 - **Sell**: recover **100%** of unit cost. Unit leaves roster.
 - **Refresh**: reroll all 5 offers. Free **once per merged phase**.
-- **Auto-fuse** when buying a duplicate, or via a "Fuse now" button.
+- **Manual fuse** by dragging one same-type, same-star unit onto another.
 
 ## 5. Phases per Round
 

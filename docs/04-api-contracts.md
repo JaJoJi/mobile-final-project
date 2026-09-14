@@ -12,9 +12,9 @@
 | `POST /auth/refresh` | ✅ implemented | long-lived (no rotation); both old + new refresh work |
 | `GET /user/me` | ✅ implemented | guarded by `JwtAccessGuard` |
 | `PATCH /user/me` | ✅ implemented | username only |
-| `GET /match/history` | ⏳ planned | |
-| `GET /match/:matchId` | ⏳ planned | |
-| WS gateway (`/socket.io`) | ⏳ planned | schema frozen in §2 |
+| `GET /match/history` | ✅ implemented | JWT-guarded; latest 50 completed matches |
+| `GET /match/:matchId` | ✅ implemented | JWT-guarded; participants only |
+| WS gateway (`/socket.io`, namespace `/game`) | ✅ implemented | all 9 incoming events validated and routed |
 
 ## 1. REST Endpoints
 
@@ -72,7 +72,15 @@ JWT payload shape: `{ sub: <userId>, type: 'access' | 'refresh' }`. Guards rejec
 **Response 200**
 ```json
 [
-  { "matchId": "uuid", "opponent": "bob", "winner": "alice", "createdAt": "ISO", "duration": 180 }
+  {
+    "matchId": "uuid",
+    "opponent": { "id": "uuid", "username": "bob" },
+    "winner": "self",
+    "status": "finished",
+    "rounds": 7,
+    "createdAt": "ISO",
+    "duration": 180
+  }
 ]
 ```
 Most recent 50 matches.
@@ -83,13 +91,17 @@ Most recent 50 matches.
 {
   "matchId": "uuid",
   "players": [{ "id": "uuid", "username": "alice" }, { "id": "uuid", "username": "bob" }],
+  "winnerId": "uuid",
   "winner": "alice",
+  "status": "finished",
   "rounds": [
-    { "roundNumber": 1, "winner": "alice", "damage": 0 }
+    { "roundNumber": 1, "events": [{ "type": "battle_end", "cycle": 4, "winner": "p1" }] }
   ],
   "createdAt": "ISO", "finishedAt": "ISO"
 }
 ```
+
+**Errors**: `401` missing/invalid JWT; `403 { code: 'match.not_your_match' }` for a non-participant; `404 { code: 'match.not_found' }` for an unknown match.
 
 ## 2. WebSocket Events
 
@@ -111,6 +123,9 @@ Sent when phase changes (match start or transition).
 
 #### `game:shop:offer`
 Per-player (each player only sees their own shop).
+It is emitted at the start of every `shop_place` phase and again after that
+player uses their one free refresh. Purchased slots are tracked server-side;
+the initiating action response tells the client which offer it consumed.
 ```ts
 {
   matchId: string;
@@ -160,16 +175,50 @@ Sent to both clients when roster changes (purchase, sell, place).
 }
 
 type CombatEvent =
-  | { type: 'attack';      cycle: number; tick: number; attacker: string; target: string;  damage: number; targetHpAfter: number }
-  | { type: 'death';       cycle: number; tick: number; unit: string }
-  | { type: 'revive';      cycle: number; tick: number; unit: string;  hpAfter: number }
-  | { type: 'heal';        cycle: number; tick: number; target: string; by: string;  amount: number; targetHpAfter: number }
-  | { type: 'lifesteal';   cycle: number; tick: number; unit: string;  amount: number; hpAfter: number }
-  | { type: 'pierce';      cycle: number; tick: number; attacker: string; target: string;  damage: number }
-  | { type: 'slow';        cycle: number; tick: number; target: string; by: string }
+  | { type: 'attack';      cycle: number; tick: number; attacker: string; target: string;  damage: number; targetHpAfter: number;
+      attackerSide?: 'p1' | 'p2'; attackerSlot?: number; attackerUnitId?: 'fighter' | 'healer' | 'ranger' | 'tank'; attackerStar?: 0 | 1 | 2;
+      targetSide?:   'p1' | 'p2'; targetSlot?:   number; targetUnitId?:   'fighter' | 'healer' | 'ranger' | 'tank'; targetStar?:   0 | 1 | 2 }
+  | { type: 'death';       cycle: number; tick: number; unit: string;
+      unitSide?: 'p1' | 'p2'; unitSlot?: number; unitUnitId?: 'fighter' | 'healer' | 'ranger' | 'tank'; unitStar?: 0 | 1 | 2 }
+  | { type: 'revive';      cycle: number; tick: number; unit: string;  hpAfter: number;
+      unitSide?: 'p1' | 'p2'; unitSlot?: number; unitUnitId?: 'fighter' | 'healer' | 'ranger' | 'tank'; unitStar?: 0 | 1 | 2 }
+  | { type: 'heal';        cycle: number; tick: number; target: string; by: string;  amount: number; targetHpAfter: number;
+      targetSide?: 'p1' | 'p2'; targetSlot?: number; targetUnitId?: 'fighter' | 'healer' | 'ranger' | 'tank'; targetStar?: 0 | 1 | 2;
+      bySide?:    'p1' | 'p2'; bySlot?:    number; byUnitId?:    'fighter' | 'healer' | 'ranger' | 'tank'; byStar?:    0 | 1 | 2 }
+  | { type: 'lifesteal';   cycle: number; tick: number; unit: string;  amount: number; hpAfter: number;
+      unitSide?: 'p1' | 'p2'; unitSlot?: number; unitUnitId?: 'fighter' | 'healer' | 'ranger' | 'tank'; unitStar?: 0 | 1 | 2 }
+  | { type: 'pierce';      cycle: number; tick: number; attacker: string; target: string;  damage: number;
+      attackerSide?: 'p1' | 'p2'; attackerSlot?: number; attackerUnitId?: 'fighter' | 'healer' | 'ranger' | 'tank'; attackerStar?: 0 | 1 | 2;
+      targetSide?:   'p1' | 'p2'; targetSlot?:   number; targetUnitId?:   'fighter' | 'healer' | 'ranger' | 'tank'; targetStar?:   0 | 1 | 2 }
+  | { type: 'slow';        cycle: number; tick: number; target: string; by: string;
+      targetSide?: 'p1' | 'p2'; targetSlot?: number; targetUnitId?: 'fighter' | 'healer' | 'ranger' | 'tank'; targetStar?: 0 | 1 | 2;
+      bySide?:    'p1' | 'p2'; bySlot?:    number; byUnitId?:    'fighter' | 'healer' | 'ranger' | 'tank'; byStar?:    0 | 1 | 2 }
   | { type: 'cycle_end';   cycle: number }
   | { type: 'battle_end';  cycle: number; winner: 'p1' | 'p2' | null /* tie */ };
 ```
+
+#### `CombatEvent` enriched fields (P0-FE-05 prep)
+
+The `*Side` / `*Slot` / `*UnitId` / `*Star` fields are **optional on the type** but **always populated by the engine**. They let the client animation player resolve any event to world coordinates + the right sprite without an out-of-band snapshot:
+
+| Suffix | Meaning | Range |
+|---|---|---|
+| `*Side` | Owning side of the unit | `'p1' \| 'p2'` |
+| `*Slot` | Row-major board slot (`row = slot ~/ 3`, `col = slot % 3`) | `0..8` |
+| `*UnitId` | Archetype | `'fighter' \| 'healer' \| 'ranger' \| 'tank'` |
+| `*Star` | Fusion tier (drives the star overlay + any per-star VFX) | `0 \| 1 \| 2` |
+
+Per-event mapping:
+
+| Event | Fields that name an actor | Fields that name a target |
+|---|---|---|
+| `attack` | `attackerSide` / `attackerSlot` / `attackerUnitId` / `attackerStar` | `targetSide` / `targetSlot` / `targetUnitId` / `targetStar` |
+| `pierce` | `attackerSide` / `attackerSlot` / `attackerUnitId` / `attackerStar` | `targetSide` / `targetSlot` / `targetUnitId` / `targetStar` |
+| `death` / `revive` / `lifesteal` | — | `unitSide` / `unitSlot` / `unitUnitId` / `unitStar` |
+| `heal` / `slow` | `bySide` / `bySlot` / `byUnitId` / `byStar` | `targetSide` / `targetSlot` / `targetUnitId` / `targetStar` |
+| `cycle_end` / `battle_end` | — | — |
+
+Older clients ignore the extra fields (defensive parse); the engine never omits them, so the FE can rely on them being present.
 
 The 60-second combat-done timeout applies after this event is emitted. If at least one client fails to ack within 60 s, the server forces the next phase.
 
@@ -231,8 +280,17 @@ End-of-round.
 
 #### `game:shop:fuse`
 ```ts
-{ round: number; unitId: string; clientActionId: string }
+{
+  round: number;
+  unitId: string;
+  sourceInstanceId?: string; // dragged unit; paired with targetInstanceId
+  targetInstanceId?: string; // destination unit that keeps the upgrade
+  clientActionId: string;
+}
 ```
+
+Current clients send both instance ids for drag-to-fuse. The optional legacy
+shape is accepted during rollout, but buying a duplicate never auto-fuses it.
 
 #### `game:match:place`
 ```ts
@@ -247,8 +305,12 @@ End-of-round.
 
 #### `game:match:ready`
 ```ts
-{ round: number; clientActionId: string }
+{ round: number; ready?: boolean; clientActionId: string }
 ```
+
+`ready` defaults to `true` for older clients. Send `false` to cancel while
+the match is still in `shop_place`; cancellation is no longer possible once
+both players are ready and the phase has flipped to `battle`.
 
 #### `game:match:combat_done`
 Client tells the server it's finished playing the `game:combat:events` batch locally and is ready for `game:match:damage`. Server waits for BOTH clients' acks (or 60 s timeout) before proceeding.
@@ -273,6 +335,10 @@ Failure → `game:error` with an appropriate code.
 
 Every shop/match action carries a `clientActionId` (UUID generated client-side). Server stores last processed `clientActionId` per user and ignores duplicates. Re-tries after network failures are safe.
 
+`game:match:combat_done` is additionally deduplicated by player ID for the
+current battle, so retrying with a newly generated action ID still cannot count
+one player twice.
+
 ## 5. Error Codes
 
 | Code | Meaning |
@@ -281,6 +347,8 @@ Every shop/match action carries a `clientActionId` (UUID generated client-side).
 | `auth.expired` | Expired JWT |
 | `rate.limited` | Too many actions |
 | `match.not_found` | Unknown matchId |
+| `match.not_your_match` | Caller is not a participant in the requested match |
+| `match.round_mismatch` | Action round differs from the live server round |
 | `match.not_your_turn` | Wrong phase for action |
 | `shop.insufficient_gold` | Not enough gold |
 | `shop.invalid_offer_index` | offerIndex out of range |
@@ -291,3 +359,26 @@ Every shop/match action carries a `clientActionId` (UUID generated client-side).
 | `combat.internal` | Combat engine bug (should never fire) |
 | `combat.not_in_battle` | `game:match:combat_done` sent when match is not in `battle` phase |
 | `combat.lock_held` | Another instance is running combat for this match (informational; clients should retry shortly) |
+
+### 5.1 REST error envelope (P1-BE-01)
+
+Every non-2xx REST response has the body:
+
+```json
+{ "code": "string", "message": "string", "details": {} }
+```
+
+- `details` is optional (present when the thrown error supplied it).
+- `429` responses additionally carry `"retryAfter": <seconds>` and a
+  matching `Retry-After` header.
+- Unhandled/unexpected errors are always `500 { "code": "internal",
+  "message": "internal server error" }` — internals are never leaked.
+- Generic codes when a handler didn't set its own: `bad_request`,
+  `unauthorized`, `forbidden`, `not_found`, `conflict`,
+  `unprocessable_entity`, `rate_limited`, `internal`.
+
+Structured logs (pino): every line is JSON with
+`{ level, time, msg, requestId?, instanceId, pid, context? }`; HTTP
+requests also get an `x-request-id` response header. Levels: `error` for
+unhandled exceptions, `warn` for 4xx / handled `game:error`, `info` for
+lifecycle + phase transitions, `debug` for the rest (`LOG_LEVEL=debug`).

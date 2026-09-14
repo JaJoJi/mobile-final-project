@@ -20,7 +20,7 @@ actionsPerCycle = floor(100 / cooldown)
 | Tank (0) | 100 | 1 |
 | Fighter (20) | 80 | 1 |
 | Healer (50) | 50 | 2 |
-| Ranger (90) | 10 | 10 |
+| Ranger (67) | 33 | 3 |
 
 *SPD values are MVP placeholders; tune via playtest. SPD > 95 is forbidden.*
 

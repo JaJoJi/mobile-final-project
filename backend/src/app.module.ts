@@ -1,20 +1,29 @@
 import { Module } from '@nestjs/common';
+import { APP_FILTER } from '@nestjs/core';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { join } from 'path';
 import { AuthModule } from './auth/auth.module';
 import { HealthController } from './common/health.controller';
+import { AllExceptionsFilter } from './common/filters/all-exceptions.filter';
+import { LoggerModule } from './common/logger/logger.module';
+import { ENTITIES } from './database/entities';
+import { MatchModule } from './match/match.module';
+import { MatchmakingModule } from './matchmaking/matchmaking.module';
+import { QueueModule } from './queue/queue.module';
 import { RedisModule } from './redis/redis.module';
 import { RedisService } from './redis/redis.service';
-import { User } from './user/user.entity';
+import { RuntimeModule } from './runtime/match.runtime.module';
 import { UserModule } from './user/user.module';
+import { WsModule } from './ws/ws.module';
 
 @Module({
   imports: [
+    LoggerModule,
     TypeOrmModule.forRootAsync({
       useFactory: () => ({
         type: 'postgres',
         url: process.env.DATABASE_URL,
-        entities: [User],
+        entities: ENTITIES,
         // Migrations are compiled to dist/migrations/*.js by `npm run build`.
         migrations: [join(__dirname, 'migrations', '*.js')],
         // Only ONE Nest instance should run migrations on boot, to avoid
@@ -29,11 +38,20 @@ import { UserModule } from './user/user.module';
       }),
     }),
     RedisModule,
+    QueueModule,
     UserModule,
     AuthModule,
+    MatchModule,
+    RuntimeModule,
+    MatchmakingModule,
+    WsModule,
   ],
   controllers: [HealthController],
-  providers: [RedisService],
+  providers: [
+    RedisService,
+    // Global REST error envelope { code, message, details? } — P1-BE-01.
+    { provide: APP_FILTER, useClass: AllExceptionsFilter },
+  ],
 })
 export class AppModule {}
 

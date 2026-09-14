@@ -11,14 +11,15 @@
  * Reads `.env` from the repo root so DATABASE_URL is available.
  */
 import 'dotenv/config';
+import { join } from 'path';
 import { DataSource } from 'typeorm';
-import { User } from './user/user.entity';
+import { ENTITIES } from './database/entities';
 
 export default new DataSource({
   type: 'postgres',
   url: process.env.DATABASE_URL,
-  entities: [User],
-  migrations: ['src/migrations/*.ts'],
+  entities: ENTITIES,
+  migrations: [join(__dirname, 'migrations', '*.{ts,js}')],
   synchronize: false,
   logging: ['error', 'warn', 'migration'],
 });

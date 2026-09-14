@@ -96,8 +96,11 @@ class AuthRepository {
     String? serverMessage;
     if (body is Map) {
       final m = body['message'];
-      if (m is String) serverMessage = m;
-      else if (m is List && m.isNotEmpty) serverMessage = m.first.toString();
+      if (m is String) {
+        serverMessage = m;
+      } else if (m is List && m.isNotEmpty) {
+        serverMessage = m.first.toString();
+      }
     }
 
     if (code == 401) return AuthException('invalid email or password');

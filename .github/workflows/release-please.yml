@@ -1,0 +1,32 @@
+name: release-please
+
+# Runs on every push to `main` (the release branch). Opens/updates a
+# "Release PR" that bumps the version + CHANGELOG.md from conventional
+# commits already on main. Merging that PR creates the `vX.Y.Z` tag,
+# which triggers release.yml (P3-DO-02, #137 — builds + pushes the
+# backend image to GHCR).
+#
+# Does not touch dev — commits land on main only via the reviewed
+# dev -> main promotion PR (P3-DO-11, #195), so this only ever sees
+# commits that have already gone through the normal review flow.
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: release-please-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  release-please:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: googleapis/release-please-action@v4
+        with:
+          config-file: release-please-config.json
+          manifest-file: .release-please-manifest.json

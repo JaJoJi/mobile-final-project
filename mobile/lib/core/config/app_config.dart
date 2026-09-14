@@ -14,7 +14,7 @@ class AppConfig {
 
   static const String wsBaseUrl = String.fromEnvironment(
     'WS_BASE_URL',
-    defaultValue: 'ws://localhost',
+    defaultValue: 'ws://localhost:80',
   );
 
   static const String apiNamespace = '/api';

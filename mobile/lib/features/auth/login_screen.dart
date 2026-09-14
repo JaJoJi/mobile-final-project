@@ -1,12 +1,15 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
+import '../../core/auth/auth_gate.dart';
 import '../../core/auth/auth_repository.dart';
-import 'register_screen.dart';
 
-/// First screen the user sees. After successful login, push-replaces
-/// to the home (HealthScreen) route.
+/// First screen the user sees. After a successful login the router's
+/// redirect (driven by [AuthGate]) sends the user to `/lobby`.
 class LoginScreen extends ConsumerStatefulWidget {
   const LoginScreen({super.key});
+
+  static const path = '/login';
 
   @override
   ConsumerState<LoginScreen> createState() => _LoginScreenState();
@@ -29,11 +32,12 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     });
     try {
       await ref.read(authRepositoryProvider).login(
-        email: _emailCtrl.text.trim(),
-        password: _passwordCtrl.text,
-      );
+            email: _emailCtrl.text.trim(),
+            password: _passwordCtrl.text,
+          );
+      AuthGate.instance.signalSignedIn();
       if (!mounted) return;
-      Navigator.of(context).pushReplacementNamed('/home');
+      context.go('/lobby');
     } on AuthException catch (e) {
       setState(() => _error = e.message);
     } finally {
@@ -61,20 +65,26 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
                   const SizedBox(height: 32),
-                  const Icon(Icons.castle, size: 64, color: Colors.indigo),
+                  Icon(
+                    Icons.castle,
+                    size: 64,
+                    color: Theme.of(context).colorScheme.primary,
+                  ),
                   const SizedBox(height: 16),
                   Text(
                     'Auto Chess',
                     textAlign: TextAlign.center,
                     style: Theme.of(context).textTheme.headlineMedium?.copyWith(
-                      fontWeight: FontWeight.w700,
-                    ),
+                          fontWeight: FontWeight.w700,
+                        ),
                   ),
                   const SizedBox(height: 4),
                   Text(
                     'Sign in to play',
                     textAlign: TextAlign.center,
-                    style: TextStyle(color: Colors.grey.shade600),
+                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                          color: Theme.of(context).colorScheme.onSurfaceVariant,
+                        ),
                   ),
                   const SizedBox(height: 32),
                   TextFormField(
@@ -103,7 +113,10 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                       labelText: 'Password',
                       prefixIcon: const Icon(Icons.lock_outline),
                       suffixIcon: IconButton(
-                        icon: Icon(_obscure ? Icons.visibility : Icons.visibility_off),
+                        icon: Icon(
+                          _obscure ? Icons.visibility : Icons.visibility_off,
+                        ),
+                        tooltip: _obscure ? 'Show password' : 'Hide password',
                         onPressed: () => setState(() => _obscure = !_obscure),
                       ),
                       border: const OutlineInputBorder(),
@@ -118,18 +131,26 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                     Container(
                       padding: const EdgeInsets.all(12),
                       decoration: BoxDecoration(
-                        color: Colors.red.shade50,
-                        border: Border.all(color: Colors.red.shade200),
+                        color: Theme.of(context).colorScheme.errorContainer,
                         borderRadius: BorderRadius.circular(8),
                       ),
                       child: Row(
                         children: [
-                          Icon(Icons.error_outline, color: Colors.red.shade700, size: 20),
+                          Icon(
+                            Icons.error_outline,
+                            color:
+                                Theme.of(context).colorScheme.onErrorContainer,
+                            size: 20,
+                          ),
                           const SizedBox(width: 8),
                           Expanded(
                             child: Text(
                               _error!,
-                              style: TextStyle(color: Colors.red.shade700),
+                              style: TextStyle(
+                                color: Theme.of(context)
+                                    .colorScheme
+                                    .onErrorContainer,
+                              ),
                             ),
                           ),
                         ],
@@ -152,11 +173,8 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                   ),
                   const SizedBox(height: 16),
                   TextButton(
-                    onPressed: _loading
-                        ? null
-                        : () {
-                            Navigator.of(context).pushNamed('/register');
-                          },
+                    onPressed:
+                        _loading ? null : () => context.push('/register'),
                     child: const Text("Don't have an account? Sign up"),
                   ),
                 ],

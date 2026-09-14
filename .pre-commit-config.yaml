@@ -1,0 +1,36 @@
+# pip install pre-commit && pre-commit install
+#
+# Fast, local checks before a commit lands — CI (backend-ci.yml,
+# mobile-ci.yml) is the real gate; this just gives faster feedback.
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v4.6.0
+    hooks:
+      - id: trailing-whitespace
+      - id: end-of-file-fixer
+      - id: check-merge-conflict
+      - id: check-added-large-files
+        args: ['--maxkb=1024']
+
+  - repo: local
+    hooks:
+      # No maintained pre-commit-hooks repo for `dart format` / the
+      # backend's typecheck — run the project's own toolchain directly
+      # (matches CI exactly) rather than a mirror that can drift from
+      # the version pinned in package.json/pubspec.yaml.
+      #
+      # Neither eslint nor prettier is configured in backend/ (its
+      # `npm run lint` is `tsc --noEmit`) — this mirrors that, not the
+      # eslint/prettier setup sketched in the original issue draft.
+      - id: dart-format
+        name: dart format (mobile)
+        entry: bash -c 'cd mobile && dart format'
+        language: system
+        files: ^mobile/.*\.dart$
+
+      - id: backend-typecheck
+        name: tsc --noEmit (backend)
+        entry: bash -c 'cd backend && npm run lint'
+        language: system
+        files: ^backend/.*\.ts$
+        pass_filenames: false

@@ -52,7 +52,7 @@ backend/src/
 ├── match/               # ⏳ planned — match lifecycle, persistence
 ├── ws/                  # ⏳ planned — WebSocket gateway
 ├── redis/               # ✅ partially — client + Lua scripts (planned)
-├── runtime/             # ⏳ planned — stateless orchestrator
+├── runtime/             # ✅ stateless round orchestrator + combat coordinator
 └── queue/               # ⏳ planned — BullMQ workers
 
 backend/src/app.module.ts          ← wires TypeORM (auto-migrations RUN_MIGRATIONS-gated),
@@ -162,7 +162,12 @@ The backend is **stateless**. Mutable game state lives entirely in Redis; multip
 | `match:<matchId>:runtime` | HASH | Live match state: `phase`, `round`, `readyFlags`, `combatLockInstance`, `combatLockUntil`, `wipeIndexP1`, `wipeIndexP2`, `p1Gold`, `p2Gold`, `p1Hp`, `p2Hp`, etc. Whole state is JSON-serialized in fields. | 30 min after match start |
 | `match:<matchId>:combat-done` | HASH | Per-player combat-done acks: `playerId -> epoch-ms`. Cleared at each battle start. | 90 s |
 | `match:<matchId>:combat-result` | STRING | Serialized `CombatEvent[]` of last battle (for late subscribers). | 60 s |
+| `match:<matchId>:shop:<userId>` | STRING | Player-private offers, refresh count, and consumed offer slots for the current round. | 30 min |
+| `match:<matchId>:actionLog:<userId>` | HASH | Processed `clientActionId` values used to make retries a no-op. | 120 s |
+| `match:<matchId>:shop-lock:<userId>` | STRING | Short per-player mutex serializing concurrent shop actions across replicas. | 5 s |
 | `combat-lock:<matchId>` | STRING | `SET NX EX 30s`. Holds the right to call `engine.runBattle()` for this match. | 30 s |
+| `rate:ws:{<userId>}:hits` | ZSET | Sliding-window timestamps for the cross-instance per-user WS rate limit. | 2 s |
+| `rate:ws:{<userId>}:seq` | STRING | Sequence that makes same-millisecond WS rate-limit entries unique. | 2 s |
 | BullMQ keys | — | Delayed + repeatable jobs (phase timers, combat-done timeout, cleanup). | — |
 | Pub/Sub channel `match:<id>:events` | — | Fan-out for combat events and round events across all NestJS instances. | ephemeral |
 | Pub/Sub pattern `match:*:events` | — | Subscribed by every NestJS instance on startup. | — |
@@ -176,6 +181,8 @@ The backend is **stateless**. Mutable game state lives entirely in Redis; multip
 | Matchmaking pair | Lua atomic pop of bottom 2 ZSET entries (`ZRANGE` + `ZREM` in one Lua) | Lua atomic |
 | Combat single-runner | `SET combat-lock:<id> <instanceId> NX EX 30` | Redis native (atomic) |
 | Combat-done ack | Lua `combat_done.lua`: HSET if absent, return count | Lua atomic |
+| Shop action commit | Per-player `SET NX PX` mutex + `action_log.lua` writes action id, runtime state, and shop state together | Lua atomic |
+| Per-user WS throttle | `ws_rate_limit.lua` sliding-window count using Redis `TIME` | Lua atomic |
 | Cross-instance WS fan-out | `PUBLISH match:<id>:events <json>` | Pub/Sub |
 
 ### 4.3 Matchmaking flow
@@ -202,7 +209,7 @@ This is **pure FIFO** (current implementation). Rating (ELO) is tracked but not 
 
 Server → client:
 - `game:match:phase`     — phase transitions
-- `game:shop:offer`      — per-player shop offers
+- `game:shop:offer`      — per-player shop offers (`targetUserId` stays inside the Pub/Sub envelope)
 - `game:match:state`     — roster / gold / ready-count snapshot
 - `game:combat:events`   — **batch** of all combat events for one battle
 - `game:match:damage`    — end-of-round damage
@@ -386,7 +393,7 @@ Every WS handler that mutates state goes through this pattern:
      const runtime = await redis.hgetall(`match:${id}:runtime`);
      validate action against runtime (phase = 'shop_place'?)
 3. mutate atomically:
-     const ok = await redis.eval(LUA_PHASE_FLIP, KEYS=[runtimeKey], ARGV=[old, new, instId]);
+     const ok = await redis.eval(LUA_PHASE_FLIP, KEYS=[runtimeKey], ARGV=[old, new, instId, round]);
      if (!ok) return;                       // already advanced
 4. publish any necessary updates:
      redis.publish(`match:${id}:events`, JSON.stringify(event));
@@ -426,6 +433,11 @@ On boot, every NestJS instance calls `pubsubBridge.subscribe('match:*:events')`.
 
 - Maintains a local `Map<matchId, Set<socketId>>` of which sockets are interested in which matches.
 - Each WS connect/disconnect updates the map (per-instance, ephemeral).
+- Maintains a second local user/socket index. When the first
+  `game:match:phase` arrives after matchmaking, its `players` list attaches the
+  matching sockets to that match before the same event is forwarded. This
+  works even when the BullMQ pairing worker and the two sockets live on three
+  different Nest instances.
 - On `MESSAGE match:<id>:events payload`:
   - Look up sockets tracking this matchId in the local map.
   - `socket.emit('game:combat:events', JSON.parse(payload))` to each.
@@ -445,9 +457,14 @@ All `*.lua` files live in `backend/src/redis/scripts/` and are loaded at boot wi
 -- ARGV[1] = expectedPhase   ('shop_place' / 'battle' / 'resolved')
 -- ARGV[2] = newPhase
 -- ARGV[3] = instanceId (for combat-lock owner tag)
--- Returns 1 if flipped, 0 if phase didn't match.
+-- ARGV[4] = expectedRound (optional for backward compatibility)
+-- Returns 1 if flipped, 0 if phase or round didn't match.
 local cur = redis.call('HGET', KEYS[1], 'phase')
 if cur ~= ARGV[1] then return 0 end
+if ARGV[4] and ARGV[4] ~= '' then
+  local round = redis.call('HGET', KEYS[1], 'round')
+  if round ~= ARGV[4] then return 0 end
+end
 redis.call('HSET', KEYS[1], 'phase', ARGV[2])
 if ARGV[2] == 'battle' then
   redis.call('HSET', KEYS[1], 'combatLockInstance', ARGV[3])
@@ -483,7 +500,15 @@ redis.call('ZREM', KEYS[1], members[1], members[2])
 return members
 ```
 
-### 13.4 Why Lua and not WATCH/MULTI/EXEC?
+### 13.4 `ws_rate_limit.lua` — cross-instance sliding window
+
+The WS guard sends two keys with the same Redis hash tag (`{userId}`). The
+script uses Redis `TIME`, removes timestamps older than one second, adds a
+unique hit, refreshes both short TTLs, and returns the active count atomically.
+Keeping this state in Redis prevents a client from multiplying its allowance
+by opening sockets that land on different NestJS replicas.
+
+### 13.5 Why Lua and not WATCH/MULTI/EXEC?
 
 - Round-trips: a single `EVAL` is one round trip; WATCH/MULTI requires multiple.
 - Server-agnostic: works with any Redis client; workers across instances all use the same scripts.
@@ -523,15 +548,31 @@ Each shop/place/ready/combat_done action carries a `clientActionId`. The runtime
 
 ```lua
 -- KEYS[1] = match:<id>:actionLog:<userId>
+-- KEYS[2] = match:<id>:runtime                 (optional runtime/shop commit)
+-- KEYS[3] = match:<id>:shop:<userId>           (optional shop commit)
 -- ARGV[1] = clientActionId
 -- Returns 1 if newly recorded, 0 if duplicate.
 if redis.call('HEXISTS', KEYS[1], ARGV[1]) == 1 then return 0 end
+if KEYS[2] then
+  if redis.call('HGET', KEYS[2], 'round') ~= ARGV[8] then return -2 end
+  if redis.call('HGET', KEYS[2], 'phase') ~= ARGV[7] then return -1 end
+end
 redis.call('HSET', KEYS[1], ARGV[1], ARGV[2])    -- ARGV[2] = epoch ms
 redis.call('EXPIRE', KEYS[1], 120)
+if KEYS[2] then
+  redis.call('HSET', KEYS[2], ARGV[3], ARGV[4])  -- player state field + JSON
+end
+if KEYS[3] then
+  redis.call('SET', KEYS[3], ARGV[5], 'EX', ARGV[6])
+end
 return 1
 ```
 
-If a client retries on network failure, the second arrival is a no-op. Re-tries within 120 s are safe.
+For shop actions, the same script atomically records the action and commits the
+updated runtime/shop JSON. Place and ready pass only the runtime key, so their
+runtime field is committed without rewriting shop state. If a client retries
+on network failure, the second arrival is a no-op. Re-tries within 120 s are
+safe.
 
 ## 16. Boot Order & Topology
 
