@@ -26,18 +26,28 @@ import '../../shared/models/game_events.dart';
 /// `matched → idle` happens when a fresh lobby screen mounts after the match.
 enum MatchmakingState { idle, joining, searching, matched }
 
-class MatchmakingStateNotifier extends StateNotifier<MatchmakingState> {
-  MatchmakingStateNotifier(this._client) : super(MatchmakingState.idle) {
-    _connectionSubscription = _client.connectionState.listen((connection) {
+class MatchmakingNotifier extends Notifier<MatchmakingState> {
+  @override
+  MatchmakingState build() {
+    final client = ref.watch(wsClientProvider);
+    _client = client;
+
+    _connectionSubscription = client.connectionState.listen((connection) {
       if (connection != WsConnectionState.connected &&
           (state == MatchmakingState.joining ||
               state == MatchmakingState.searching)) {
         state = MatchmakingState.idle;
       }
     });
+
+    ref.onDispose(() {
+      _connectionSubscription.cancel();
+    });
+
+    return MatchmakingState.idle;
   }
 
-  final WsClient _client;
+  late final WsClient _client;
   late final StreamSubscription<WsConnectionState> _connectionSubscription;
 
   /// Idle → searching + emit `game:matchmaking:join`.
@@ -53,11 +63,11 @@ class MatchmakingStateNotifier extends StateNotifier<MatchmakingState> {
     state = MatchmakingState.joining;
     try {
       await _client.emitWithAck(GameActions.matchmakingJoin);
-      if (mounted && state == MatchmakingState.joining) {
+      if (state == MatchmakingState.joining) {
         state = MatchmakingState.searching;
       }
     } on Object {
-      if (mounted && state == MatchmakingState.joining) {
+      if (state == MatchmakingState.joining) {
         state = MatchmakingState.idle;
       }
     }
@@ -95,15 +105,9 @@ class MatchmakingStateNotifier extends StateNotifier<MatchmakingState> {
       state = MatchmakingState.idle;
     }
   }
-
-  @override
-  void dispose() {
-    unawaited(_connectionSubscription.cancel());
-    super.dispose();
-  }
 }
 
 final matchmakingStateProvider =
-    StateNotifierProvider<MatchmakingStateNotifier, MatchmakingState>(
-  (ref) => MatchmakingStateNotifier(ref.watch(wsClientProvider)),
+    NotifierProvider<MatchmakingNotifier, MatchmakingState>(
+  MatchmakingNotifier.new,
 );

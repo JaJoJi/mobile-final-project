@@ -125,9 +125,10 @@ class _ShopTabState extends State<ShopTab> {
             ),
             const SizedBox(height: AppSpacing.xs),
             Expanded(
-                child: widget.vertical
-                    ? _verticalCards(offers)
-                    : _horizontalCards(offers)),
+              child: widget.vertical
+                  ? _verticalCards(offers)
+                  : _horizontalCards(offers),
+            ),
           ],
         ),
       ),

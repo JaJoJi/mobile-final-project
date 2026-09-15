@@ -1,7 +1,7 @@
 /// `BattlePlaybackController` — owns the loaded `CombatEventBatch` and
 /// the current playhead position for the in-match combat player.
 ///
-/// For 2a this is a `StateNotifier` that the widget's `AnimationController`
+/// For 2a this is a `Notifier` that the widget's `AnimationController`
 /// pushes values into (via [seekTo]). The widget owns the `vsync`; the
 /// controller just holds derived state. Sub-steps 2b–2e will replace
 /// [BattleVisualState] with per-unit visual state without changing the
@@ -66,8 +66,10 @@ Duration combatPlaybackDuration(int eventCount) {
   return preferred > kMaxCombatPlayback ? kMaxCombatPlayback : preferred;
 }
 
-class BattlePlaybackController extends StateNotifier<BattleVisualState> {
-  BattlePlaybackController() : super(BattleVisualState.empty);
+class BattlePlaybackNotifier
+    extends AutoDisposeFamilyNotifier<BattleVisualState, String> {
+  @override
+  BattleVisualState build(String matchId) => BattleVisualState.empty;
 
   /// Load a fresh batch from the server. Resets the playhead to 0.
   ///

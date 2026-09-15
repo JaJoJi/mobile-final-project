@@ -3,7 +3,7 @@ import 'package:auto_chess_mobile/shared/models/combat_event.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
-  group('BattlePlaybackController.loadBatch', () {
+  group('BattlePlaybackNotifier.loadBatch', () {
     test('drops death events — the paired attack already carries the kill', () {
       // `applyDamage` (backend/src/game/damage.ts) emits a `death` event
       // immediately followed by its own `attack` event for the SAME
@@ -37,7 +37,7 @@ void main() {
         damage: 10,
         targetHpAfter: 0,
       );
-      final controller = BattlePlaybackController();
+      final controller = BattlePlaybackNotifier();
       controller.loadBatch(
         const CombatEventBatch(
           matchId: 'm1',

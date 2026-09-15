@@ -4,7 +4,7 @@
 /// Sub-step 2a: wire-up only. The widget
 ///   * listens to `combatEventsProvider` for the current battle batch,
 ///   * drives a playhead `AnimationController` whose value is pushed into
-///     a [BattlePlaybackController] (a `StateNotifier`),
+///     a [BattlePlaybackNotifier] (a `Notifier`),
 ///   * logs the batch load so we can eyeball the wire format on a real
 ///     match,
 ///   * still renders the two static boards (no per-event animation yet).
@@ -12,7 +12,7 @@
 /// 2b will derive per-unit HP / alpha state from `events` + playhead
 /// value; 2c adds the melee lunge; 2d the ranged projectile; 2e the
 /// floating damage numbers. The public surface of [BattleView] and the
-/// [BattlePlaybackController] is stable across all of them.
+/// [BattlePlaybackNotifier] is stable across all of them.
 library;
 
 import 'dart:async';
@@ -40,9 +40,9 @@ import 'combat_effects_overlay.dart';
 
 /// Family by `matchId` so navigating between match screens (multi-match
 /// history) does not reuse a stale batch.
-final battlePlaybackProvider = StateNotifierProvider.autoDispose
-    .family<BattlePlaybackController, BattleVisualState, String>(
-  (ref, matchId) => BattlePlaybackController(),
+final battlePlaybackProvider = NotifierProvider.autoDispose
+    .family<BattlePlaybackNotifier, BattleVisualState, String>(
+  BattlePlaybackNotifier.new,
 );
 
 /// `BattleView` — 2a skeleton.
@@ -67,7 +67,7 @@ class BattleView extends ConsumerStatefulWidget {
 class _BattleViewState extends ConsumerState<BattleView>
     with SingleTickerProviderStateMixin {
   late final AnimationController _playhead;
-  late final BattlePlaybackController _controller;
+  late final BattlePlaybackNotifier _controller;
   Timer? _staleTimer;
   Timer? _ackTimer;
   bool _staleDetected = false;
@@ -148,7 +148,7 @@ class _BattleViewState extends ConsumerState<BattleView>
     // fires on *subsequent* values. Replay whatever the provider already
     // holds, but do it after this frame: delivering it synchronously here
     // (what `fireImmediately: true` does) reaches `loadBatch` -> a
-    // StateNotifier write -> `setState` while this widget is still
+    // Notifier write -> `setState` while this widget is still
     // mounting, which Flutter throws on. That exception surfaced only as
     // an unhandled promise rejection and aborted `_onBatch` partway, so
     // playback never started at all (playhead pinned at 0%).
