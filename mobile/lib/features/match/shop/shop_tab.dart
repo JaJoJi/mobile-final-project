@@ -227,6 +227,7 @@ class _ShopTabState extends State<ShopTab> {
                   gold: widget.roster.gold,
                   enabled: widget.enabled,
                   width: cardWidth,
+                  landscape: true,
                   onBuy: () => widget.onBuy(index),
                 );
               },

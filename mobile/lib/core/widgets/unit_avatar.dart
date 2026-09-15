@@ -86,6 +86,7 @@ class UnitAvatar extends StatelessWidget {
     this.onTap,
     this.onLongPress,
     this.expand = false,
+    this.landscapeShop = false,
   }) : assert(star >= 0 && star <= 2);
 
   final String unitId;
@@ -113,16 +114,29 @@ class UnitAvatar extends StatelessWidget {
   /// shop rows use it so all five cards share the available room.
   final bool expand;
 
+  /// [UnitAvatarVariant.shop] only: the mobile-portrait shop strip (5
+  /// cards side by side) keeps the original portrait card — art on top,
+  /// name+price below — untouched. Only the landscape/tablet shop
+  /// column (`ShopTab.vertical`), which has real width to spare beside
+  /// a narrow board, switches to the wide art-left/name-right card. See
+  /// [_aspect] and the `isShop` branch below for the two layouts.
+  final bool landscapeShop;
+
   double get _width => switch (size) {
         UnitAvatarSize.sm => 48,
         UnitAvatarSize.md => 64,
         UnitAvatarSize.lg => 88,
       };
 
-  /// Shop card shape (width:height). Landscape now — art sits beside the
-  /// name/price instead of stacked above it (see `avatarContent` below),
-  /// so the card no longer needs the height a vertical stack did.
-  double get _aspect => variant == UnitAvatarVariant.shop ? 64 / 35 : 1.0;
+  /// Shop card shape (width:height). Portrait's shop strip keeps the
+  /// original 64:80 (art on top, name+price merged into one row below).
+  /// The landscape shop column's card is wider still — 64:35 — because
+  /// there art sits *beside* the name/price instead of above it (see
+  /// `avatarContent` below), so it needs even less height per width.
+  double get _aspect {
+    if (variant != UnitAvatarVariant.shop) return 1.0;
+    return landscapeShop ? 64 / 35 : 64 / 80;
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -145,96 +159,145 @@ class UnitAvatar extends StatelessWidget {
             ? 2.0
             : 1.0;
 
-    final avatarContent = MediaQuery.withClampedTextScaling(
-      maxScaleFactor: 1.3,
-      child: isShop
-          ? Padding(
-              padding: const EdgeInsets.fromLTRB(
-                AppSpacing.xs,
-                AppSpacing.xxs,
-                AppSpacing.xs,
-                AppSpacing.xxs,
+    Widget priceRow({required Alignment alignment}) => FittedBox(
+          fit: BoxFit.scaleDown,
+          alignment: alignment,
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                Icons.monetization_on,
+                size: 14,
+                color: state == UnitAvatarState.unaffordable
+                    ? t.colorScheme.error
+                    : game.gold,
               ),
-              child: Stack(
+              const SizedBox(width: AppSpacing.xxs),
+              Text(
+                '$price',
+                style: AppTypography.tabular(
+                  (t.textTheme.labelLarge ?? const TextStyle()).copyWith(
+                    color: state == UnitAvatarState.unaffordable
+                        ? t.colorScheme.error
+                        : game.gold,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        );
+
+    // Landscape shop column only (`ShopTab.vertical`) — real width to
+    // spare beside a narrow board, so art sits beside name+price instead
+    // of above it. Art is nudged off dead-centre toward the text side;
+    // centred outright left it looking like it belonged to neither half.
+    Widget landscapeShopContent() => Padding(
+          padding: const EdgeInsets.fromLTRB(
+            AppSpacing.xs,
+            AppSpacing.xxs,
+            AppSpacing.xs,
+            AppSpacing.xxs,
+          ),
+          child: Stack(
+            children: [
+              Row(
                 children: [
-                  Row(
-                    children: [
-                      // Nudged off dead-centre toward the name/price side —
-                      // centred outright left it looking like it belonged
-                      // to neither half of the card.
-                      Expanded(
-                        child: Align(
-                          alignment: const Alignment(0.3, 0),
-                          child: _UnitArt(
-                            kind: kind,
-                            tint: tint,
-                            size: _width * 0.76,
+                  Expanded(
+                    child: Align(
+                      alignment: const Alignment(0.3, 0),
+                      child: _UnitArt(
+                        kind: kind,
+                        tint: tint,
+                        size: _width * 0.76,
+                      ),
+                    ),
+                  ),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        FittedBox(
+                          fit: BoxFit.scaleDown,
+                          alignment: Alignment.centerLeft,
+                          child: Text(
+                            kind.label,
+                            maxLines: 1,
+                            style: t.textTheme.titleMedium,
                           ),
                         ),
-                      ),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            FittedBox(
-                              fit: BoxFit.scaleDown,
-                              alignment: Alignment.centerLeft,
-                              child: Text(
-                                kind.label,
-                                maxLines: 1,
-                                style: t.textTheme.titleMedium,
-                              ),
-                            ),
-                            if (price != null) ...[
-                              const SizedBox(height: AppSpacing.xxs),
-                              FittedBox(
-                                fit: BoxFit.scaleDown,
-                                alignment: Alignment.centerLeft,
-                                child: Row(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    Icon(
-                                      Icons.monetization_on,
-                                      size: 14,
-                                      color: state ==
-                                              UnitAvatarState.unaffordable
-                                          ? t.colorScheme.error
-                                          : game.gold,
-                                    ),
-                                    const SizedBox(width: AppSpacing.xxs),
-                                    Text(
-                                      '$price',
-                                      style: AppTypography.tabular(
-                                        (t.textTheme.labelLarge ??
-                                                const TextStyle())
-                                            .copyWith(
-                                          color: state ==
-                                                  UnitAvatarState.unaffordable
-                                              ? t.colorScheme.error
-                                              : game.gold,
-                                        ),
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            ],
-                          ],
-                        ),
-                      ),
-                    ],
-                  ),
-                  Align(
-                    alignment: Alignment.topLeft,
-                    child: _StarBadge(
-                      star: star,
-                      color: game.starColor(star),
+                        if (price != null) ...[
+                          const SizedBox(height: AppSpacing.xxs),
+                          priceRow(alignment: Alignment.centerLeft),
+                        ],
+                      ],
                     ),
                   ),
                 ],
               ),
-            )
+              Align(
+                alignment: Alignment.topLeft,
+                child: _StarBadge(star: star, color: game.starColor(star)),
+              ),
+            ],
+          ),
+        );
+
+    // Mobile-portrait shop strip (5 cards side by side) — the original
+    // card, unchanged: art on top, name+price merged into one row below.
+    Widget portraitShopContent() => Padding(
+          padding: const EdgeInsets.fromLTRB(
+            AppSpacing.xs,
+            AppSpacing.xs,
+            AppSpacing.xs,
+            AppSpacing.sm,
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Align(
+                alignment: Alignment.centerLeft,
+                child: _StarBadge(star: star, color: game.starColor(star)),
+              ),
+              Expanded(
+                child: Center(
+                  child: _UnitArt(
+                    kind: kind,
+                    tint: tint,
+                    size: _width * 0.76,
+                  ),
+                ),
+              ),
+              SizedBox(
+                height: AppSpacing.xl,
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: FittedBox(
+                        fit: BoxFit.scaleDown,
+                        alignment: Alignment.centerLeft,
+                        child: Text(
+                          kind.label,
+                          maxLines: 1,
+                          style: t.textTheme.titleMedium,
+                        ),
+                      ),
+                    ),
+                    if (price != null) ...[
+                      const SizedBox(width: AppSpacing.xxs),
+                      priceRow(alignment: Alignment.center),
+                    ],
+                  ],
+                ),
+              ),
+            ],
+          ),
+        );
+
+    final avatarContent = MediaQuery.withClampedTextScaling(
+      maxScaleFactor: 1.3,
+      child: isShop
+          ? (landscapeShop ? landscapeShopContent() : portraitShopContent())
           : Stack(
               fit: StackFit.expand,
               children: [

@@ -17,6 +17,7 @@ class ShopCard extends StatefulWidget {
     required this.enabled,
     required this.onBuy,
     required this.width,
+    this.landscape = false,
   });
 
   final ShopOffer? offer;
@@ -24,6 +25,10 @@ class ShopCard extends StatefulWidget {
   final bool enabled;
   final VoidCallback onBuy;
   final double width;
+
+  /// See `UnitAvatar.landscapeShop` — the landscape/tablet shop column
+  /// passes this through; the mobile-portrait row leaves it off.
+  final bool landscape;
 
   @override
   State<ShopCard> createState() => _ShopCardState();
@@ -90,7 +95,11 @@ class _ShopCardState extends State<ShopCard> with TickerProviderStateMixin {
       return SizedBox(
         width: widget.width,
         child: AspectRatio(
-          aspectRatio: 64 / 96,
+          // Must track `UnitAvatar._aspect`'s two shop shapes — an empty
+          // slot sitting at the old portrait ratio among landscape cards
+          // (or vice versa) reads as a card of the wrong size, not a sold
+          // slot.
+          aspectRatio: widget.landscape ? 64 / 35 : 64 / 80,
           child: GameArtFrame(
             frameAsset: GameUiAssets.shopCardFrame,
             kind: GameArtFrameKind.card,
@@ -169,6 +178,7 @@ class _ShopCardState extends State<ShopCard> with TickerProviderStateMixin {
                   state: !affordable
                       ? UnitAvatarState.unaffordable
                       : UnitAvatarState.normal,
+                  landscapeShop: widget.landscape,
                 ),
               ),
             ),
