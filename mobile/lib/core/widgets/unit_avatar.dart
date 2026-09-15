@@ -119,7 +119,12 @@ class UnitAvatar extends StatelessWidget {
         UnitAvatarSize.lg => 88,
       };
 
-  double get _aspect => variant == UnitAvatarVariant.shop ? 64 / 96 : 1.0;
+  /// Shop card shape (width:height). Was 64:96 — name and price stacked
+  /// as two rows under the art, taller than the card needed. Now they
+  /// share one row (see `avatarContent` below), so 64:80 keeps the same
+  /// art proportions with the freed height trimmed off the card instead
+  /// of left empty.
+  double get _aspect => variant == UnitAvatarVariant.shop ? 64 / 80 : 1.0;
 
   @override
   Widget build(BuildContext context) {
@@ -171,48 +176,60 @@ class UnitAvatar extends StatelessWidget {
                       ),
                     ),
                   ),
+                  // Name stays under the art; price now rides beside it on
+                  // the same row instead of a row of its own below — one
+                  // row of chrome instead of two, which is most of the
+                  // height [_aspect] trims off the card.
                   SizedBox(
                     height: AppSpacing.xl,
-                    child: FittedBox(
-                      fit: BoxFit.scaleDown,
-                      child: Text(
-                        kind.label,
-                        maxLines: 1,
-                        style: t.textTheme.titleMedium,
-                      ),
-                    ),
-                  ),
-                  if (price != null)
-                    SizedBox(
-                      height: AppSpacing.lg,
-                      child: FittedBox(
-                        fit: BoxFit.scaleDown,
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Icon(
-                              Icons.monetization_on,
-                              size: 14,
-                              color: state == UnitAvatarState.unaffordable
-                                  ? t.colorScheme.error
-                                  : game.gold,
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: FittedBox(
+                            fit: BoxFit.scaleDown,
+                            alignment: Alignment.centerLeft,
+                            child: Text(
+                              kind.label,
+                              maxLines: 1,
+                              style: t.textTheme.titleMedium,
                             ),
-                            const SizedBox(width: AppSpacing.xxs),
-                            Text(
-                              '$price',
-                              style: AppTypography.tabular(
-                                (t.textTheme.labelLarge ?? const TextStyle())
-                                    .copyWith(
+                          ),
+                        ),
+                        if (price != null) ...[
+                          const SizedBox(width: AppSpacing.xxs),
+                          FittedBox(
+                            fit: BoxFit.scaleDown,
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(
+                                  Icons.monetization_on,
+                                  size: 14,
                                   color: state == UnitAvatarState.unaffordable
                                       ? t.colorScheme.error
                                       : game.gold,
                                 ),
-                              ),
+                                const SizedBox(width: AppSpacing.xxs),
+                                Text(
+                                  '$price',
+                                  style: AppTypography.tabular(
+                                    (t.textTheme.labelLarge ??
+                                            const TextStyle())
+                                        .copyWith(
+                                      color:
+                                          state == UnitAvatarState.unaffordable
+                                              ? t.colorScheme.error
+                                              : game.gold,
+                                    ),
+                                  ),
+                                ),
+                              ],
                             ),
-                          ],
-                        ),
-                      ),
+                          ),
+                        ],
+                      ],
                     ),
+                  ),
                 ],
               ),
             )
