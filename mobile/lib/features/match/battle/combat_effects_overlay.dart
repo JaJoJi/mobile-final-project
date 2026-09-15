@@ -137,7 +137,8 @@ class CombatEffectsOverlay extends StatelessWidget {
     final ancestor = context.findAncestorRenderObjectOfType<RenderStack>();
     if (ancestor == null) return null;
 
-    final landscape = MediaQuery.orientationOf(context) == Orientation.landscape;
+    final landscape =
+        MediaQuery.orientationOf(context) == Orientation.landscape;
     final attackerLocal = _tileCenterRelativeTo(
       boardKey: attackerSide == mySide ? myBoardKey : opponentBoardKey,
       slot: attackerSlot,
