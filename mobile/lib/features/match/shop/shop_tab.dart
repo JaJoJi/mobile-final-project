@@ -140,9 +140,10 @@ class _ShopTabState extends State<ShopTab> {
             ),
             const SizedBox(height: AppSpacing.xs),
             Expanded(
-                child: widget.vertical
-                    ? _verticalCards(offers)
-                    : _horizontalCards(offers)),
+              child: widget.vertical
+                  ? _verticalCards(offers)
+                  : _horizontalCards(offers),
+            ),
           ],
         ),
       ),
@@ -217,8 +218,7 @@ class _ShopTabState extends State<ShopTab> {
             child: ListView.separated(
               key: const ValueKey('shop-card-row'),
               itemCount: 5,
-              separatorBuilder: (context, index) =>
-                  const SizedBox(height: gap),
+              separatorBuilder: (context, index) => const SizedBox(height: gap),
               itemBuilder: (context, index) {
                 final offer = index < offers.length ? offers[index] : null;
                 return ShopCard(
