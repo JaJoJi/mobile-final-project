@@ -606,8 +606,28 @@ class _BoardPreview extends StatelessWidget {
                       itemBuilder: (context, index) {
                         final row = index ~/ 3;
                         final column = index % 3;
-                        final sourceIndex =
-                            reverseRows ? (2 - row) * 3 + column : index;
+                        // Portrait stacks the boards vertically, so depth
+                        // (front/mid/back) rides the row axis and the VS
+                        // divider sits between rows. Landscape sits them
+                        // side by side instead — the divider is a
+                        // *vertical* line — so depth has to ride the
+                        // column axis here or "front" would face up/down
+                        // into nothing instead of across at the opponent.
+                        // `reverseRows` still means "this is the far
+                        // side": it puts depth 0 (front) on whichever end
+                        // of that axis is nearest the divider.
+                        final landscape = MediaQuery.orientationOf(context) ==
+                            Orientation.landscape;
+                        final int depth;
+                        final int lane;
+                        if (landscape) {
+                          depth = reverseRows ? column : 2 - column;
+                          lane = row;
+                        } else {
+                          depth = reverseRows ? 2 - row : row;
+                          lane = column;
+                        }
+                        final sourceIndex = depth * 3 + lane;
                         final unitKey = UnitKey(side: side, slot: sourceIndex);
                         final uv = unitStates[unitKey];
                         return BattleTile(

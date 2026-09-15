@@ -37,26 +37,43 @@ double triangleWave(double subProgress) {
   return t <= 0.5 ? t * 2 : (1 - t) * 2;
 }
 
-/// Local-space center of board [slot] (0-8, row-major) inside a 3x3 grid
-/// sized [boardWidth] x [boardHeight], with [spacing] between cells
-/// (matching the `GridView`'s `mainAxisSpacing`/`crossAxisSpacing`).
+/// Local-space center of board [slot] (0-8, row-major: depth = slot ~/ 3
+/// front..back, lane = slot % 3) inside a 3x3 grid sized [boardWidth] x
+/// [boardHeight], with [spacing] between cells (matching the `GridView`'s
+/// `mainAxisSpacing`/`crossAxisSpacing`).
 ///
-/// [reverseRows] mirrors the opponent board's row order (see
-/// `_BoardPreview`'s `reverseRows` in `battle_view.dart`).
+/// [reverseRows] mirrors the opponent board's depth order (see
+/// `_BoardPreview`'s `reverseRows` in `battle_view.dart`) so both sides'
+/// front rows land next to the VS divider.
+///
+/// [landscape] must match the boards' own orientation: side-by-side
+/// boards put depth on the *column* axis instead of the row axis (the
+/// divider between them is vertical, not horizontal), or an attack drawn
+/// by this function would travel toward the wrong screen edge — see
+/// `_BoardPreview`'s `itemBuilder`, which this mirrors.
 Offset tileLocalCenter({
   required int slot,
   required double boardWidth,
   required double boardHeight,
   required double spacing,
   bool reverseRows = false,
+  bool landscape = false,
 }) {
   final tileWidth = (boardWidth - 2 * spacing) / 3;
   final tileHeight = (boardHeight - 2 * spacing) / 3;
-  final row = slot ~/ 3;
-  final col = slot % 3;
-  final displayRow = reverseRows ? 2 - row : row;
+  final depth = slot ~/ 3;
+  final lane = slot % 3;
+  final int displayRow;
+  final int displayCol;
+  if (landscape) {
+    displayCol = reverseRows ? depth : 2 - depth;
+    displayRow = lane;
+  } else {
+    displayRow = reverseRows ? 2 - depth : depth;
+    displayCol = lane;
+  }
   return Offset(
-    col * (tileWidth + spacing) + tileWidth / 2,
+    displayCol * (tileWidth + spacing) + tileWidth / 2,
     displayRow * (tileHeight + spacing) + tileHeight / 2,
   );
 }

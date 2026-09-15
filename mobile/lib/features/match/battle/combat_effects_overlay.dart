@@ -41,6 +41,7 @@ Offset? _tileCenterRelativeTo({
   required GlobalKey boardKey,
   required int slot,
   required bool reverseRows,
+  required bool landscape,
   required RenderObject ancestor,
 }) {
   final board = boardKey.currentContext?.findRenderObject() as RenderBox?;
@@ -51,6 +52,7 @@ Offset? _tileCenterRelativeTo({
     boardHeight: board.size.height,
     spacing: AppSpacing.xs,
     reverseRows: reverseRows,
+    landscape: landscape,
   );
   return board.localToGlobal(local, ancestor: ancestor);
 }
@@ -135,16 +137,19 @@ class CombatEffectsOverlay extends StatelessWidget {
     final ancestor = context.findAncestorRenderObjectOfType<RenderStack>();
     if (ancestor == null) return null;
 
+    final landscape = MediaQuery.orientationOf(context) == Orientation.landscape;
     final attackerLocal = _tileCenterRelativeTo(
       boardKey: attackerSide == mySide ? myBoardKey : opponentBoardKey,
       slot: attackerSlot,
       reverseRows: attackerSide != mySide,
+      landscape: landscape,
       ancestor: ancestor,
     );
     final targetLocal = _tileCenterRelativeTo(
       boardKey: targetSide == mySide ? myBoardKey : opponentBoardKey,
       slot: targetSlot,
       reverseRows: targetSide != mySide,
+      landscape: landscape,
       ancestor: ancestor,
     );
     if (attackerLocal == null || targetLocal == null) return null;
