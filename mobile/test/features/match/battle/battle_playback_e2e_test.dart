@@ -131,7 +131,6 @@ void main() {
       tester,
       const MatchScreen(matchId: 'm1'),
       overrides: [wsClientProvider.overrideWithValue(client)],
-      surfaceSize: const Size(390, 844),
     );
 
     // Enter the battle phase, then deliver the combat batch.
@@ -243,7 +242,6 @@ void main() {
       tester,
       const MatchScreen(matchId: 'm1'),
       overrides: [wsClientProvider.overrideWithValue(client)],
-      surfaceSize: const Size(390, 844),
     );
     transport.emitFromServer(GameEvents.matchPhase, {
       'matchId': 'm1',
@@ -334,7 +332,6 @@ void main() {
       tester,
       const MatchScreen(matchId: 'm1'),
       overrides: [wsClientProvider.overrideWithValue(client)],
-      surfaceSize: const Size(390, 844),
     );
     transport.emitFromServer(GameEvents.matchPhase, {
       'matchId': 'm1',
@@ -409,7 +406,6 @@ void main() {
       tester,
       const MatchScreen(matchId: 'm1'),
       overrides: [wsClientProvider.overrideWithValue(client)],
-      surfaceSize: const Size(390, 844),
     );
 
     // Round 2's batch lands while the screen still believes it is round 1.
@@ -477,7 +473,6 @@ void main() {
       tester,
       const MatchScreen(matchId: 'm1'),
       overrides: [wsClientProvider.overrideWithValue(client)],
-      surfaceSize: const Size(390, 844),
     );
     transport.emitFromServer(GameEvents.matchPhase, {
       'matchId': 'm1',

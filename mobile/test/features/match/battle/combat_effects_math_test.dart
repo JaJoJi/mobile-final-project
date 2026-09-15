@@ -111,6 +111,35 @@ void main() {
       expect(reversed.dx, normal.dx); // column unaffected
       expect(reversed.dy, closeTo(251.333, 0.01)); // row 0 -> displayed row 2
     });
+
+    test('landscape puts depth on the column axis, not the row axis', () {
+      // Slot 0 = front row, lane 0. Side-by-side boards (landscape) put
+      // "mine" on the left with the VS divider on its right, so front
+      // (depth 0) has to land in the *rightmost* column, not the top row.
+      final mine = tileLocalCenter(
+        slot: 0,
+        boardWidth: 300,
+        boardHeight: 300,
+        spacing: 4,
+        landscape: true,
+      );
+      expect(mine.dx, closeTo(251.333, 0.01)); // column 2 (rightmost)
+      expect(mine.dy, closeTo(48.667, 0.01)); // row 0 (lane unchanged)
+
+      // Opponent's divider is on its *left*, so its front lands in the
+      // leftmost column instead — the same `reverseRows` flag that used
+      // to flip the row axis now flips the column axis.
+      final opponent = tileLocalCenter(
+        slot: 0,
+        boardWidth: 300,
+        boardHeight: 300,
+        spacing: 4,
+        reverseRows: true,
+        landscape: true,
+      );
+      expect(opponent.dx, closeTo(48.667, 0.01)); // column 0 (leftmost)
+      expect(opponent.dy, closeTo(48.667, 0.01)); // row 0 (lane unchanged)
+    });
   });
 
   group('impactFraction', () {
