@@ -321,15 +321,18 @@ class _PlanningHost extends StatelessWidget {
           ? Row(
               children: [
                 // The shop column is exactly as tall as the board beside
-                // it regardless of how few cards it holds, so a narrower
-                // share works fine once the cards stack vertically
-                // (`ShopTab.vertical`) — freeing width for the board,
-                // which is the thing players actually look at during
-                // combat.
-                Expanded(flex: 7, child: board),
+                // it regardless of how few cards it holds, and the cards
+                // stack vertically at a capped width (`ShopTab.vertical`
+                // / `ShopTab.maxCardWidth`) — so the panel itself is sized
+                // to that same cap (plus its own padding) instead of a
+                // flex share, which used to leave the cap's own savings
+                // sitting empty beside the card rather than actually
+                // freeing width for the board, the thing players look at
+                // during combat.
+                Expanded(child: board),
                 const SizedBox(width: AppSpacing.sm),
-                Expanded(
-                  flex: 3,
+                SizedBox(
+                  width: ShopTab.maxCardWidth + AppSpacing.sm * 2,
                   child: ColoredBox(color: panelColor, child: shop),
                 ),
               ],

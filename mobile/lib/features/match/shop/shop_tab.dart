@@ -34,6 +34,12 @@ class ShopTab extends StatefulWidget {
   /// short and full-width, the opposite shape, so it keeps the row.
   final bool vertical;
 
+  /// Widest a card is allowed to render in [vertical] mode. `MatchScreen`
+  /// sizes the landscape shop column's own outer panel from this same
+  /// constant (instead of a fixed flex share) so the panel hugs the
+  /// card instead of framing it in dead space either side.
+  static const double maxCardWidth = 162.0;
+
   @override
   State<ShopTab> createState() => _ShopTabState();
 }
@@ -98,9 +104,18 @@ class _ShopTabState extends State<ShopTab> {
                       color: Theme.of(context).colorScheme.primary,
                     ),
                     const SizedBox(width: AppSpacing.sm),
-                    Text(
-                      'ร้านค้า',
-                      style: Theme.of(context).textTheme.titleLarge,
+                    // The landscape shop column is now only as wide as a
+                    // card (`ShopTab.maxCardWidth`) instead of a flex
+                    // share, which used to always be wide enough for this
+                    // label at full size — `Flexible` lets it shrink to
+                    // fit instead of overflowing the header row.
+                    Flexible(
+                      child: Text(
+                        'ร้านค้า',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: Theme.of(context).textTheme.titleLarge,
+                      ),
                     ),
                     if (constraints.maxWidth >= 300)
                       Expanded(
@@ -181,20 +196,20 @@ class _ShopTabState extends State<ShopTab> {
   /// has very little height to spare), so this scrolls rather than
   /// overflowing.
   ///
-  /// Card width is capped at `maxCardWidth` below: uncapped, a wide
+  /// Card width is capped at [ShopTab.maxCardWidth]: uncapped, a wide
   /// desktop window hands this column several hundred px, and at the
-  /// card's fixed 64:96 aspect that inflates each card to match — 5 of
-  /// them barely fit one to a screen, all oversized next to every other
-  /// panel. Capping keeps the card at its normal shop size and centres
-  /// the now-narrower column in the space the panel actually has.
+  /// card's fixed aspect that inflates each card to match — 5 of them
+  /// barely fit one to a screen, all oversized next to every other
+  /// panel. Capping keeps the card at its normal shop size; the panel
+  /// itself is sized to the same constant by `MatchScreen` so there's no
+  /// leftover width here left to centre into.
   Widget _verticalCards(List<ShopOffer?> offers) {
     const gap = AppSpacing.xs;
-    const maxCardWidth = 200.0;
     return LayoutBuilder(
       builder: (context, constraints) {
-        final cardWidth = constraints.maxWidth < maxCardWidth
+        final cardWidth = constraints.maxWidth < ShopTab.maxCardWidth
             ? constraints.maxWidth
-            : maxCardWidth;
+            : ShopTab.maxCardWidth;
         return Align(
           alignment: Alignment.topCenter,
           child: SizedBox(
