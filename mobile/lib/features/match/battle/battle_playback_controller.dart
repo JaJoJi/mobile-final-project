@@ -31,9 +31,19 @@ const Duration kCombatEventDuration = Duration(milliseconds: 1600);
 /// real 77-event round at the preferred rate would run over two minutes.
 /// Long rounds compress rather than overrun.
 ///
-/// Kept comfortably under the server's 60s so a slow client still acks in
-/// time; raise [kCombatEventDuration] for pacing before raising this.
-const Duration kMaxCombatPlayback = Duration(seconds: 45);
+/// Raised from 45s to 52s post-merge: the Ranger SPD nerf (90 → 67, see
+/// `constants.ts`) means real matches now regularly run long enough —
+/// several units still alive several cycles in — to push a round well
+/// past the ~28-event point where this ceiling used to start
+/// compressing. Every round past that point was replaying compressed
+/// (each event getting less than its preferred 1.6s), which read as
+/// "combat is fast" exactly for the rounds that should showcase the
+/// slower pacing that nerf bought. Kept 8s under the server's 60s
+/// timeout — still comfortable margin for a slow client's ack (see
+/// [combatPlaybackDuration]'s caller, `+500ms` on the ack timer) —
+/// instead of raising [kCombatEventDuration] itself, which would recompress
+/// short rounds too.
+const Duration kMaxCombatPlayback = Duration(seconds: 52);
 
 /// Most of a replay a late client is allowed to fast-forward past so it
 /// can line up with the client that got the batch first.

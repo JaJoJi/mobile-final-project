@@ -180,26 +180,43 @@ class _ShopTabState extends State<ShopTab> {
   /// cards want (a landscape *phone*, unlike a landscape desktop window,
   /// has very little height to spare), so this scrolls rather than
   /// overflowing.
+  ///
+  /// Card width is capped at `maxCardWidth` below: uncapped, a wide
+  /// desktop window hands this column several hundred px, and at the
+  /// card's fixed 64:96 aspect that inflates each card to match — 5 of
+  /// them barely fit one to a screen, all oversized next to every other
+  /// panel. Capping keeps the card at its normal shop size and centres
+  /// the now-narrower column in the space the panel actually has.
   Widget _verticalCards(List<ShopOffer?> offers) {
     const gap = AppSpacing.xs;
+    const maxCardWidth = 200.0;
     return LayoutBuilder(
       builder: (context, constraints) {
-        final cardWidth = constraints.maxWidth;
-        return ListView.separated(
-          key: const ValueKey('shop-card-row'),
-          itemCount: 5,
-          separatorBuilder: (context, index) => const SizedBox(height: gap),
-          itemBuilder: (context, index) {
-            final offer = index < offers.length ? offers[index] : null;
-            return ShopCard(
-              key: ValueKey('shop-$index'),
-              offer: offer,
-              gold: widget.roster.gold,
-              enabled: widget.enabled,
-              width: cardWidth,
-              onBuy: () => widget.onBuy(index),
-            );
-          },
+        final cardWidth = constraints.maxWidth < maxCardWidth
+            ? constraints.maxWidth
+            : maxCardWidth;
+        return Align(
+          alignment: Alignment.topCenter,
+          child: SizedBox(
+            width: cardWidth,
+            child: ListView.separated(
+              key: const ValueKey('shop-card-row'),
+              itemCount: 5,
+              separatorBuilder: (context, index) =>
+                  const SizedBox(height: gap),
+              itemBuilder: (context, index) {
+                final offer = index < offers.length ? offers[index] : null;
+                return ShopCard(
+                  key: ValueKey('shop-$index'),
+                  offer: offer,
+                  gold: widget.roster.gold,
+                  enabled: widget.enabled,
+                  width: cardWidth,
+                  onBuy: () => widget.onBuy(index),
+                );
+              },
+            ),
+          ),
         );
       },
     );
