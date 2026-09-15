@@ -148,10 +148,20 @@ class StoneBoardTile extends StatelessWidget {
                       // Unit PNGs carry transparent headroom and a low visual
                       // foot anchor. Lift the art so its feet meet the centre
                       // of the magic base instead of its front rim.
-                      translation: const Offset(0, -0.31),
+                      //
+                      // At the old 0.90 size this lift (0.31 of the art's
+                      // own height) pushed the art's top edge to ~23% above
+                      // the tile — invisible on a middle/bottom row (it just
+                      // painted over the tile above), but clipped clean off
+                      // by the board Card's `Clip.antiAlias` on every top-row
+                      // piece: reported live as placed units' heads getting
+                      // cut off. Shrinking the art first leaves enough top
+                      // margin that the same foot-alignment lift keeps the
+                      // whole piece inside the tile (~8% headroom at top).
+                      translation: const Offset(0, -0.0833),
                       child: FractionallySizedBox(
                         widthFactor: 0.90,
-                        heightFactor: 0.90,
+                        heightFactor: 0.72,
                         child: child!,
                       ),
                     ),

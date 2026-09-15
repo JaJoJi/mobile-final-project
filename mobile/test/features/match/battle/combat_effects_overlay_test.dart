@@ -11,6 +11,18 @@ void main() {
   final myBoardKey = GlobalKey();
   final opponentBoardKey = GlobalKey();
 
+  // Every fixture below stacks the boards vertically (mine at y 0-300,
+  // opponent's at y 300-600) — the portrait convention `tileLocalCenter`
+  // uses to put depth on the row axis. The default test surface is
+  // 800x600 (landscape), which since #P4 flips that to the column axis;
+  // pin portrait explicitly so the ambient orientation matches what
+  // these fixtures actually lay out.
+  void forcePortrait(WidgetTester tester) {
+    tester.view.physicalSize = const Size(400, 800);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+  }
+
   const meleeAttack = AttackEvent(
     cycle: 1,
     tick: 1,
@@ -90,12 +102,14 @@ void main() {
 
   testWidgets('melee attacker sprite travels during its event window',
       (tester) async {
+    forcePortrait(tester);
     await tester.pumpWidget(buildTree(0.5));
     expect(find.byKey(const ValueKey('lunge-traveler')), findsOneWidget);
   });
 
   testWidgets('melee traveler is gone once the batch has finished',
       (tester) async {
+    forcePortrait(tester);
     await tester.pumpWidget(buildTree(1.0));
     // At subProgress 1.0 the triangle wave is back at 0 (attacker position)
     // and the *next* build with a finished batch renders nothing — assert
@@ -138,6 +152,7 @@ void main() {
 
   testWidgets('melee traveler sits at the target tile at the peak of the wave',
       (tester) async {
+    forcePortrait(tester);
     // 1 event total: playheadProgress 0.5 -> subProgress 0.5 ->
     // triangleWave(0.5) == 1.0 (fully at target).
     await tester.pumpWidget(buildTree(0.5));
@@ -152,6 +167,7 @@ void main() {
   testWidgets(
       'projectile mark moves linearly with flight progress, not the '
       'triangle wave', (tester) async {
+    forcePortrait(tester);
     // 1 event total: playheadProgress 0.25 -> subProgress 0.25 ->
     // projectileTravel(0.25) = 0.25 / kProjectileImpactFraction (#215: a
     // projectile completes its whole flight by the impact point, not by
@@ -185,6 +201,7 @@ void main() {
 
   testWidgets('traveller scales and repositions with the board size',
       (tester) async {
+    forcePortrait(tester);
     // Same event, two very different board sizes: the traveller must be
     // sized and placed from the measured board, not from fixed pixels.
     Future<Rect> travellerRectFor(double boardSize) async {
@@ -254,6 +271,7 @@ void main() {
 
   testWidgets('renders nothing when a tile position cannot be resolved',
       (tester) async {
+    forcePortrait(tester);
     final unlaidOutKey = GlobalKey();
     await tester.pumpWidget(
       MaterialApp(
@@ -278,6 +296,7 @@ void main() {
 
   testWidgets('a projectile reaches the target tile before it disappears',
       (tester) async {
+    forcePortrait(tester);
     // AC: "lands on or very near the target tile before disappearing".
     // One event, so playheadProgress *is* subProgress; sample at the
     // impact point, which is deliberately short of 1.0 so the icon is
@@ -301,6 +320,7 @@ void main() {
   });
 
   testWidgets('a healer shoots a bolt, a ranger an arrow', (tester) async {
+    forcePortrait(tester);
     // The per-tile projectile this overlay replaced picked the icon by
     // unit; the distinction was lost in the move.
     await tester.pumpWidget(buildTree(0.25, eventsBatch: rangedBatch));
@@ -342,6 +362,7 @@ void main() {
 
   testWidgets('an enemy projectile flies down toward the viewer',
       (tester) async {
+    forcePortrait(tester);
     // AC: works for both ally (bottom board -> up) and enemy (top board
     // -> down). Same event mirrored: p2 shoots at p1, viewed as p1, so
     // the shot must travel from the opponent's board into the viewer's.
