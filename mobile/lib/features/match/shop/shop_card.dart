@@ -103,7 +103,13 @@ class _ShopCardState extends State<ShopCard> with TickerProviderStateMixin {
           child: GameArtFrame(
             frameAsset: GameUiAssets.shopCardFrame,
             kind: GameArtFrameKind.card,
-            child: Center(
+            child: Align(
+              // Landscape's real card reads left-to-right (art, then
+              // name); dead-centre text here read as an unstyled
+              // leftover next to it. Portrait keeps the plain centre.
+              alignment: widget.landscape
+                  ? Alignment.centerLeft
+                  : Alignment.center,
               child: MediaQuery.withClampedTextScaling(
                 maxScaleFactor: 1.3,
                 child: const FittedBox(
