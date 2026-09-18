@@ -473,11 +473,40 @@ void main() {
     emitBoardUnit(0);
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 520));
+    final boardSlot = find.byKey(const ValueKey('board-0'));
+    final sizeBeforeUpgrade = tester.getSize(boardSlot);
+    expect(
+      find.descendant(
+        of: boardSlot,
+        matching: find.byWidgetPredicate(
+          (widget) =>
+              widget is Image &&
+              widget.image is AssetImage &&
+              (widget.image as AssetImage).assetName ==
+                  'assets/images/units/fighter_1.png',
+        ),
+      ),
+      findsOneWidget,
+    );
+
     emitBoardUnit(1);
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 40));
 
-    final boardSlot = find.byKey(const ValueKey('board-0'));
+    expect(tester.getSize(boardSlot), sizeBeforeUpgrade);
+    expect(
+      find.descendant(
+        of: boardSlot,
+        matching: find.byWidgetPredicate(
+          (widget) =>
+              widget is Image &&
+              widget.image is AssetImage &&
+              (widget.image as AssetImage).assetName ==
+                  'assets/images/units/fighter_2.png',
+        ),
+      ),
+      findsOneWidget,
+    );
     final stone = tester.widget<StoneBoardTile>(
       find.descendant(of: boardSlot, matching: find.byType(StoneBoardTile)),
     );

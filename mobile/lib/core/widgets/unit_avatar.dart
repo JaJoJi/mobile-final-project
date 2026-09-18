@@ -33,8 +33,15 @@ extension UnitKindDisplay on UnitKind {
         UnitKind.tank => 'tank',
       };
 
-  /// Illustration for this unit — `mobile/assets/images/units/`.
-  String get artPath => 'assets/images/units/$_assetName.png';
+  /// Illustration for this unit and the server's zero-based fusion tier.
+  ///
+  /// Keeping this mapping beside [UnitKind] makes every consumer use the
+  /// same evolution art instead of constructing asset paths independently.
+  String artPathForTier(int fusionTier) =>
+      'assets/images/units/${_assetName}_${displayStarLevel(fusionTier)}.png';
+
+  /// The safe fallback used when an evolved illustration cannot be decoded.
+  String get baseArtPath => artPathForTier(0);
 
   /// Fallback shape when the art can't load — design spec §6 (● / ✚ / ▲ / ■).
   /// Also the small type glyph shown at `sm` size where there's no name label.
@@ -45,6 +52,13 @@ extension UnitKindDisplay on UnitKind {
         UnitKind.tank => Icons.square,
       };
 }
+
+/// Every unit evolution image used in a match. The match screen precaches this
+/// collection before planning, battle, scouting, or results can display it.
+final List<String> allUnitArtPaths = List<String>.unmodifiable([
+  for (final kind in UnitKind.values)
+    for (var tier = 0; tier <= 2; tier++) kind.artPathForTier(tier),
+]);
 
 /// Where a [UnitAvatar] is being shown — design spec §3.5.
 enum UnitAvatarVariant { shop, bench, board, replay }
@@ -209,6 +223,7 @@ class UnitAvatar extends StatelessWidget {
                       alignment: const Alignment(0.3, 0),
                       child: _UnitArt(
                         kind: kind,
+                        fusionTier: star,
                         tint: tint,
                         size: _width * 0.76,
                       ),
@@ -271,6 +286,7 @@ class UnitAvatar extends StatelessWidget {
                 child: Center(
                   child: _UnitArt(
                     kind: kind,
+                    fusionTier: star,
                     tint: tint,
                     size: _width * 0.76,
                   ),
@@ -326,7 +342,12 @@ class UnitAvatar extends StatelessWidget {
                     AppSpacing.xxs,
                     AppSpacing.xxs,
                   ),
-                  child: _UnitArt(kind: kind, tint: tint, size: _width),
+                  child: _UnitArt(
+                    kind: kind,
+                    fusionTier: star,
+                    tint: tint,
+                    size: _width,
+                  ),
                 ),
                 Positioned(
                   left: AppSpacing.xxs,
@@ -475,9 +496,15 @@ enum UnitSide { ally, enemy }
 /// if the asset is missing / fails to decode (e.g. in a widget test with no
 /// asset bundle).
 class _UnitArt extends StatelessWidget {
-  const _UnitArt({required this.kind, required this.tint, required this.size});
+  const _UnitArt({
+    required this.kind,
+    required this.fusionTier,
+    required this.tint,
+    required this.size,
+  });
 
   final UnitKind kind;
+  final int fusionTier;
   final Color tint;
   final double size;
 
@@ -486,14 +513,30 @@ class _UnitArt extends StatelessWidget {
     // The unit's identity is already announced by the parent
     // `UnitAvatar` Semantics label + the name text + star badge, so the
     // illustration itself is decorative to a screen reader.
+    Widget fallbackIcon() => Icon(kind.shape, size: size * 0.6, color: tint);
+
+    Widget art(String path, {required bool allowBaseFallback}) => Image.asset(
+          path,
+          width: size,
+          height: size,
+          fit: BoxFit.contain,
+          gaplessPlayback: true,
+          errorBuilder: (_, __, ___) => allowBaseFallback
+              ? Image.asset(
+                  kind.baseArtPath,
+                  width: size,
+                  height: size,
+                  fit: BoxFit.contain,
+                  gaplessPlayback: true,
+                  errorBuilder: (_, __, ___) => fallbackIcon(),
+                )
+              : fallbackIcon(),
+        );
+
     return ExcludeSemantics(
-      child: Image.asset(
-        kind.artPath,
-        width: size,
-        height: size,
-        fit: BoxFit.contain,
-        errorBuilder: (_, __, ___) =>
-            Icon(kind.shape, size: size * 0.6, color: tint),
+      child: art(
+        kind.artPathForTier(fusionTier),
+        allowBaseFallback: fusionTier > 0,
       ),
     );
   }

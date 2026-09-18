@@ -17,6 +17,7 @@ import '../../core/widgets/game_asset_button.dart';
 import '../../core/widgets/health_bar.dart';
 import '../../core/widgets/phase_timer_ring.dart';
 import '../../core/widgets/state_views.dart';
+import '../../core/widgets/unit_avatar.dart';
 import '../../core/ws/ws_client.dart';
 import '../../core/ws/ws_providers.dart';
 import '../../shared/models/game_events.dart';
@@ -42,14 +43,18 @@ class _MatchScreenState extends ConsumerState<MatchScreen> {
   DateTime? _deadline;
   String? _phaseKey;
   final DateTime _openedAt = DateTime.now();
-  bool _didPrecacheHud = false;
+  bool _didPrecacheMatchArt = false;
 
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    if (_didPrecacheHud) return;
-    _didPrecacheHud = true;
-    for (final path in [...GameUiAssets.hud, ...GameBackgroundAssets.all]) {
+    if (_didPrecacheMatchArt) return;
+    _didPrecacheMatchArt = true;
+    for (final path in [
+      ...GameUiAssets.hud,
+      ...GameBackgroundAssets.all,
+      ...allUnitArtPaths,
+    ]) {
       precacheImage(AssetImage(path), context);
     }
   }

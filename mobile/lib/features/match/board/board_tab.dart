@@ -86,7 +86,7 @@ class _BoardTabState extends State<BoardTab>
     final paths = <String>{
       ...StoneBoardTile.allAssetPaths,
       ...GameUiAssets.reserve,
-      for (final kind in UnitKind.values) kind.artPath,
+      ...allUnitArtPaths,
     };
     for (final path in paths) {
       if (_precachedAssets.add(path)) {

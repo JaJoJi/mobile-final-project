@@ -124,17 +124,19 @@ void main() {
       expect(img.image, isA<AssetImage>());
       expect(
         (img.image as AssetImage).assetName,
-        'assets/images/units/tank.png',
+        'assets/images/units/tank_2.png',
       );
     });
 
-    testWidgets('art path maps every unit id', (tester) async {
+    testWidgets('art path maps every unit id and fusion tier', (tester) async {
       for (final id in ['fighter', 'healer', 'ranger', 'tank']) {
-        expect(
-          unitKindFromId(id).artPath,
-          'assets/images/units/$id.png',
-        );
+        final kind = unitKindFromId(id);
+        expect(kind.artPathForTier(0), 'assets/images/units/${id}_1.png');
+        expect(kind.artPathForTier(1), 'assets/images/units/${id}_2.png');
+        expect(kind.artPathForTier(2), 'assets/images/units/${id}_3.png');
       }
+      expect(allUnitArtPaths, hasLength(12));
+      expect(allUnitArtPaths.toSet(), hasLength(12));
     });
 
     testWidgets('bench avatar overlays stars without a type glyph',
