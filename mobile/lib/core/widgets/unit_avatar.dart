@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../theme/app_spacing.dart';
 import '../theme/app_typography.dart';
 import '../theme/game_theme.dart';
+import '../utils/unit_star_level.dart';
 import 'game_art_frame.dart';
 import 'health_bar.dart';
 
@@ -147,6 +148,7 @@ class UnitAvatar extends StatelessWidget {
     final isBoardPiece = variant == UnitAvatarVariant.board ||
         variant == UnitAvatarVariant.replay;
     final isReservePiece = variant == UnitAvatarVariant.bench;
+    final displayStar = displayStarLevel(star);
 
     final tint = side == UnitSide.ally ? game.ally : game.enemy;
     final borderColor = switch (state) {
@@ -237,7 +239,10 @@ class UnitAvatar extends StatelessWidget {
               ),
               Align(
                 alignment: Alignment.topLeft,
-                child: _StarBadge(star: star, color: game.starColor(star)),
+                child: _StarBadge(
+                  star: displayStar,
+                  color: game.starColor(star),
+                ),
               ),
             ],
           ),
@@ -257,7 +262,10 @@ class UnitAvatar extends StatelessWidget {
             children: [
               Align(
                 alignment: Alignment.centerLeft,
-                child: _StarBadge(star: star, color: game.starColor(star)),
+                child: _StarBadge(
+                  star: displayStar,
+                  color: game.starColor(star),
+                ),
               ),
               Expanded(
                 child: Center(
@@ -320,24 +328,23 @@ class UnitAvatar extends StatelessWidget {
                   ),
                   child: _UnitArt(kind: kind, tint: tint, size: _width),
                 ),
-                if (star > 0)
-                  Positioned(
-                    left: AppSpacing.xxs,
-                    top: AppSpacing.xxs,
-                    child: DecoratedBox(
-                      decoration: BoxDecoration(
-                        color: Colors.black.withValues(alpha: 0.55),
-                        borderRadius: AppRadius.allFull,
-                      ),
-                      child: Padding(
-                        padding: const EdgeInsets.all(AppSpacing.xxs),
-                        child: _StarBadge(
-                          star: star,
-                          color: game.starColor(star),
-                        ),
+                Positioned(
+                  left: AppSpacing.xxs,
+                  top: AppSpacing.xxs,
+                  child: DecoratedBox(
+                    decoration: BoxDecoration(
+                      color: Colors.black.withValues(alpha: 0.55),
+                      borderRadius: AppRadius.allFull,
+                    ),
+                    child: Padding(
+                      padding: const EdgeInsets.all(AppSpacing.xxs),
+                      child: _StarBadge(
+                        star: displayStar,
+                        color: game.starColor(star),
                       ),
                     ),
                   ),
+                ),
                 if (isBoardPiece && hp != null && maxHp != null)
                   Positioned(
                     left: AppSpacing.xxs,
@@ -445,7 +452,7 @@ class UnitAvatar extends StatelessWidget {
 
     return Semantics(
       button: onTap != null,
-      label: '${kind.label} ${star > 0 ? '$star ดาว' : ''}'
+      label: '${kind.label} $displayStar ดาว'
           '${price != null ? ' ราคา $price ทอง' : ''}'
           '${state == UnitAvatarState.fusable ? ' รวมได้' : ''}',
       child: SizedBox(
@@ -500,11 +507,11 @@ class _StarBadge extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // 0★ = base unit — no glyphs (the design mock only shows stars for 1★+).
+    // This receives the one-based display level, never the server's 0..2 tier.
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: List.generate(
-        star.clamp(0, 2),
+        star.clamp(1, 3),
         (_) => Icon(Icons.star, size: 12, color: color),
       ),
     );

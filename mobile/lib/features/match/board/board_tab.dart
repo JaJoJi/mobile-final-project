@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../../core/theme/app_motion.dart';
 import '../../../core/theme/app_spacing.dart';
 import '../../../core/theme/game_theme.dart';
+import '../../../core/utils/unit_star_level.dart';
 import '../../../core/widgets/game_art_frame.dart';
 import '../../../core/widgets/health_bar.dart';
 import '../../../core/widgets/unit_avatar.dart';
@@ -647,6 +648,7 @@ class _UnitDetailSheet extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final info = _UnitInfo.of(unitId, star);
+    final displayStar = displayStarLevel(star);
     return SafeArea(
       child: Padding(
         padding: const EdgeInsets.fromLTRB(
@@ -677,7 +679,7 @@ class _UnitDetailSheet extends StatelessWidget {
                         style: Theme.of(context).textTheme.headlineSmall,
                       ),
                       Text(
-                        '${star == 0 ? 'พื้นฐาน' : '$star ดาว'} · ${info.role}',
+                        '$displayStar ดาว · ${info.role}',
                       ),
                     ],
                   ),

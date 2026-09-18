@@ -108,7 +108,7 @@ void main() {
       expect(find.text('Ranger'), findsOneWidget);
       expect(find.byIcon(Icons.monetization_on), findsOneWidget);
       expect(find.text('2'), findsOneWidget);
-      expect(find.byIcon(Icons.star), findsNWidgets(2));
+      expect(find.byIcon(Icons.star), findsNWidgets(3));
     });
 
     testWidgets('unknown unitId throws', (tester) async {
@@ -150,8 +150,22 @@ void main() {
       );
       expect(find.text('Ranger'), findsNothing);
       expect(find.byIcon(Icons.change_history), findsNothing);
-      expect(find.byIcon(Icons.star), findsNWidgets(2));
+      expect(find.byIcon(Icons.star), findsNWidgets(3));
       expect(find.byType(Image), findsOneWidget);
+    });
+
+    testWidgets('base fusion tier is presented as one star', (tester) async {
+      await pumpThemed(
+        tester,
+        const UnitAvatar(
+          unitId: 'fighter',
+          star: 0,
+          variant: UnitAvatarVariant.bench,
+        ),
+      );
+
+      expect(find.byIcon(Icons.star), findsOneWidget);
+      expect(find.bySemanticsLabel('Fighter 1 ดาว'), findsOneWidget);
     });
   });
 
