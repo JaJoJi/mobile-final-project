@@ -359,6 +359,7 @@ class _BattleViewState extends ConsumerState<BattleView>
             );
           }).toList(),
           mySide: widget.match.yourSide,
+          initialBoard: view.batch!.initialBoard,
         );
       }
       unitStates.addAll(_cachedStates!);
