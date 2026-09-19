@@ -281,6 +281,141 @@ describe('ShopService — P0-BE-14', () => {
     });
   });
 
+  it('advances exact dragged pairs from tier 0 to 1 to 2 and publishes each state', async () => {
+    const h = harness();
+    const hash = h.redis.hashes.get(runtimeKey(h.match.id))!;
+    const state = JSON.parse(hash.p1State);
+    const ids = Array.from({ length: 4 }, () => randomUUID());
+    for (let index = 0; index < ids.length; index += 1) {
+      state.bench[index] = {
+        instanceId: ids[index],
+        unitId: 'ranger',
+        star: 0,
+        hp: 20 + index,
+        maxHp: 60,
+        investedGold: 2,
+      };
+    }
+    hash.p1State = JSON.stringify(state);
+    setShop(h, [offer('fighter')]);
+
+    await h.service.fuse(
+      h.match.player1Id,
+      h.match.id,
+      1,
+      'ranger',
+      randomUUID(),
+      ids[1],
+      ids[0],
+    );
+    await h.service.fuse(
+      h.match.player1Id,
+      h.match.id,
+      1,
+      'ranger',
+      randomUUID(),
+      ids[3],
+      ids[2],
+    );
+    await h.service.fuse(
+      h.match.player1Id,
+      h.match.id,
+      1,
+      'ranger',
+      randomUUID(),
+      ids[2],
+      ids[0],
+    );
+
+    const updated = readPlayerState(h);
+    expect(updated.bench[0]).toMatchObject({
+      instanceId: ids[0],
+      unitId: 'ranger',
+      star: 2,
+      hp: 60,
+      maxHp: 60,
+      investedGold: 8,
+    });
+    expect(updated.bench.slice(1, 4)).toEqual([null, null, null]);
+
+    const stateEvents = h.pubsub.events.filter(
+      (event) =>
+        event.userId === h.match.player1Id &&
+        event.type === 'game:match:state',
+    );
+    expect(stateEvents).toHaveLength(3);
+    expect(stateEvents.map((event) => event.payload.roster.bench[0]?.star))
+      .toEqual([1, 1, 2]);
+    expect(stateEvents.at(-1)!.payload.roster.bench[0]).toMatchObject({
+      instanceId: ids[0],
+      star: 2,
+      hp: 60,
+      maxHp: 60,
+    });
+  });
+
+  it.each([
+    {
+      name: 'different unit types',
+      source: { unitId: 'fighter', star: 0 },
+      target: { unitId: 'healer', star: 0 },
+      requestedUnitId: 'fighter',
+    },
+    {
+      name: 'different tiers',
+      source: { unitId: 'fighter', star: 0 },
+      target: { unitId: 'fighter', star: 1 },
+      requestedUnitId: 'fighter',
+    },
+    {
+      name: 'maximum tier units',
+      source: { unitId: 'fighter', star: 2 },
+      target: { unitId: 'fighter', star: 2 },
+      requestedUnitId: 'fighter',
+    },
+  ] as const)('rejects $name without changing authoritative state', async ({
+    source,
+    target,
+    requestedUnitId,
+  }) => {
+    const h = harness();
+    const hash = h.redis.hashes.get(runtimeKey(h.match.id))!;
+    const state = JSON.parse(hash.p1State);
+    const sourceId = randomUUID();
+    const targetId = randomUUID();
+    state.bench[0] = {
+      instanceId: sourceId,
+      ...source,
+      hp: 100,
+      maxHp: 100,
+    };
+    state.bench[1] = {
+      instanceId: targetId,
+      ...target,
+      hp: 100,
+      maxHp: 100,
+    };
+    hash.p1State = JSON.stringify(state);
+    const before = structuredClone(readPlayerState(h));
+    setShop(h, [offer('fighter')]);
+
+    await expect(
+      h.service.fuse(
+        h.match.player1Id,
+        h.match.id,
+        1,
+        requestedUnitId,
+        randomUUID(),
+        sourceId,
+        targetId,
+      ),
+    ).rejects.toMatchObject({ response: { code: 'shop.cannot_fuse' } });
+
+    expect(readPlayerState(h)).toEqual(before);
+    expect(h.matches.updates).toHaveLength(0);
+    expect(h.pubsub.events).toHaveLength(0);
+  });
+
   it('never lets gold go negative', async () => {
     const h = harness(0);
     setShop(h, [offer('tank')]);
