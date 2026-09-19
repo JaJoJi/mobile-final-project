@@ -1,4 +1,3 @@
-```groovy
 pipeline {
     agent {
         label 'linux-build'
@@ -19,7 +18,7 @@ pipeline {
             agent {
                 docker {
                     image 'node:20-alpine'
-            }
+                }
             }
 
             steps {
@@ -68,9 +67,7 @@ pipeline {
         }
 
         always {
-            archiveArtifacts artifacts: 'backend/npm-debug.log*',
-                allowEmptyArchive: true
+            archiveArtifacts artifacts: 'backend/npm-debug.log*', allowEmptyArchive: true
         }
     }
 }
-```
