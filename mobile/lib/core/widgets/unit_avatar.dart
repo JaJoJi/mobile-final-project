@@ -324,6 +324,7 @@ class UnitAvatar extends StatelessWidget {
           ? (landscapeShop ? landscapeShopContent() : portraitShopContent())
           : Stack(
               fit: StackFit.expand,
+              clipBehavior: Clip.none,
               children: [
                 Padding(
                   // The board/bench/replay frame is a perfect square
@@ -342,12 +343,38 @@ class UnitAvatar extends StatelessWidget {
                     AppSpacing.xxs,
                     AppSpacing.xxs,
                   ),
-                  child: _UnitArt(
-                    kind: kind,
-                    fusionTier: star,
-                    tint: tint,
-                    size: _width,
-                  ),
+                  child: isBoardPiece && expand
+                      ? LayoutBuilder(
+                          builder: (context, constraints) {
+                            final responsiveSize =
+                                constraints.biggest.shortestSide;
+                            return Transform.translate(
+                              // Lift only the illustration so the piece's
+                              // foot sits near the centre of the magic ring;
+                              // stars and HP remain anchored to the slot.
+                              offset: Offset(0, -responsiveSize * 0.12),
+                              child: Transform.scale(
+                                // Board and replay slots grow with the stone
+                                // platform. Scaling from the feet makes the
+                                // extra size rise into the available headroom.
+                                scale: 1.24,
+                                alignment: Alignment.bottomCenter,
+                                child: _UnitArt(
+                                  kind: kind,
+                                  fusionTier: star,
+                                  tint: tint,
+                                  size: responsiveSize,
+                                ),
+                              ),
+                            );
+                          },
+                        )
+                      : _UnitArt(
+                          kind: kind,
+                          fusionTier: star,
+                          tint: tint,
+                          size: _width,
+                        ),
                 ),
                 Positioned(
                   left: AppSpacing.xxs,

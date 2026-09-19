@@ -5,6 +5,29 @@ import 'package:flutter_test/flutter_test.dart';
 import '../../widgets/_harness.dart';
 
 void main() {
+  testWidgets('expanded board art scales with the stone slot', (tester) async {
+    await pumpThemed(
+      tester,
+      const SizedBox.square(
+        dimension: 140,
+        child: UnitAvatar(
+          unitId: 'fighter',
+          star: 0,
+          expand: true,
+        ),
+      ),
+    );
+
+    final image = tester.widget<Image>(
+      find.descendant(
+        of: find.byType(UnitAvatar),
+        matching: find.byType(Image),
+      ),
+    );
+    expect(image.width, greaterThan(64));
+    expect(image.height, greaterThan(64));
+  });
+
   testWidgets(
       'board avatar gives the illustration more headroom than the other '
       'edges — the source art has almost none of its own', (tester) async {
