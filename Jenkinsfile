@@ -1,8 +1,7 @@
+```groovy
 pipeline {
     agent {
-        docker {
-            image 'node:20-alpine'
-        }
+        label 'linux-build'
     }
 
     environment {
@@ -17,6 +16,12 @@ pipeline {
 
     stages {
         stage('Install') {
+            agent {
+                docker {
+                    image 'node:20-alpine'
+            }
+            }
+
             steps {
                 dir('backend') {
                     sh 'npm ci'
@@ -25,6 +30,12 @@ pipeline {
         }
 
         stage('Lint') {
+            agent {
+                docker {
+                    image 'node:20-alpine'
+                }
+            }
+
             steps {
                 dir('backend') {
                     sh 'npm run lint'
@@ -33,6 +44,12 @@ pipeline {
         }
 
         stage('Unit Test') {
+            agent {
+                docker {
+                    image 'node:20-alpine'
+                }
+            }
+
             steps {
                 dir('backend') {
                     sh 'npm test'
@@ -51,7 +68,9 @@ pipeline {
         }
 
         always {
-            archiveArtifacts artifacts: 'backend/npm-debug.log*', allowEmptyArchive: true
+            archiveArtifacts artifacts: 'backend/npm-debug.log*',
+                allowEmptyArchive: true
         }
     }
 }
+```
