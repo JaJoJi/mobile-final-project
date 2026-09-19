@@ -18,6 +18,7 @@ pipeline {
             agent {
                 docker {
                     image 'node:20-alpine'
+                    reuseNode true
                 }
             }
 
@@ -32,6 +33,7 @@ pipeline {
             agent {
                 docker {
                     image 'node:20-alpine'
+                    reuseNode true
                 }
             }
 
@@ -46,6 +48,7 @@ pipeline {
             agent {
                 docker {
                     image 'node:20-alpine'
+                    reuseNode true
                 }
             }
 
@@ -67,7 +70,8 @@ pipeline {
         }
 
         always {
-            archiveArtifacts artifacts: 'backend/npm-debug.log*', allowEmptyArchive: true
+            archiveArtifacts artifacts: 'backend/npm-debug.log*',
+                allowEmptyArchive: true
         }
     }
 }
