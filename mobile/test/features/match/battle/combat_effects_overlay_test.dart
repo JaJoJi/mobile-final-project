@@ -319,14 +319,18 @@ void main() {
     expect(find.byKey(const ValueKey('projectile-mark')), findsNothing);
   });
 
-  testWidgets('a healer shoots a bolt, a ranger an arrow', (tester) async {
+  testWidgets('a healer uses its bolt asset and a ranger its arrow asset',
+      (tester) async {
     forcePortrait(tester);
     // The per-tile projectile this overlay replaced picked the icon by
     // unit; the distinction was lost in the move.
     await tester.pumpWidget(buildTree(0.25, eventsBatch: rangedBatch));
+    final rangerImage = tester.widget<Image>(
+      find.byKey(const ValueKey('projectile-rangerProjectile')),
+    );
     expect(
-      tester.widget<Icon>(find.byKey(const ValueKey('projectile-mark'))).icon,
-      Icons.arrow_forward,
+      (rangerImage.image as AssetImage).assetName,
+      'assets/images/vfx/ranger_projectile.png',
     );
 
     const healerAttack = AttackEvent(
@@ -354,10 +358,32 @@ void main() {
         ),
       ),
     );
-    expect(
-      tester.widget<Icon>(find.byKey(const ValueKey('projectile-mark'))).icon,
-      Icons.bolt,
+    final healerImage = tester.widget<Image>(
+      find.byKey(const ValueKey('projectile-healerAttackProjectile')),
     );
+    expect(
+      (healerImage.image as AssetImage).assetName,
+      'assets/images/vfx/healer_attack_projectile.png',
+    );
+  });
+
+  testWidgets('reduced motion keeps a ranged VFX stationary near impact',
+      (tester) async {
+    forcePortrait(tester);
+    tester.binding.platformDispatcher.accessibilityFeaturesTestValue =
+        const FakeAccessibilityFeatures(disableAnimations: true);
+    addTearDown(
+      tester.binding.platformDispatcher.clearAccessibilityFeaturesTestValue,
+    );
+
+    await tester.pumpWidget(buildTree(0.1, eventsBatch: rangedBatch));
+    final early =
+        tester.getCenter(find.byKey(const ValueKey('projectile-mark')));
+    await tester.pumpWidget(buildTree(0.7, eventsBatch: rangedBatch));
+    final late =
+        tester.getCenter(find.byKey(const ValueKey('projectile-mark')));
+
+    expect(late, early);
   });
 
   testWidgets('an enemy projectile flies down toward the viewer',

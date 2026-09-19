@@ -51,6 +51,7 @@ class UnitVisualState {
     this.floatingDamage,
     this.floatingIsHeal = false,
     this.healEventIndex,
+    this.isHealerHeal = false,
     this.lastDamageEventIndex,
     this.recoilEventIndex,
     this.recoilDx = 0,
@@ -70,6 +71,11 @@ class UnitVisualState {
   /// Index of the heal/lifesteal event currently active on this unit.
   /// [BattleTile] uses this as a trigger key for the heal bubble animation.
   final int? healEventIndex;
+
+  /// Whether [healEventIndex] came from a Healer `heal` event rather than
+  /// Fighter lifesteal. Both restore HP, but only Healer owns the ornate
+  /// green-and-gold sigil.
+  final bool isHealerHeal;
 
   /// Index of the most recent damage event targeting this unit.
   /// [BattleTile] uses this as a trigger key for the hit shake animation.
@@ -208,11 +214,13 @@ Map<UnitKey, UnitVisualState> deriveUnitStates({
   // --- Precompute heal event trigger keys ---
   // healEventIndex[unitKey] = most recent heal/lifesteal event index ≤ limit.
   final healEventIndex = <UnitKey, int>{};
+  final healerHealEventIndex = <UnitKey, int>{};
   for (var i = 0; i <= landedLimit; i++) {
     final e = events[i];
     UnitKey? target;
     if (e is HealEvent && e.targetSide != null && e.targetSlot != null) {
       target = UnitKey(side: e.targetSide!, slot: e.targetSlot!);
+      healerHealEventIndex[target] = i;
     } else if (e is LifestealEvent &&
         e.unitSide != null &&
         e.unitSlot != null) {
@@ -370,6 +378,8 @@ Map<UnitKey, UnitVisualState> deriveUnitStates({
       floatingDamage: existing.floatingDamage,
       floatingIsHeal: existing.floatingIsHeal,
       healEventIndex: healEventIndex[key],
+      isHealerHeal: healEventIndex[key] != null &&
+          healerHealEventIndex[key] == healEventIndex[key],
       lastDamageEventIndex: lastDamage[key],
       recoilEventIndex: r?.index,
       recoilDx: r?.dx ?? 0,

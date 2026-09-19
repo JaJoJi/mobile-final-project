@@ -14,6 +14,8 @@
 /// sibling boards would never yet have a `size` to read.
 library;
 
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart' show RenderStack;
 
@@ -22,6 +24,7 @@ import '../../../core/widgets/unit_avatar.dart';
 import '../../../shared/models/combat_event.dart';
 import '../../../shared/models/match_state.dart';
 import '../../../shared/models/unit.dart';
+import 'combat_effect_assets.dart';
 import 'combat_effects_math.dart';
 
 /// Side length of one tile on the board behind [boardKey], or `null` if
@@ -163,9 +166,12 @@ class CombatEffectsOverlay extends StatelessWidget {
     if (!isMelee && current.subProgress >= kProjectileImpactFraction) {
       return null;
     }
+    final reduceMotion = MediaQuery.disableAnimationsOf(context);
     final progress = isMelee
         ? triangleWave(current.subProgress)
-        : projectileTravel(current.subProgress);
+        : reduceMotion
+            ? 0.85
+            : projectileTravel(current.subProgress);
     final position = Offset.lerp(attackerLocal, targetLocal, progress)!;
 
     // Melee reads as the unit itself charging the target and returning,
@@ -206,7 +212,13 @@ class CombatEffectsOverlay extends StatelessWidget {
     final projectileSize =
         (_tileSize(attackerSide == mySide ? myBoardKey : opponentBoardKey) ??
                 60) *
-            0.4;
+            0.82;
+    final effectKind = combatEffectForEvent(event);
+    if (effectKind == null || effectKind == CombatEffectKind.healerHeal) {
+      return null;
+    }
+    final direction = targetLocal - attackerLocal;
+    final angle = math.atan2(direction.dy, direction.dx);
 
     // A self-contained `Stack` + `Positioned` pair, scoped to this
     // widget's own subtree, so the `Positioned` below always has a valid
@@ -217,15 +229,16 @@ class CombatEffectsOverlay extends StatelessWidget {
         Positioned(
           left: position.dx - projectileSize / 2,
           top: position.dy - projectileSize / 2,
-          child: Icon(
+          child: Transform.rotate(
             key: const ValueKey('projectile-mark'),
-            // A ranger looses an arrow; a healer's basic attack is a bolt
-            // of magic. The per-tile projectile this overlay replaced drew
-            // that distinction and it was lost in the move (#215).
-            attackerUnitId == UnitId.ranger ? Icons.arrow_forward : Icons.bolt,
-            size: projectileSize,
-            color:
-                attackerSide == mySide ? Colors.blueAccent : Colors.redAccent,
+            angle: angle,
+            child: Image.asset(
+              effectKind.assetPath,
+              key: ValueKey('projectile-${effectKind.name}'),
+              width: projectileSize,
+              height: projectileSize,
+              fit: BoxFit.contain,
+            ),
           ),
         ),
       ],

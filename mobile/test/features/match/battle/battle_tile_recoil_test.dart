@@ -26,6 +26,33 @@ const _recoiling = UnitVisualState(
   recoilDy: -1,
 );
 
+const _healerHealed = UnitVisualState(
+  unitId: UnitId.healer,
+  star: 2,
+  hp: 70,
+  maxHp: 70,
+  alive: true,
+  healEventIndex: 4,
+  isHealerHeal: true,
+);
+
+const _idleHealer = UnitVisualState(
+  unitId: UnitId.healer,
+  star: 2,
+  hp: 70,
+  maxHp: 70,
+  alive: true,
+);
+
+const _lifestealing = UnitVisualState(
+  unitId: UnitId.fighter,
+  star: 2,
+  hp: 100,
+  maxHp: 100,
+  alive: true,
+  healEventIndex: 5,
+);
+
 void main() {
   testWidgets(
       'BattleTile nudges the attacker toward its target on a new '
@@ -143,5 +170,52 @@ void main() {
           '(offset was $offset)',
     );
     expect(offset.y, lessThan(-1));
+  });
+
+  testWidgets('Healer heal uses the generated sigil on the event target',
+      (tester) async {
+    await pumpThemed(
+      tester,
+      const BattleTile(
+        slot: 0,
+        unitSide: UnitSide.ally,
+        unitState: _idleHealer,
+      ),
+    );
+    await pumpThemed(
+      tester,
+      const BattleTile(
+        slot: 0,
+        unitSide: UnitSide.ally,
+        unitState: _healerHealed,
+      ),
+    );
+
+    final image = tester.widget<Image>(
+      find.byKey(const ValueKey('healer-heal-vfx')),
+    );
+    expect(
+      (image.image as AssetImage).assetName,
+      'assets/images/vfx/healer_heal_burst.png',
+    );
+  });
+
+  testWidgets('Fighter lifesteal does not borrow the Healer sigil',
+      (tester) async {
+    await pumpThemed(
+      tester,
+      const BattleTile(slot: 0, unitSide: UnitSide.ally, unitState: _idle),
+    );
+    await pumpThemed(
+      tester,
+      const BattleTile(
+        slot: 0,
+        unitSide: UnitSide.ally,
+        unitState: _lifestealing,
+      ),
+    );
+
+    expect(find.byKey(const ValueKey('healer-heal-vfx')), findsNothing);
+    expect(find.byKey(const ValueKey('lifesteal-pulse')), findsOneWidget);
   });
 }

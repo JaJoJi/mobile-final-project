@@ -35,6 +35,7 @@ import '../board/stone_board_tile.dart';
 import '../match_controller.dart' show unitMaxHp;
 import 'battle_playback_controller.dart';
 import 'battle_visual_state.dart';
+import 'combat_effect_assets.dart';
 import 'combat_effects_math.dart';
 import 'combat_effects_overlay.dart';
 
@@ -110,6 +111,17 @@ class _BattleViewState extends ConsumerState<BattleView>
   Map<UnitKey, UnitVisualState>? _cachedStates;
   final GlobalKey _myBoardKey = GlobalKey();
   final GlobalKey _opponentBoardKey = GlobalKey();
+  bool _vfxPrecached = false;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (_vfxPrecached) return;
+    _vfxPrecached = true;
+    for (final path in combatEffectAssetPaths) {
+      precacheImage(AssetImage(path), context);
+    }
+  }
 
   @override
   void initState() {
@@ -870,25 +882,40 @@ class _BattleTileState extends State<BattleTile> with TickerProviderStateMixin {
                   color: Color(0xFF42A5F5),
                 ),
               ),
-            // Heal bubble — expanding green circle, emit-and-dispose.
+            // Healing feedback — shown only for a server Heal/Lifesteal
+            // event. The ornate sigil belongs specifically to Healer;
+            // Fighter lifesteal retains the lighter legacy pulse.
             if (uv != null && uv.healEventIndex != null)
               Positioned.fill(
                 child: AnimatedBuilder(
                   animation: _healBubbleAnim,
                   builder: (context, _) {
                     final progress = _healBubbleAnim.value;
-                    final radius = widget.tileWidth * 0.6 * progress;
-                    return Center(
-                      child: Container(
-                        width: radius * 2,
-                        height: radius * 2,
-                        decoration: BoxDecoration(
-                          shape: BoxShape.circle,
-                          color: Colors.green.withValues(
-                            alpha: (0.3 * (1.0 - progress)).clamp(0.0, 1.0),
-                          ),
-                        ),
-                      ),
+                    final reduceMotion =
+                        MediaQuery.disableAnimationsOf(context);
+                    final scale = reduceMotion ? 0.88 : 0.48 + progress * 0.62;
+                    return Opacity(
+                      opacity: (1.0 - progress).clamp(0.0, 1.0),
+                      child: uv.isHealerHeal
+                          ? Transform.scale(
+                              scale: scale,
+                              child: Image.asset(
+                                CombatEffectKind.healerHeal.assetPath,
+                                key: const ValueKey('healer-heal-vfx'),
+                                fit: BoxFit.contain,
+                              ),
+                            )
+                          : Center(
+                              child: Container(
+                                key: const ValueKey('lifesteal-pulse'),
+                                width: widget.tileWidth * scale,
+                                height: widget.tileWidth * scale,
+                                decoration: BoxDecoration(
+                                  shape: BoxShape.circle,
+                                  color: Colors.green.withValues(alpha: 0.3),
+                                ),
+                              ),
+                            ),
                     );
                   },
                 ),
