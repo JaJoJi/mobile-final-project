@@ -1,6 +1,9 @@
 pipeline {
     agent {
-        label 'linux-build'
+        docker {
+            image 'node:20-alpine'
+            label 'linux-build'
+        }
     }
 
     environment {
@@ -9,19 +12,12 @@ pipeline {
     }
 
     options {
-        // A hung npm install or test run must not hold the Jenkins executor forever.
+        // A hung npm install, lint, or test must not hold the Jenkins executor forever.
         timeout(time: 10, unit: 'MINUTES')
     }
 
     stages {
         stage('Install') {
-            agent {
-                docker {
-                    image 'node:20-alpine'
-                    reuseNode true
-                }
-            }
-
             steps {
                 dir('backend') {
                     sh 'npm ci'
@@ -30,13 +26,6 @@ pipeline {
         }
 
         stage('Lint') {
-            agent {
-                docker {
-                    image 'node:20-alpine'
-                    reuseNode true
-                }
-            }
-
             steps {
                 dir('backend') {
                     sh 'npm run lint'
@@ -45,13 +34,6 @@ pipeline {
         }
 
         stage('Unit Test') {
-            agent {
-                docker {
-                    image 'node:20-alpine'
-                    reuseNode true
-                }
-            }
-
             steps {
                 dir('backend') {
                     sh 'npm test'
@@ -70,8 +52,10 @@ pipeline {
         }
 
         always {
-            archiveArtifacts artifacts: 'backend/npm-debug.log*',
+            archiveArtifacts(
+                artifacts: 'backend/npm-debug.log*',
                 allowEmptyArchive: true
+            )
         }
     }
 }

@@ -10,7 +10,4 @@ RUN apt-get update \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
-COPY start-agent.sh /usr/local/bin/start-agent.sh
-RUN chmod +x /usr/local/bin/start-agent.sh
-
-ENTRYPOINT ["/usr/local/bin/start-agent.sh"]
+USER jenkins
