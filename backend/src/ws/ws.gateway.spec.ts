@@ -29,6 +29,12 @@ function harness() {
   const runtime = {
     handleAction: jest.fn(async () => ({ duplicate: false })),
     handleDisconnect: jest.fn(async () => true),
+    statePayloadForUser: jest.fn(async () => ({
+      matchId: 'match-1',
+      round: 2,
+      opponent: { scoutRound: 1, boardSummary: Array(9).fill(null) },
+    })),
+    getCombatResultForReconnect: jest.fn(async () => null),
   };
   const matches = { findActiveByUserId: jest.fn(async () => null) };
   const logger = {
@@ -127,6 +133,25 @@ describe('WsGateway P0-BE-10 handlers', () => {
     expect(h.pubsub.unregisterUserSocket).toHaveBeenCalledWith('user-1', 'socket-1');
     expect(h.matchmaking.leaveQueue).toHaveBeenCalledWith('user-1');
     expect(h.runtime.handleDisconnect).toHaveBeenCalledWith('user-1');
+  });
+
+  it('rehydrates the same phase and scouting snapshot on reconnect', async () => {
+    const h = harness();
+    h.matches.findActiveByUserId.mockResolvedValueOnce({ id: 'match-1' });
+
+    h.gateway.handleConnection(h.socket as any);
+    await new Promise((resolve) => setImmediate(resolve));
+
+    expect(h.runtime.statePayloadForUser).toHaveBeenCalledWith(
+      'match-1',
+      'user-1',
+    );
+    expect(h.socket.emit).toHaveBeenCalledWith(
+      'game:match:state',
+      expect.objectContaining({
+        opponent: expect.objectContaining({ scoutRound: 1 }),
+      }),
+    );
   });
 
   it('does not forfeit when an older duplicate socket is intentionally replaced', async () => {

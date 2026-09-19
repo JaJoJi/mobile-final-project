@@ -1,6 +1,7 @@
-/// `game:match:state` — sent to both clients whenever a roster changes
-/// (buy / sell / place / ready). Each client sees its own full roster and
-/// a redacted summary of the opponent's board.
+/// `game:match:state` — sent when a roster changes, both teams lock for
+/// battle, or an active match reconnects. Each client sees its own full roster
+/// plus a stable previous-round scouting snapshot. A separate live opponent
+/// board is present only after both teams are locked for battle.
 ///
 /// Mirrors `docs/04-api-contracts.md` §2 — `game:match:state`.
 library;
@@ -61,33 +62,50 @@ class OpponentView {
   const OpponentView({
     required this.gold,
     required this.hp,
+    required this.scoutRound,
     required this.boardSummary,
+    required this.battleBoardSummary,
   });
 
   final int gold;
   final int hp;
 
-  /// 9 slots; `null` = empty. No HP detail (design decision).
+  /// The completed round that [boardSummary] was captured from.
+  /// `null` in round one, before any scouting information exists.
+  final int? scoutRound;
+
+  /// Stable 9-slot snapshot from [scoutRound]. Never changes during planning.
   final List<OpponentUnit?> boardSummary;
 
+  /// Live board sent only after both teams are locked for battle.
+  /// Kept separate so scouting data can never drive battle playback.
+  final List<OpponentUnit?>? battleBoardSummary;
+
   factory OpponentView.fromJson(Map<String, dynamic> j) {
-    final raw = (j['boardSummary'] as List?) ?? const [];
+    final raw = (j['boardSummary'] as List<dynamic>?) ?? const [];
     return OpponentView(
       gold: (j['gold'] as num?)?.toInt() ?? 0,
       hp: (j['hp'] as num?)?.toInt() ?? 0,
-      boardSummary: List<OpponentUnit?>.generate(
+      scoutRound: (j['scoutRound'] as num?)?.toInt(),
+      boardSummary: _opponentSlots(raw),
+      battleBoardSummary: j['battleBoardSummary'] is List
+          ? _opponentSlots(j['battleBoardSummary'] as List<dynamic>)
+          : null,
+    );
+  }
+
+  static List<OpponentUnit?> _opponentSlots(List<dynamic> raw) =>
+      List<OpponentUnit?>.generate(
         9,
         (i) {
           if (i >= raw.length) return null;
           final entry = raw[i];
-          return entry is Map<String, dynamic>
-              ? OpponentUnit.fromJson(entry)
+          return entry is Map
+              ? OpponentUnit.fromJson(entry.cast<String, dynamic>())
               : null;
         },
         growable: false,
-      ),
-    );
-  }
+      );
 }
 
 class MatchState {

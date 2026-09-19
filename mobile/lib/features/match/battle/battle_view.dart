@@ -358,8 +358,11 @@ class _BattleViewState extends ConsumerState<BattleView>
           playheadIndex: view.playheadIndex,
           currentEventLanded: landed,
           playerBoard: widget.match.roster.board,
-          opponentBoard:
-              widget.match.opponent.boardSummary.asMap().entries.map((entry) {
+          opponentBoard: (widget.match.opponent.battleBoardSummary ??
+                  widget.match.opponent.boardSummary)
+              .asMap()
+              .entries
+              .map((entry) {
             final o = entry.value;
             if (o == null) return null;
             return Unit(
@@ -517,7 +520,8 @@ class _BattleStage extends StatelessWidget {
       label: 'คู่แข่ง',
       icon: Icons.sports_martial_arts_outlined,
       color: game.enemy,
-      opponentUnits: match.opponent.boardSummary,
+      opponentUnits:
+          match.opponent.battleBoardSummary ?? match.opponent.boardSummary,
       side: enemySide,
       mySide: match.yourSide,
       unitStates: unitStates,

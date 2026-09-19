@@ -519,7 +519,7 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('long press opens unit details and opponent scout opens board',
+  testWidgets('round one reports that scouting data is not available yet',
       (tester) async {
     final transport = FakeWsTransport();
     final client = WsClient(
@@ -531,7 +531,36 @@ void main() {
     final connected = client.connect();
     transport.serverConnect();
     await connected;
-    _seed(transport, withUnits: true);
+    _seed(transport);
+
+    await pumpScreen(
+      tester,
+      const MatchScreen(matchId: 'm1'),
+      overrides: [wsClientProvider.overrideWithValue(client)],
+      surfaceSize: const Size(360, 640),
+    );
+    await tester.pump();
+
+    final unavailable = find.text('ยังไม่มีข้อมูลการสอดแนม');
+    await tester.ensureVisible(unavailable);
+    await tester.pump(const Duration(milliseconds: 300));
+    expect(unavailable, findsOneWidget);
+    expect(find.byKey(const ValueKey('opponent-scout-grid')), findsNothing);
+  });
+
+  testWidgets('long press opens unit details and previous-round scout board',
+      (tester) async {
+    final transport = FakeWsTransport();
+    final client = WsClient(
+      url: 'ws://localhost',
+      getAccessToken: () async => 'token',
+      transport: transport,
+    );
+    addTearDown(client.dispose);
+    final connected = client.connect();
+    transport.serverConnect();
+    await connected;
+    _seed(transport, withUnits: true, scoutRound: 1);
 
     await pumpScreen(
       tester,
@@ -551,12 +580,12 @@ void main() {
     Navigator.of(tester.element(find.text('นักรบ'))).pop();
     await tester.pump(const Duration(milliseconds: 500));
 
-    final scout = find.text('สอดแนมคู่แข่ง');
+    final scout = find.text('ทีมคู่แข่งจากรอบ 1');
     await tester.ensureVisible(scout);
     await tester.pump(const Duration(milliseconds: 300));
     await tester.tap(scout);
     await tester.pump(const Duration(milliseconds: 500));
-    expect(find.text('กระดานคู่แข่ง'), findsOneWidget);
+    expect(find.text('ทีมคู่แข่งจากรอบ 1'), findsNWidgets(2));
     final scoutGrid = tester.getSize(
       find.byKey(const ValueKey('opponent-scout-grid')),
     );
@@ -886,6 +915,7 @@ void _seed(
   FakeWsTransport transport, {
   bool withUnits = false,
   int gold = 5,
+  int? scoutRound,
 }) {
   transport.emitFromServer(GameEvents.matchPhase, {
     'matchId': 'm1',
@@ -922,7 +952,9 @@ void _seed(
     'opponent': {
       'gold': 5,
       'hp': 100,
+      'scoutRound': scoutRound,
       'boardSummary': List<Object?>.filled(9, null),
+      'battleBoardSummary': null,
     },
     'readyCount': 0,
   });

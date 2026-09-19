@@ -438,6 +438,7 @@ class _OpponentScout extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final units = opponent.boardSummary.whereType<OpponentUnit>().toList();
+    final hasSnapshot = opponent.scoutRound != null;
     final game = Theme.of(context).extension<GameTheme>()!;
     return Material(
       key: const ValueKey('scout-panel-frame'),
@@ -448,7 +449,7 @@ class _OpponentScout extends StatelessWidget {
       ),
       clipBehavior: Clip.antiAlias,
       child: InkWell(
-        onTap: () => _showFullBoard(context),
+        onTap: hasSnapshot ? () => _showFullBoard(context) : null,
         child: Padding(
           padding: const EdgeInsets.symmetric(
             horizontal: AppSpacing.md,
@@ -470,13 +471,17 @@ class _OpponentScout extends StatelessWidget {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          'สอดแนมคู่แข่ง',
+                          hasSnapshot
+                              ? 'ทีมคู่แข่งจากรอบ ${opponent.scoutRound}'
+                              : 'ยังไม่มีข้อมูลการสอดแนม',
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                           style: Theme.of(context).textTheme.titleSmall,
                         ),
                         Text(
-                          '${units.length}/9 ตัว · แตะเพื่อดูกระดาน',
+                          hasSnapshot
+                              ? '${units.length}/9 ตัว · แตะเพื่อดูกระดาน'
+                              : 'ข้อมูลจะพร้อมเมื่อรอบแรกจบลง',
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                           style: Theme.of(context).textTheme.bodySmall,
@@ -496,7 +501,7 @@ class _OpponentScout extends StatelessWidget {
                           ),
                         ),
                       ),
-                  const Icon(Icons.chevron_right),
+                  if (hasSnapshot) const Icon(Icons.chevron_right),
                 ],
               );
             },
@@ -526,9 +531,13 @@ class _OpponentScout extends StatelessWidget {
                 children: [
                   const Icon(Icons.visibility_outlined),
                   const SizedBox(width: AppSpacing.sm),
-                  Text(
-                    'กระดานคู่แข่ง',
-                    style: Theme.of(context).textTheme.titleLarge,
+                  Expanded(
+                    child: Text(
+                      'ทีมคู่แข่งจากรอบ ${opponent.scoutRound}',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: Theme.of(context).textTheme.titleLarge,
+                    ),
                   ),
                 ],
               ),

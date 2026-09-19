@@ -202,6 +202,13 @@ async function run() {
   );
   add(
     results,
+    'round completion persists the scouting snapshot for the next planning phase',
+    round2.scoutRound === 1 && round2.scoutP1Board.length === 9 &&
+      round2.scoutP2Board.length === 9,
+    `scoutRound=${round2.scoutRound} slots=${round2.scoutP1Board.length}/${round2.scoutP2Board.length}`,
+  );
+  add(
+    results,
     'damage event is followed by the next shop phase and timer',
     h.pubsub.events.some((event) => event.type === 'game:match:damage') &&
       h.pubsub.events.some((event) =>

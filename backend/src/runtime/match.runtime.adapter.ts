@@ -11,8 +11,10 @@ import {
   RuntimePlayerState,
   combatDoneKey,
   initialRuntimeHash,
+  matchStatePayload,
   parseRuntimeHash,
   runtimeKey,
+  summarizeBoard,
 } from './match.runtime-state';
 import { PubsubBridge } from './pubsub.bridge';
 
@@ -87,6 +89,9 @@ export class MatchRuntimeAdapter {
       wipeIndexP1: match.wipeIndexP1 ?? 0,
       wipeIndexP2: match.wipeIndexP2 ?? 0,
       combatRound: null,
+      scoutRound: null,
+      scoutP1Board: Array(9).fill(null),
+      scoutP2Board: Array(9).fill(null),
     };
     await this.pubsub.publish(
       match.id,
@@ -351,6 +356,9 @@ export class MatchRuntimeAdapter {
       'game:match:phase',
       this.phasePayload(runtime, 0),
     );
+    // Publish the live opponent board only after both rosters are locked.
+    // Planning-state messages expose only the previous round's scout snapshot.
+    await this.publishState(runtime, 'p1', runtime.p1State);
     await this.combat.runCombat(matchId, round);
     return true;
   }
@@ -473,6 +481,9 @@ export class MatchRuntimeAdapter {
     p2.gold += ROUND_GOLD;
     p1.ready = false;
     p2.ready = false;
+    runtime.scoutRound = round;
+    runtime.scoutP1Board = summarizeBoard(p1.board);
+    runtime.scoutP2Board = summarizeBoard(p2.board);
     const nextRound = round + 1;
     await this.persistSnapshot(runtime, p1, p2);
     await this.redis.client.hset(runtimeKey(matchId), {
@@ -484,6 +495,9 @@ export class MatchRuntimeAdapter {
       wipeIndexP1: String(runtime.wipeIndexP1),
       wipeIndexP2: String(runtime.wipeIndexP2),
       combatRound: '',
+      scoutRound: String(round),
+      scoutP1Board: JSON.stringify(runtime.scoutP1Board),
+      scoutP2Board: JSON.stringify(runtime.scoutP2Board),
     });
     const nextFlipped = await this.redis.eval<number>(
       'phase_flip',
@@ -586,15 +600,25 @@ export class MatchRuntimeAdapter {
         runtime.matchId,
         runtime.player1Id,
         'game:match:state',
-        runtimeStatePayload(runtime, 'p1', p1, p2, readyCount),
+        matchStatePayload(runtime, 'p1', p1, p2, readyCount),
       ),
       this.pubsub.publishToUser(
         runtime.matchId,
         runtime.player2Id,
         'game:match:state',
-        runtimeStatePayload(runtime, 'p2', p2, p1, readyCount),
+        matchStatePayload(runtime, 'p2', p2, p1, readyCount),
       ),
     ]);
+  }
+
+  /** Rebuilds the authoritative state payload for a reconnecting player. */
+  async statePayloadForUser(matchId: string, userId: string) {
+    const runtime = await this.getRuntime(matchId);
+    const side = this.sideFor(runtime, userId);
+    const own = side === 'p1' ? runtime.p1State : runtime.p2State;
+    const opponent = side === 'p1' ? runtime.p2State : runtime.p1State;
+    const readyCount = Number(runtime.readyP1) + Number(runtime.readyP2);
+    return matchStatePayload(runtime, side, own, opponent, readyCount);
   }
 
   private async withPlayerActionLock<T>(
@@ -730,34 +754,6 @@ function findRosterUnit(state: RuntimePlayerState, instanceId: string): {
     if (slot >= 0) return { source, slot, unit: state[source][slot]! };
   }
   return null;
-}
-
-function runtimeStatePayload(
-  runtime: MatchRuntimeState,
-  side: 'p1' | 'p2',
-  own: RuntimePlayerState,
-  opponent: RuntimePlayerState,
-  readyCount: number,
-) {
-  return {
-    matchId: runtime.matchId,
-    round: runtime.round,
-    yourSide: side,
-    roster: {
-      board: own.board,
-      bench: own.bench,
-      gold: own.gold,
-      hp: own.hp,
-    },
-    opponent: {
-      gold: opponent.gold,
-      hp: opponent.hp,
-      boardSummary: opponent.board.map((unit) => unit
-        ? { unitId: unit.unitId, star: unit.star }
-        : null),
-    },
-    readyCount,
-  };
 }
 
 function initialPlayerState(state: Record<string, unknown>): RuntimePlayerState {
