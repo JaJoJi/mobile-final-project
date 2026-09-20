@@ -1,241 +1,13 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<testsuites name="jest tests" tests="117" failures="0" errors="0" time="68.71">
-  <testsuite name="combat timing" errors="0" failures="0" skipped="0" timestamp="2026-09-20T14:04:36" time="32.249" tests="3">
-    <testcase classname="combat timing keeps the result alive beyond the fallback worker deadline" name="combat timing keeps the result alive beyond the fallback worker deadline" time="0.031">
-    </testcase>
-    <testcase classname="combat timing allows an explicit short local-test timeout" name="combat timing allows an explicit short local-test timeout" time="0.001">
-    </testcase>
-    <testcase classname="combat timing uses the real playback budget for missing or invalid configuration" name="combat timing uses the real playback budget for missing or invalid configuration" time="0.002">
-    </testcase>
-  </testsuite>
-  <testsuite name="phase_flip.lua — atomic CAS phase transition (R6/R10)" errors="0" failures="0" skipped="0" timestamp="2026-09-20T14:04:36" time="35.85" tests="13">
-    <testcase classname="phase_flip.lua — atomic CAS phase transition (R6/R10) flips when the expected phase matches and tags the lock on entering battle" name="phase_flip.lua — atomic CAS phase transition (R6/R10) flips when the expected phase matches and tags the lock on entering battle" time="0.056">
-    </testcase>
-    <testcase classname="phase_flip.lua — atomic CAS phase transition (R6/R10) is a no-op and returns 0 when the current phase does not match (lost CAS)" name="phase_flip.lua — atomic CAS phase transition (R6/R10) is a no-op and returns 0 when the current phase does not match (lost CAS)" time="0.012">
-    </testcase>
-    <testcase classname="phase_flip.lua — atomic CAS phase transition (R6/R10) does not tag combatLockInstance for a non-battle transition" name="phase_flip.lua — atomic CAS phase transition (R6/R10) does not tag combatLockInstance for a non-battle transition" time="0.007">
-    </testcase>
-    <testcase classname="combat_done.lua — idempotent per-player ack (R12) counts distinct acks and ignores a repeat from the same player" name="combat_done.lua — idempotent per-player ack (R12) counts distinct acks and ignores a repeat from the same player" time="0.015">
-    </testcase>
-    <testcase classname="combat_done.lua — idempotent per-player ack (R12) keeps the FIRST ack timestamp for a player" name="combat_done.lua — idempotent per-player ack (R12) keeps the FIRST ack timestamp for a player" time="0.012">
-    </testcase>
-    <testcase classname="combat_done.lua — idempotent per-player ack (R12) sets a TTL on the hash" name="combat_done.lua — idempotent per-player ack (R12) sets a TTL on the hash" time="0.006">
-    </testcase>
-    <testcase classname="action_log.lua — idempotent action write (R7) records a new clientActionId once, rejects the duplicate" name="action_log.lua — idempotent action write (R7) records a new clientActionId once, rejects the duplicate" time="0.017">
-    </testcase>
-    <testcase classname="action_log.lua — idempotent action write (R7) keeps the first timestamp and sets a TTL" name="action_log.lua — idempotent action write (R7) keeps the first timestamp and sets a TTL" time="0.012">
-    </testcase>
-    <testcase classname="action_log.lua — idempotent action write (R7) atomically validates and commits a runtime-only action" name="action_log.lua — idempotent action write (R7) atomically validates and commits a runtime-only action" time="0.01">
-    </testcase>
-    <testcase classname="match_pair.lua — atomic FIFO pop (R4/R5) returns the two longest-waiting members and removes them" name="match_pair.lua — atomic FIFO pop (R4/R5) returns the two longest-waiting members and removes them" time="0.012">
-    </testcase>
-    <testcase classname="match_pair.lua — atomic FIFO pop (R4/R5) returns an empty array and touches nothing with fewer than two members" name="match_pair.lua — atomic FIFO pop (R4/R5) returns an empty array and touches nothing with fewer than two members" time="0.007">
-    </testcase>
-    <testcase classname="match_pair.lua — atomic FIFO pop (R4/R5) is FIFO by score (join timestamp), not insertion order" name="match_pair.lua — atomic FIFO pop (R4/R5) is FIFO by score (join timestamp), not insertion order" time="0.007">
-    </testcase>
-    <testcase classname="ws_rate_limit.lua — shared sliding-window counter (P1-BE-01) counts every hit atomically and expires its bookkeeping keys" name="ws_rate_limit.lua — shared sliding-window counter (P1-BE-01) counts every hit atomically and expires its bookkeeping keys" time="0.021">
-    </testcase>
-  </testsuite>
-  <testsuite name="pickTarget — 3×3 board (docs/05 §2)" errors="0" failures="0" skipped="0" timestamp="2026-09-20T14:04:36" time="38.334" tests="11">
-    <testcase classname="pickTarget — 3×3 board (docs/05 §2) returns null when the enemy team is empty" name="pickTarget — 3×3 board (docs/05 §2) returns null when the enemy team is empty" time="0.01">
-    </testcase>
-    <testcase classname="pickTarget — 3×3 board (docs/05 §2) prefers the front row in the same lane" name="pickTarget — 3×3 board (docs/05 §2) prefers the front row in the same lane" time="0.001">
-    </testcase>
-    <testcase classname="pickTarget — 3×3 board (docs/05 §2) falls to the middle row when the front of the lane is empty" name="pickTarget — 3×3 board (docs/05 §2) falls to the middle row when the front of the lane is empty" time="0">
-    </testcase>
-    <testcase classname="pickTarget — 3×3 board (docs/05 §2) falls to the back row when front and middle of the lane are empty" name="pickTarget — 3×3 board (docs/05 §2) falls to the back row when front and middle of the lane are empty" time="0.001">
-    </testcase>
-    <testcase classname="pickTarget — 3×3 board (docs/05 §2) cross-lane fallback checks each col fully (front→mid→back) before the next col" name="pickTarget — 3×3 board (docs/05 §2) cross-lane fallback checks each col fully (front→mid→back) before the next col" time="0.001">
-    </testcase>
-    <testcase classname="pickTarget — 3×3 board (docs/05 §2) Tank 2★ Prioritize: a fighter targets the enemy 2★ Tank over the front row" name="pickTarget — 3×3 board (docs/05 §2) Tank 2★ Prioritize: a fighter targets the enemy 2★ Tank over the front row" time="0.001">
-    </testcase>
-    <testcase classname="pickTarget — 3×3 board (docs/05 §2) Tank 2★ Prioritize does NOT steer a Ranger" name="pickTarget — 3×3 board (docs/05 §2) Tank 2★ Prioritize does NOT steer a Ranger" time="0">
-    </testcase>
-    <testcase classname="pickTarget — 3×3 board (docs/05 §2) Ranger 2★ Global: lowest HP anywhere on the 9-slot team, ignoring lanes" name="pickTarget — 3×3 board (docs/05 §2) Ranger 2★ Global: lowest HP anywhere on the 9-slot team, ignoring lanes" time="0.001">
-    </testcase>
-    <testcase classname="pickTarget — 3×3 board (docs/05 §2) Fighter tie-break: lowest col, then lowest row, then instanceId" name="pickTarget — 3×3 board (docs/05 §2) Fighter tie-break: lowest col, then lowest row, then instanceId" time="0.001">
-    </testcase>
-    <testcase classname="pickTarget — 3×3 board (docs/05 §2) Ranger 0★/1★ picks the lowest-HP unit among the lane candidates" name="pickTarget — 3×3 board (docs/05 §2) Ranger 0★/1★ picks the lowest-HP unit among the lane candidates" time="0.001">
-    </testcase>
-    <testcase classname="pickTarget — 3×3 board (docs/05 §2) skips dead enemies" name="pickTarget — 3×3 board (docs/05 §2) skips dead enemies" time="0.001">
-    </testcase>
-  </testsuite>
-  <testsuite name="Fighter Lifesteal (docs/05 §4.1)" errors="0" failures="0" skipped="0" timestamp="2026-09-20T14:04:36" time="38.343" tests="12">
-    <testcase classname="Fighter Lifesteal (docs/05 §4.1) 1★ heals floor(dmg * 0.05)" name="Fighter Lifesteal (docs/05 §4.1) 1★ heals floor(dmg * 0.05)" time="0.01">
-    </testcase>
-    <testcase classname="Fighter Lifesteal (docs/05 §4.1) 2★ heals floor(dmg * 0.10)" name="Fighter Lifesteal (docs/05 §4.1) 2★ heals floor(dmg * 0.10)" time="0">
-    </testcase>
-    <testcase classname="Fighter Lifesteal (docs/05 §4.1) E15: overheal is capped at maxHp" name="Fighter Lifesteal (docs/05 §4.1) E15: overheal is capped at maxHp" time="0.001">
-    </testcase>
-    <testcase classname="Ranger Pierce (docs/05 §4.2) spills 10% of the primary damage to the alive unit one row behind (row+1)" name="Ranger Pierce (docs/05 §4.2) spills 10% of the primary damage to the alive unit one row behind (row+1)" time="0.001">
-    </testcase>
-    <testcase classname="Ranger Pierce (docs/05 §4.2) omits the pierce when row+1 is empty — it does NOT skip to row+2" name="Ranger Pierce (docs/05 §4.2) omits the pierce when row+1 is empty — it does NOT skip to row+2" time="0.001">
-    </testcase>
-    <testcase classname="Ranger Pierce (docs/05 §4.2) a lethal pierce kills the unit behind (death event, no revive)" name="Ranger Pierce (docs/05 §4.2) a lethal pierce kills the unit behind (death event, no revive)" time="0">
-    </testcase>
-    <testcase classname="Healer support (docs/05 §4.4) 0★/1★ heals the lowest-HP ally (self included) for up to 10" name="Healer support (docs/05 §4.4) 0★/1★ heals the lowest-HP ally (self included) for up to 10" time="0.001">
-    </testcase>
-    <testcase classname="Healer support (docs/05 §4.4) 2★ heals the two lowest-HP allies" name="Healer support (docs/05 §4.4) 2★ heals the two lowest-HP allies" time="0.001">
-    </testcase>
-    <testcase classname="Healer support (docs/05 §4.4) E13: healing a full-HP roster emits no heal event" name="Healer support (docs/05 §4.4) E13: healing a full-HP roster emits no heal event" time="0">
-    </testcase>
-    <testcase classname="Healer support (docs/05 §4.4) E14: a 2★ Healer with only itself alive heals once" name="Healer support (docs/05 §4.4) E14: a 2★ Healer with only itself alive heals once" time="0.001">
-    </testcase>
-    <testcase classname="Healer Slow (docs/05 §4.4) sets the target effectiveSpd to round(baseSpd * 0.7) and emits slow" name="Healer Slow (docs/05 §4.4) sets the target effectiveSpd to round(baseSpd * 0.7) and emits slow" time="0.001">
-    </testcase>
-    <testcase classname="Healer Slow (docs/05 §4.4) clearHealerSlows restores the base SPD for units this Healer slowed" name="Healer Slow (docs/05 §4.4) clearHealerSlows restores the base SPD for units this Healer slowed" time="0">
-    </testcase>
-  </testsuite>
-  <testsuite name="applyDamage (docs/05 §3)" errors="0" failures="0" skipped="0" timestamp="2026-09-20T14:04:36" time="38.348" tests="5">
-    <testcase classname="applyDamage (docs/05 §3) subtracts HP and emits only an attack event on a non-lethal hit" name="applyDamage (docs/05 §3) subtracts HP and emits only an attack event on a non-lethal hit" time="0.013">
-    </testcase>
-    <testcase classname="applyDamage (docs/05 §3) clamps HP to 0, marks dead, and emits death BEFORE attack on a lethal hit" name="applyDamage (docs/05 §3) clamps HP to 0, marks dead, and emits death BEFORE attack on a lethal hit" time="0.001">
-    </testcase>
-    <testcase classname="applyDamage (docs/05 §3) Tank 1★ Revive: first lethal hit revives at floor(maxHp * 0.5), no attack event" name="applyDamage (docs/05 §3) Tank 1★ Revive: first lethal hit revives at floor(maxHp * 0.5), no attack event" time="0.001">
-    </testcase>
-    <testcase classname="applyDamage (docs/05 §3) Tank 1★ second lethal hit in the same battle kills normally" name="applyDamage (docs/05 §3) Tank 1★ second lethal hit in the same battle kills normally" time="0.001">
-    </testcase>
-    <testcase classname="applyDamage (docs/05 §3) Tank 0★ has no Revive — dies on the first lethal hit" name="applyDamage (docs/05 §3) Tank 0★ has no Revive — dies on the first lethal hit" time="0">
-    </testcase>
-  </testsuite>
-  <testsuite name="seeded-rng" errors="0" failures="0" skipped="0" timestamp="2026-09-20T14:04:36" time="38.412" tests="5">
-    <testcase classname="seeded-rng rngInt stays within the inclusive range and is seed-stable" name="seeded-rng rngInt stays within the inclusive range and is seed-stable" time="0.082">
-    </testcase>
-    <testcase classname="seeded-rng rngInt with min === max always returns that value" name="seeded-rng rngInt with min === max always returns that value" time="0.001">
-    </testcase>
-    <testcase classname="type helpers slotToPosition maps row-major slots to {row, col}" name="type helpers slotToPosition maps row-major slots to {row, col}" time="0.002">
-    </testcase>
-    <testcase classname="type helpers enemySideOf flips the side" name="type helpers enemySideOf flips the side" time="0">
-    </testcase>
-    <testcase classname="type helpers unitsOf returns the requested side" name="type helpers unitsOf returns the requested side" time="0.003">
-    </testcase>
-  </testsuite>
-  <testsuite name="runBattle — cycle model (docs/05 §1)" errors="0" failures="0" skipped="0" timestamp="2026-09-20T14:04:36" time="38.72" tests="18">
-    <testcase classname="runBattle — cycle model (docs/05 §1) ends in a tie (winner null) when both sides survive 30 cycles" name="runBattle — cycle model (docs/05 §1) ends in a tie (winner null) when both sides survive 30 cycles" time="0.022">
-    </testcase>
-    <testcase classname="runBattle — cycle model (docs/05 §1) a wiped side loses; the check happens at the end of a cycle" name="runBattle — cycle model (docs/05 §1) a wiped side loses; the check happens at the end of a cycle" time="0.001">
-    </testcase>
-    <testcase classname="runBattle — cycle model (docs/05 §1) a slower unit still acts — Fighter (SPD 20) attacks once per cycle at tick 80" name="runBattle — cycle model (docs/05 §1) a slower unit still acts — Fighter (SPD 20) attacks once per cycle at tick 80" time="0.004">
-    </testcase>
-    <testcase classname="runBattle — cycle model (docs/05 §1) a faster unit acts more often — Ranger acts 3× per cycle" name="runBattle — cycle model (docs/05 §1) a faster unit acts more often — Ranger acts 3× per cycle" time="0.005">
-    </testcase>
-    <testcase classname="runBattle — cycle model (docs/05 §1) an even board of starting units does not resolve inside one cycle" name="runBattle — cycle model (docs/05 §1) an even board of starting units does not resolve inside one cycle" time="0.003">
-    </testcase>
-    <testcase classname="runBattle — abilities across star levels Fighter 0★ never emits lifesteal; 1★ and 2★ do" name="runBattle — abilities across star levels Fighter 0★ never emits lifesteal; 1★ and 2★ do" time="0.006">
-    </testcase>
-    <testcase classname="runBattle — abilities across star levels Ranger 0★ never pierces; 1★ pierces the row+1 unit" name="runBattle — abilities across star levels Ranger 0★ never pierces; 1★ pierces the row+1 unit" time="0.005">
-    </testcase>
-    <testcase classname="runBattle — abilities across star levels Healer 0★ heals a wounded ally; 1★ additionally slows" name="runBattle — abilities across star levels Healer 0★ heals a wounded ally; 1★ additionally slows" time="0.054">
-    </testcase>
-    <testcase classname="runBattle — abilities across star levels Tank 1★ Revive fires exactly once in a battle" name="runBattle — abilities across star levels Tank 1★ Revive fires exactly once in a battle" time="0.002">
-    </testcase>
-    <testcase classname="runBattle — abilities across star levels Tank 2★ Prioritize: while the Tank is alive enemies hit it, then retarget after it dies (E2)" name="runBattle — abilities across star levels Tank 2★ Prioritize: while the Tank is alive enemies hit it, then retarget after it dies (E2)" time="0.002">
-    </testcase>
-    <testcase classname="runBattle — edge cases (docs/05 §8) E1: a Healer with no reachable enemy still heals an ally" name="runBattle — edge cases (docs/05 §8) E1: a Healer with no reachable enemy still heals an ally" time="0">
-    </testcase>
-    <testcase classname="runBattle — edge cases (docs/05 §8) E4: two Ranger 2★ both target the global lowest-HP enemy" name="runBattle — edge cases (docs/05 §8) E4: two Ranger 2★ both target the global lowest-HP enemy" time="0.005">
-    </testcase>
-    <testcase classname="runBattle — edge cases (docs/05 §8) E6: a slowed unit keeps attacking, just less often" name="runBattle — edge cases (docs/05 §8) E6: a slowed unit keeps attacking, just less often" time="0.005">
-    </testcase>
-    <testcase classname="runBattle — edge cases (docs/05 §8) E7: a side with 0 units loses in cycle 1" name="runBattle — edge cases (docs/05 §8) E7: a side with 0 units loses in cycle 1" time="0.001">
-    </testcase>
-    <testcase classname="runBattle — edge cases (docs/05 §8) E3: mutual last-unit kills in one cycle end the battle in a tie" name="runBattle — edge cases (docs/05 §8) E3: mutual last-unit kills in one cycle end the battle in a tie" time="0.006">
-    </testcase>
-    <testcase classname="runBattle — determinism (FR-COMBAT-5) same input → byte-identical CombatEvent[] (input is not mutated)" name="runBattle — determinism (FR-COMBAT-5) same input → byte-identical CombatEvent[] (input is not mutated)" time="0.013">
-    </testcase>
-    <testcase classname="runBattle — determinism (FR-COMBAT-5) matches the committed golden fixture" name="runBattle — determinism (FR-COMBAT-5) matches the committed golden fixture" time="0.257">
-    </testcase>
-    <testcase classname="runBattle — determinism (FR-COMBAT-5) the seeded RNG is stable" name="runBattle — determinism (FR-COMBAT-5) the seeded RNG is stable" time="0.001">
-    </testcase>
-  </testsuite>
-  <testsuite name="PubsubBridge targeted delivery" errors="0" failures="0" skipped="0" timestamp="2026-09-20T14:04:36" time="45.502" tests="2">
-    <testcase classname="PubsubBridge targeted delivery auto-subscribes queued user sockets from the first match phase event" name="PubsubBridge targeted delivery auto-subscribes queued user sockets from the first match phase event" time="0.011">
-    </testcase>
-    <testcase classname="PubsubBridge targeted delivery broadcasts public events but keeps private shop offers player-scoped" name="PubsubBridge targeted delivery broadcasts public events but keeps private shop offers player-scoped" time="0.002">
-    </testcase>
-  </testsuite>
-  <testsuite name="MatchRuntimeAdapter WS action seam" errors="0" failures="0" skipped="0" timestamp="2026-09-20T14:04:36" time="45.622" tests="6">
-    <testcase classname="MatchRuntimeAdapter WS action seam resolves the active match and routes shop actions" name="MatchRuntimeAdapter WS action seam resolves the active match and routes shop actions" time="0.017">
-    </testcase>
-    <testcase classname="MatchRuntimeAdapter WS action seam moves an owned unit, publishes state, persists it, and dedupes retries" name="MatchRuntimeAdapter WS action seam moves an owned unit, publishes state, persists it, and dedupes retries" time="0.042">
-    </testcase>
-    <testcase classname="MatchRuntimeAdapter WS action seam rejects bench slot 8 and a unit the caller does not own" name="MatchRuntimeAdapter WS action seam rejects bench slot 8 and a unit the caller does not own" time="0.008">
-    </testcase>
-    <testcase classname="MatchRuntimeAdapter WS action seam dedupes ready actions and starts combat after two distinct players ready" name="MatchRuntimeAdapter WS action seam dedupes ready actions and starts combat after two distinct players ready" time="0.019">
-    </testcase>
-    <testcase classname="MatchRuntimeAdapter WS action seam lets a player cancel ready before the second player starts combat" name="MatchRuntimeAdapter WS action seam lets a player cancel ready before the second player starts combat" time="0.009">
-    </testcase>
-    <testcase classname="MatchRuntimeAdapter WS action seam resolves the active match for a one-argument disconnect" name="MatchRuntimeAdapter WS action seam resolves the active match for a one-argument disconnect" time="0.004">
-    </testcase>
-  </testsuite>
-  <testsuite name="WsThrottleGuard (P1-BE-01)" errors="0" failures="0" skipped="0" timestamp="2026-09-20T14:04:36" time="51.925" tests="5">
-    <testcase classname="WsThrottleGuard (P1-BE-01) ignores non-ws contexts without touching Redis" name="WsThrottleGuard (P1-BE-01) ignores non-ws contexts without touching Redis" time="0.008">
-    </testcase>
-    <testcase classname="WsThrottleGuard (P1-BE-01) allows up to the limit within 1s, then throws rate.limited" name="WsThrottleGuard (P1-BE-01) allows up to the limit within 1s, then throws rate.limited" time="0.003">
-    </testcase>
-    <testcase classname="WsThrottleGuard (P1-BE-01) is per-user and shared by separate Nest guard instances" name="WsThrottleGuard (P1-BE-01) is per-user and shared by separate Nest guard instances" time="0.002">
-    </testcase>
-    <testcase classname="WsThrottleGuard (P1-BE-01) lets the window slide after messages become older than 1s" name="WsThrottleGuard (P1-BE-01) lets the window slide after messages become older than 1s" time="0.001">
-    </testcase>
-    <testcase classname="WsThrottleGuard (P1-BE-01) falls back to 30 when WS_MSG_PER_SEC is invalid" name="WsThrottleGuard (P1-BE-01) falls back to 30 when WS_MSG_PER_SEC is invalid" time="0">
-    </testcase>
-  </testsuite>
-  <testsuite name="AllExceptionsFilter (P1-BE-01)" errors="0" failures="0" skipped="0" timestamp="2026-09-20T14:04:36" time="53.334" tests="5">
-    <testcase classname="AllExceptionsFilter (P1-BE-01) normalises a plain HttpException to { code, message }" name="AllExceptionsFilter (P1-BE-01) normalises a plain HttpException to { code, message }" time="0.015">
-    </testcase>
-    <testcase classname="AllExceptionsFilter (P1-BE-01) keeps an explicit domain code + details from the thrown response" name="AllExceptionsFilter (P1-BE-01) keeps an explicit domain code + details from the thrown response" time="0.002">
-    </testcase>
-    <testcase classname="AllExceptionsFilter (P1-BE-01) adds retryAfter + Retry-After header on 429" name="AllExceptionsFilter (P1-BE-01) adds retryAfter + Retry-After header on 429" time="0.002">
-    </testcase>
-    <testcase classname="AllExceptionsFilter (P1-BE-01) masks an unknown error as 500 { code: internal } and logs it" name="AllExceptionsFilter (P1-BE-01) masks an unknown error as 500 { code: internal } and logs it" time="0.003">
-    </testcase>
-    <testcase classname="AllExceptionsFilter (P1-BE-01) re-throws for non-http (WS) contexts so the WS filter handles them" name="AllExceptionsFilter (P1-BE-01) re-throws for non-http (WS) contexts so the WS filter handles them" time="0.018">
-    </testcase>
-  </testsuite>
-  <testsuite name="HealthController (P3-BE-03)" errors="0" failures="0" skipped="0" timestamp="2026-09-20T14:04:36" time="61.578" tests="5">
-    <testcase classname="HealthController (P3-BE-03) /health/live is always 200 and never touches deps" name="HealthController (P3-BE-03) /health/live is always 200 and never touches deps" time="0.095">
-    </testcase>
-    <testcase classname="HealthController (P3-BE-03) /health/ready returns 200 when Postgres + Redis are up" name="HealthController (P3-BE-03) /health/ready returns 200 when Postgres + Redis are up" time="0.001">
-    </testcase>
-    <testcase classname="HealthController (P3-BE-03) /health/ready throws 503 when Redis is down" name="HealthController (P3-BE-03) /health/ready throws 503 when Redis is down" time="0.011">
-    </testcase>
-    <testcase classname="HealthController (P3-BE-03) /health/ready throws 503 when Postgres is not initialised" name="HealthController (P3-BE-03) /health/ready throws 503 when Postgres is not initialised" time="0">
-    </testcase>
-    <testcase classname="HealthController (P3-BE-03) /health aggregate reports degraded when a dep is down" name="HealthController (P3-BE-03) /health aggregate reports degraded when a dep is down" time="0.105">
-    </testcase>
-  </testsuite>
-  <testsuite name="ShopService — P0-BE-14" errors="0" failures="0" skipped="0" timestamp="2026-09-20T14:04:36" time="61.696" tests="11">
-    <testcase classname="ShopService — P0-BE-14 returns identical offers for the same seed tuple" name="ShopService — P0-BE-14 returns identical offers for the same seed tuple" time="0.016">
-    </testcase>
-    <testcase classname="ShopService — P0-BE-14 matches the 40/40/15/5 pool distribution over 10,000 rolls" name="ShopService — P0-BE-14 matches the 40/40/15/5 pool distribution over 10,000 rolls" time="0.055">
-    </testcase>
-    <testcase classname="ShopService — P0-BE-14 rolls exactly five private offers for each player" name="ShopService — P0-BE-14 rolls exactly five private offers for each player" time="0.004">
-    </testcase>
-    <testcase classname="ShopService — P0-BE-14 buy deducts gold, fills the bench and a retry is a no-op" name="ShopService — P0-BE-14 buy deducts gold, fills the bench and a retry is a no-op" time="0.003">
-    </testcase>
-    <testcase classname="ShopService — P0-BE-14 buy keeps a duplicate in the bench until the player fuses it" name="ShopService — P0-BE-14 buy keeps a duplicate in the bench until the player fuses it" time="0.004">
-    </testcase>
-    <testcase classname="ShopService — P0-BE-14 sell refunds the full invested cost of a fused unit" name="ShopService — P0-BE-14 sell refunds the full invested cost of a fused unit" time="0.002">
-    </testcase>
-    <testcase classname="ShopService — P0-BE-14 allows one deterministic refresh then rejects shop.refresh_used" name="ShopService — P0-BE-14 allows one deterministic refresh then rejects shop.refresh_used" time="0.004">
-    </testcase>
-    <testcase classname="ShopService — P0-BE-14 manually fuses two same-star copies and rejects an invalid fuse" name="ShopService — P0-BE-14 manually fuses two same-star copies and rejects an invalid fuse" time="0.002">
-    </testcase>
-    <testcase classname="ShopService — P0-BE-14 fuses the dragged source into the exact target instance" name="ShopService — P0-BE-14 fuses the dragged source into the exact target instance" time="0.001">
-    </testcase>
-    <testcase classname="ShopService — P0-BE-14 never lets gold go negative" name="ShopService — P0-BE-14 never lets gold go negative" time="0">
-    </testcase>
-    <testcase classname="ShopService — P0-BE-14 atomically rejects an action when the phase flips before commit" name="ShopService — P0-BE-14 atomically rejects an action when the phase flips before commit" time="0.001">
-    </testcase>
-  </testsuite>
-  <testsuite name="WsGateway P0-BE-10 handlers" errors="0" failures="0" skipped="0" timestamp="2026-09-20T14:04:36" time="65.207" tests="16">
-    <testcase classname="WsGateway P0-BE-10 handlers routes matchmaking join and leave with the authenticated user id" name="WsGateway P0-BE-10 handlers routes matchmaking join and leave with the authenticated user id" time="0.006">
+<testsuites name="jest tests" tests="117" failures="0" errors="0" time="6.876">
+  <testsuite name="WsGateway P0-BE-10 handlers" errors="0" failures="0" skipped="0" timestamp="2026-09-20T14:18:00" time="3.91" tests="16">
+    <testcase classname="WsGateway P0-BE-10 handlers routes matchmaking join and leave with the authenticated user id" name="WsGateway P0-BE-10 handlers routes matchmaking join and leave with the authenticated user id" time="0.003">
     </testcase>
     <testcase classname="WsGateway P0-BE-10 handlers routes onShopBuy to runtime action shop:buy" name="WsGateway P0-BE-10 handlers routes onShopBuy to runtime action shop:buy" time="0">
     </testcase>
-    <testcase classname="WsGateway P0-BE-10 handlers routes onShopSell to runtime action shop:sell" name="WsGateway P0-BE-10 handlers routes onShopSell to runtime action shop:sell" time="0.001">
+    <testcase classname="WsGateway P0-BE-10 handlers routes onShopSell to runtime action shop:sell" name="WsGateway P0-BE-10 handlers routes onShopSell to runtime action shop:sell" time="0">
     </testcase>
-    <testcase classname="WsGateway P0-BE-10 handlers routes onShopRefresh to runtime action shop:refresh" name="WsGateway P0-BE-10 handlers routes onShopRefresh to runtime action shop:refresh" time="0">
+    <testcase classname="WsGateway P0-BE-10 handlers routes onShopRefresh to runtime action shop:refresh" name="WsGateway P0-BE-10 handlers routes onShopRefresh to runtime action shop:refresh" time="0.001">
     </testcase>
     <testcase classname="WsGateway P0-BE-10 handlers routes onShopFuse to runtime action shop:fuse" name="WsGateway P0-BE-10 handlers routes onShopFuse to runtime action shop:fuse" time="0.001">
     </testcase>
@@ -247,19 +19,247 @@
     </testcase>
     <testcase classname="WsGateway P0-BE-10 handlers emits domain errors with the matching clientActionId" name="WsGateway P0-BE-10 handlers emits domain errors with the matching clientActionId" time="0.001">
     </testcase>
-    <testcase classname="WsGateway P0-BE-10 handlers masks unexpected service errors" name="WsGateway P0-BE-10 handlers masks unexpected service errors" time="0">
+    <testcase classname="WsGateway P0-BE-10 handlers masks unexpected service errors" name="WsGateway P0-BE-10 handlers masks unexpected service errors" time="0.001">
     </testcase>
     <testcase classname="WsGateway P0-BE-10 handlers registers sockets and notifies runtime on a real disconnect" name="WsGateway P0-BE-10 handlers registers sockets and notifies runtime on a real disconnect" time="0.001">
     </testcase>
-    <testcase classname="WsGateway P0-BE-10 handlers does not forfeit when an older duplicate socket is intentionally replaced" name="WsGateway P0-BE-10 handlers does not forfeit when an older duplicate socket is intentionally replaced" time="0.001">
+    <testcase classname="WsGateway P0-BE-10 handlers does not forfeit when an older duplicate socket is intentionally replaced" name="WsGateway P0-BE-10 handlers does not forfeit when an older duplicate socket is intentionally replaced" time="0.002">
     </testcase>
     <testcase classname="WS error envelope maps validation exceptions and masks unexpected errors" name="WS error envelope maps validation exceptions and masks unexpected errors" time="0.001">
     </testcase>
-    <testcase classname="WS error envelope maps a WsValidationPipe failure (WsException) to invalid_payload" name="WS error envelope maps a WsValidationPipe failure (WsException) to invalid_payload" time="0">
+    <testcase classname="WS error envelope maps a WsValidationPipe failure (WsException) to invalid_payload" name="WS error envelope maps a WsValidationPipe failure (WsException) to invalid_payload" time="0.001">
     </testcase>
-    <testcase classname="WsGameExceptionFilter → game:error (P1-BE-02) emits game:error{code:invalid_payload} when the validation pipe rejects a payload" name="WsGameExceptionFilter → game:error (P1-BE-02) emits game:error{code:invalid_payload} when the validation pipe rejects a payload" time="0">
+    <testcase classname="WsGameExceptionFilter → game:error (P1-BE-02) emits game:error{code:invalid_payload} when the validation pipe rejects a payload" name="WsGameExceptionFilter → game:error (P1-BE-02) emits game:error{code:invalid_payload} when the validation pipe rejects a payload" time="0.001">
     </testcase>
     <testcase classname="WsGameExceptionFilter → game:error (P1-BE-02) masks an unexpected handler throw as game:error{code:internal}" name="WsGameExceptionFilter → game:error (P1-BE-02) masks an unexpected handler throw as game:error{code:internal}" time="0.001">
+    </testcase>
+  </testsuite>
+  <testsuite name="ShopService — P0-BE-14" errors="0" failures="0" skipped="0" timestamp="2026-09-20T14:18:04" time="0.812" tests="11">
+    <testcase classname="ShopService — P0-BE-14 returns identical offers for the same seed tuple" name="ShopService — P0-BE-14 returns identical offers for the same seed tuple" time="0.003">
+    </testcase>
+    <testcase classname="ShopService — P0-BE-14 matches the 40/40/15/5 pool distribution over 10,000 rolls" name="ShopService — P0-BE-14 matches the 40/40/15/5 pool distribution over 10,000 rolls" time="0.044">
+    </testcase>
+    <testcase classname="ShopService — P0-BE-14 rolls exactly five private offers for each player" name="ShopService — P0-BE-14 rolls exactly five private offers for each player" time="0.002">
+    </testcase>
+    <testcase classname="ShopService — P0-BE-14 buy deducts gold, fills the bench and a retry is a no-op" name="ShopService — P0-BE-14 buy deducts gold, fills the bench and a retry is a no-op" time="0.001">
+    </testcase>
+    <testcase classname="ShopService — P0-BE-14 buy keeps a duplicate in the bench until the player fuses it" name="ShopService — P0-BE-14 buy keeps a duplicate in the bench until the player fuses it" time="0.001">
+    </testcase>
+    <testcase classname="ShopService — P0-BE-14 sell refunds the full invested cost of a fused unit" name="ShopService — P0-BE-14 sell refunds the full invested cost of a fused unit" time="0">
+    </testcase>
+    <testcase classname="ShopService — P0-BE-14 allows one deterministic refresh then rejects shop.refresh_used" name="ShopService — P0-BE-14 allows one deterministic refresh then rejects shop.refresh_used" time="0.001">
+    </testcase>
+    <testcase classname="ShopService — P0-BE-14 manually fuses two same-star copies and rejects an invalid fuse" name="ShopService — P0-BE-14 manually fuses two same-star copies and rejects an invalid fuse" time="0.001">
+    </testcase>
+    <testcase classname="ShopService — P0-BE-14 fuses the dragged source into the exact target instance" name="ShopService — P0-BE-14 fuses the dragged source into the exact target instance" time="0">
+    </testcase>
+    <testcase classname="ShopService — P0-BE-14 never lets gold go negative" name="ShopService — P0-BE-14 never lets gold go negative" time="0.001">
+    </testcase>
+    <testcase classname="ShopService — P0-BE-14 atomically rejects an action when the phase flips before commit" name="ShopService — P0-BE-14 atomically rejects an action when the phase flips before commit" time="0">
+    </testcase>
+  </testsuite>
+  <testsuite name="HealthController (P3-BE-03)" errors="0" failures="0" skipped="0" timestamp="2026-09-20T14:18:05" time="0.332" tests="5">
+    <testcase classname="HealthController (P3-BE-03) /health/live is always 200 and never touches deps" name="HealthController (P3-BE-03) /health/live is always 200 and never touches deps" time="0.001">
+    </testcase>
+    <testcase classname="HealthController (P3-BE-03) /health/ready returns 200 when Postgres + Redis are up" name="HealthController (P3-BE-03) /health/ready returns 200 when Postgres + Redis are up" time="0.001">
+    </testcase>
+    <testcase classname="HealthController (P3-BE-03) /health/ready throws 503 when Redis is down" name="HealthController (P3-BE-03) /health/ready throws 503 when Redis is down" time="0.001">
+    </testcase>
+    <testcase classname="HealthController (P3-BE-03) /health/ready throws 503 when Postgres is not initialised" name="HealthController (P3-BE-03) /health/ready throws 503 when Postgres is not initialised" time="0.001">
+    </testcase>
+    <testcase classname="HealthController (P3-BE-03) /health aggregate reports degraded when a dep is down" name="HealthController (P3-BE-03) /health aggregate reports degraded when a dep is down" time="0">
+    </testcase>
+  </testsuite>
+  <testsuite name="AllExceptionsFilter (P1-BE-01)" errors="0" failures="0" skipped="0" timestamp="2026-09-20T14:18:05" time="0.148" tests="5">
+    <testcase classname="AllExceptionsFilter (P1-BE-01) normalises a plain HttpException to { code, message }" name="AllExceptionsFilter (P1-BE-01) normalises a plain HttpException to { code, message }" time="0.001">
+    </testcase>
+    <testcase classname="AllExceptionsFilter (P1-BE-01) keeps an explicit domain code + details from the thrown response" name="AllExceptionsFilter (P1-BE-01) keeps an explicit domain code + details from the thrown response" time="0">
+    </testcase>
+    <testcase classname="AllExceptionsFilter (P1-BE-01) adds retryAfter + Retry-After header on 429" name="AllExceptionsFilter (P1-BE-01) adds retryAfter + Retry-After header on 429" time="0">
+    </testcase>
+    <testcase classname="AllExceptionsFilter (P1-BE-01) masks an unknown error as 500 { code: internal } and logs it" name="AllExceptionsFilter (P1-BE-01) masks an unknown error as 500 { code: internal } and logs it" time="0">
+    </testcase>
+    <testcase classname="AllExceptionsFilter (P1-BE-01) re-throws for non-http (WS) contexts so the WS filter handles them" name="AllExceptionsFilter (P1-BE-01) re-throws for non-http (WS) contexts so the WS filter handles them" time="0.007">
+    </testcase>
+  </testsuite>
+  <testsuite name="WsThrottleGuard (P1-BE-01)" errors="0" failures="0" skipped="0" timestamp="2026-09-20T14:18:06" time="0.291" tests="5">
+    <testcase classname="WsThrottleGuard (P1-BE-01) ignores non-ws contexts without touching Redis" name="WsThrottleGuard (P1-BE-01) ignores non-ws contexts without touching Redis" time="0.001">
+    </testcase>
+    <testcase classname="WsThrottleGuard (P1-BE-01) allows up to the limit within 1s, then throws rate.limited" name="WsThrottleGuard (P1-BE-01) allows up to the limit within 1s, then throws rate.limited" time="0.001">
+    </testcase>
+    <testcase classname="WsThrottleGuard (P1-BE-01) is per-user and shared by separate Nest guard instances" name="WsThrottleGuard (P1-BE-01) is per-user and shared by separate Nest guard instances" time="0">
+    </testcase>
+    <testcase classname="WsThrottleGuard (P1-BE-01) lets the window slide after messages become older than 1s" name="WsThrottleGuard (P1-BE-01) lets the window slide after messages become older than 1s" time="0">
+    </testcase>
+    <testcase classname="WsThrottleGuard (P1-BE-01) falls back to 30 when WS_MSG_PER_SEC is invalid" name="WsThrottleGuard (P1-BE-01) falls back to 30 when WS_MSG_PER_SEC is invalid" time="0">
+    </testcase>
+  </testsuite>
+  <testsuite name="MatchRuntimeAdapter WS action seam" errors="0" failures="0" skipped="0" timestamp="2026-09-20T14:18:06" time="0.3" tests="6">
+    <testcase classname="MatchRuntimeAdapter WS action seam resolves the active match and routes shop actions" name="MatchRuntimeAdapter WS action seam resolves the active match and routes shop actions" time="0.004">
+    </testcase>
+    <testcase classname="MatchRuntimeAdapter WS action seam moves an owned unit, publishes state, persists it, and dedupes retries" name="MatchRuntimeAdapter WS action seam moves an owned unit, publishes state, persists it, and dedupes retries" time="0.029">
+    </testcase>
+    <testcase classname="MatchRuntimeAdapter WS action seam rejects bench slot 8 and a unit the caller does not own" name="MatchRuntimeAdapter WS action seam rejects bench slot 8 and a unit the caller does not own" time="0.006">
+    </testcase>
+    <testcase classname="MatchRuntimeAdapter WS action seam dedupes ready actions and starts combat after two distinct players ready" name="MatchRuntimeAdapter WS action seam dedupes ready actions and starts combat after two distinct players ready" time="0.015">
+    </testcase>
+    <testcase classname="MatchRuntimeAdapter WS action seam lets a player cancel ready before the second player starts combat" name="MatchRuntimeAdapter WS action seam lets a player cancel ready before the second player starts combat" time="0.01">
+    </testcase>
+    <testcase classname="MatchRuntimeAdapter WS action seam resolves the active match for a one-argument disconnect" name="MatchRuntimeAdapter WS action seam resolves the active match for a one-argument disconnect" time="0.003">
+    </testcase>
+  </testsuite>
+  <testsuite name="PubsubBridge targeted delivery" errors="0" failures="0" skipped="0" timestamp="2026-09-20T14:18:06" time="0.131" tests="2">
+    <testcase classname="PubsubBridge targeted delivery auto-subscribes queued user sockets from the first match phase event" name="PubsubBridge targeted delivery auto-subscribes queued user sockets from the first match phase event" time="0.001">
+    </testcase>
+    <testcase classname="PubsubBridge targeted delivery broadcasts public events but keeps private shop offers player-scoped" name="PubsubBridge targeted delivery broadcasts public events but keeps private shop offers player-scoped" time="0">
+    </testcase>
+  </testsuite>
+  <testsuite name="runBattle — cycle model (docs/05 §1)" errors="0" failures="0" skipped="0" timestamp="2026-09-20T14:18:06" time="0.203" tests="18">
+    <testcase classname="runBattle — cycle model (docs/05 §1) ends in a tie (winner null) when both sides survive 30 cycles" name="runBattle — cycle model (docs/05 §1) ends in a tie (winner null) when both sides survive 30 cycles" time="0.005">
+    </testcase>
+    <testcase classname="runBattle — cycle model (docs/05 §1) a wiped side loses; the check happens at the end of a cycle" name="runBattle — cycle model (docs/05 §1) a wiped side loses; the check happens at the end of a cycle" time="0">
+    </testcase>
+    <testcase classname="runBattle — cycle model (docs/05 §1) a slower unit still acts — Fighter (SPD 20) attacks once per cycle at tick 80" name="runBattle — cycle model (docs/05 §1) a slower unit still acts — Fighter (SPD 20) attacks once per cycle at tick 80" time="0.001">
+    </testcase>
+    <testcase classname="runBattle — cycle model (docs/05 §1) a faster unit acts more often — Ranger acts 3× per cycle" name="runBattle — cycle model (docs/05 §1) a faster unit acts more often — Ranger acts 3× per cycle" time="0.001">
+    </testcase>
+    <testcase classname="runBattle — cycle model (docs/05 §1) an even board of starting units does not resolve inside one cycle" name="runBattle — cycle model (docs/05 §1) an even board of starting units does not resolve inside one cycle" time="0.001">
+    </testcase>
+    <testcase classname="runBattle — abilities across star levels Fighter 0★ never emits lifesteal; 1★ and 2★ do" name="runBattle — abilities across star levels Fighter 0★ never emits lifesteal; 1★ and 2★ do" time="0.002">
+    </testcase>
+    <testcase classname="runBattle — abilities across star levels Ranger 0★ never pierces; 1★ pierces the row+1 unit" name="runBattle — abilities across star levels Ranger 0★ never pierces; 1★ pierces the row+1 unit" time="0.001">
+    </testcase>
+    <testcase classname="runBattle — abilities across star levels Healer 0★ heals a wounded ally; 1★ additionally slows" name="runBattle — abilities across star levels Healer 0★ heals a wounded ally; 1★ additionally slows" time="0.011">
+    </testcase>
+    <testcase classname="runBattle — abilities across star levels Tank 1★ Revive fires exactly once in a battle" name="runBattle — abilities across star levels Tank 1★ Revive fires exactly once in a battle" time="0.001">
+    </testcase>
+    <testcase classname="runBattle — abilities across star levels Tank 2★ Prioritize: while the Tank is alive enemies hit it, then retarget after it dies (E2)" name="runBattle — abilities across star levels Tank 2★ Prioritize: while the Tank is alive enemies hit it, then retarget after it dies (E2)" time="0.002">
+    </testcase>
+    <testcase classname="runBattle — edge cases (docs/05 §8) E1: a Healer with no reachable enemy still heals an ally" name="runBattle — edge cases (docs/05 §8) E1: a Healer with no reachable enemy still heals an ally" time="0.001">
+    </testcase>
+    <testcase classname="runBattle — edge cases (docs/05 §8) E4: two Ranger 2★ both target the global lowest-HP enemy" name="runBattle — edge cases (docs/05 §8) E4: two Ranger 2★ both target the global lowest-HP enemy" time="0.003">
+    </testcase>
+    <testcase classname="runBattle — edge cases (docs/05 §8) E6: a slowed unit keeps attacking, just less often" name="runBattle — edge cases (docs/05 §8) E6: a slowed unit keeps attacking, just less often" time="0.005">
+    </testcase>
+    <testcase classname="runBattle — edge cases (docs/05 §8) E7: a side with 0 units loses in cycle 1" name="runBattle — edge cases (docs/05 §8) E7: a side with 0 units loses in cycle 1" time="0">
+    </testcase>
+    <testcase classname="runBattle — edge cases (docs/05 §8) E3: mutual last-unit kills in one cycle end the battle in a tie" name="runBattle — edge cases (docs/05 §8) E3: mutual last-unit kills in one cycle end the battle in a tie" time="0.004">
+    </testcase>
+    <testcase classname="runBattle — determinism (FR-COMBAT-5) same input → byte-identical CombatEvent[] (input is not mutated)" name="runBattle — determinism (FR-COMBAT-5) same input → byte-identical CombatEvent[] (input is not mutated)" time="0.014">
+    </testcase>
+    <testcase classname="runBattle — determinism (FR-COMBAT-5) matches the committed golden fixture" name="runBattle — determinism (FR-COMBAT-5) matches the committed golden fixture" time="0.102">
+    </testcase>
+    <testcase classname="runBattle — determinism (FR-COMBAT-5) the seeded RNG is stable" name="runBattle — determinism (FR-COMBAT-5) the seeded RNG is stable" time="0.001">
+    </testcase>
+  </testsuite>
+  <testsuite name="seeded-rng" errors="0" failures="0" skipped="0" timestamp="2026-09-20T14:18:07" time="0.071" tests="5">
+    <testcase classname="seeded-rng rngInt stays within the inclusive range and is seed-stable" name="seeded-rng rngInt stays within the inclusive range and is seed-stable" time="0.026">
+    </testcase>
+    <testcase classname="seeded-rng rngInt with min === max always returns that value" name="seeded-rng rngInt with min === max always returns that value" time="0.001">
+    </testcase>
+    <testcase classname="type helpers slotToPosition maps row-major slots to {row, col}" name="type helpers slotToPosition maps row-major slots to {row, col}" time="0.001">
+    </testcase>
+    <testcase classname="type helpers enemySideOf flips the side" name="type helpers enemySideOf flips the side" time="0.001">
+    </testcase>
+    <testcase classname="type helpers unitsOf returns the requested side" name="type helpers unitsOf returns the requested side" time="0">
+    </testcase>
+  </testsuite>
+  <testsuite name="applyDamage (docs/05 §3)" errors="0" failures="0" skipped="0" timestamp="2026-09-20T14:18:07" time="0.039" tests="5">
+    <testcase classname="applyDamage (docs/05 §3) subtracts HP and emits only an attack event on a non-lethal hit" name="applyDamage (docs/05 §3) subtracts HP and emits only an attack event on a non-lethal hit" time="0.001">
+    </testcase>
+    <testcase classname="applyDamage (docs/05 §3) clamps HP to 0, marks dead, and emits death BEFORE attack on a lethal hit" name="applyDamage (docs/05 §3) clamps HP to 0, marks dead, and emits death BEFORE attack on a lethal hit" time="0.001">
+    </testcase>
+    <testcase classname="applyDamage (docs/05 §3) Tank 1★ Revive: first lethal hit revives at floor(maxHp * 0.5), no attack event" name="applyDamage (docs/05 §3) Tank 1★ Revive: first lethal hit revives at floor(maxHp * 0.5), no attack event" time="0">
+    </testcase>
+    <testcase classname="applyDamage (docs/05 §3) Tank 1★ second lethal hit in the same battle kills normally" name="applyDamage (docs/05 §3) Tank 1★ second lethal hit in the same battle kills normally" time="0">
+    </testcase>
+    <testcase classname="applyDamage (docs/05 §3) Tank 0★ has no Revive — dies on the first lethal hit" name="applyDamage (docs/05 §3) Tank 0★ has no Revive — dies on the first lethal hit" time="0.001">
+    </testcase>
+  </testsuite>
+  <testsuite name="Fighter Lifesteal (docs/05 §4.1)" errors="0" failures="0" skipped="0" timestamp="2026-09-20T14:18:07" time="0.04" tests="12">
+    <testcase classname="Fighter Lifesteal (docs/05 §4.1) 1★ heals floor(dmg * 0.05)" name="Fighter Lifesteal (docs/05 §4.1) 1★ heals floor(dmg * 0.05)" time="0.001">
+    </testcase>
+    <testcase classname="Fighter Lifesteal (docs/05 §4.1) 2★ heals floor(dmg * 0.10)" name="Fighter Lifesteal (docs/05 §4.1) 2★ heals floor(dmg * 0.10)" time="0">
+    </testcase>
+    <testcase classname="Fighter Lifesteal (docs/05 §4.1) E15: overheal is capped at maxHp" name="Fighter Lifesteal (docs/05 §4.1) E15: overheal is capped at maxHp" time="0.001">
+    </testcase>
+    <testcase classname="Ranger Pierce (docs/05 §4.2) spills 10% of the primary damage to the alive unit one row behind (row+1)" name="Ranger Pierce (docs/05 §4.2) spills 10% of the primary damage to the alive unit one row behind (row+1)" time="0.001">
+    </testcase>
+    <testcase classname="Ranger Pierce (docs/05 §4.2) omits the pierce when row+1 is empty — it does NOT skip to row+2" name="Ranger Pierce (docs/05 §4.2) omits the pierce when row+1 is empty — it does NOT skip to row+2" time="0">
+    </testcase>
+    <testcase classname="Ranger Pierce (docs/05 §4.2) a lethal pierce kills the unit behind (death event, no revive)" name="Ranger Pierce (docs/05 §4.2) a lethal pierce kills the unit behind (death event, no revive)" time="0">
+    </testcase>
+    <testcase classname="Healer support (docs/05 §4.4) 0★/1★ heals the lowest-HP ally (self included) for up to 10" name="Healer support (docs/05 §4.4) 0★/1★ heals the lowest-HP ally (self included) for up to 10" time="0.001">
+    </testcase>
+    <testcase classname="Healer support (docs/05 §4.4) 2★ heals the two lowest-HP allies" name="Healer support (docs/05 §4.4) 2★ heals the two lowest-HP allies" time="0.001">
+    </testcase>
+    <testcase classname="Healer support (docs/05 §4.4) E13: healing a full-HP roster emits no heal event" name="Healer support (docs/05 §4.4) E13: healing a full-HP roster emits no heal event" time="0">
+    </testcase>
+    <testcase classname="Healer support (docs/05 §4.4) E14: a 2★ Healer with only itself alive heals once" name="Healer support (docs/05 §4.4) E14: a 2★ Healer with only itself alive heals once" time="0.001">
+    </testcase>
+    <testcase classname="Healer Slow (docs/05 §4.4) sets the target effectiveSpd to round(baseSpd * 0.7) and emits slow" name="Healer Slow (docs/05 §4.4) sets the target effectiveSpd to round(baseSpd * 0.7) and emits slow" time="0">
+    </testcase>
+    <testcase classname="Healer Slow (docs/05 §4.4) clearHealerSlows restores the base SPD for units this Healer slowed" name="Healer Slow (docs/05 §4.4) clearHealerSlows restores the base SPD for units this Healer slowed" time="0.001">
+    </testcase>
+  </testsuite>
+  <testsuite name="pickTarget — 3×3 board (docs/05 §2)" errors="0" failures="0" skipped="0" timestamp="2026-09-20T14:18:07" time="0.05" tests="11">
+    <testcase classname="pickTarget — 3×3 board (docs/05 §2) returns null when the enemy team is empty" name="pickTarget — 3×3 board (docs/05 §2) returns null when the enemy team is empty" time="0.001">
+    </testcase>
+    <testcase classname="pickTarget — 3×3 board (docs/05 §2) prefers the front row in the same lane" name="pickTarget — 3×3 board (docs/05 §2) prefers the front row in the same lane" time="0.001">
+    </testcase>
+    <testcase classname="pickTarget — 3×3 board (docs/05 §2) falls to the middle row when the front of the lane is empty" name="pickTarget — 3×3 board (docs/05 §2) falls to the middle row when the front of the lane is empty" time="0">
+    </testcase>
+    <testcase classname="pickTarget — 3×3 board (docs/05 §2) falls to the back row when front and middle of the lane are empty" name="pickTarget — 3×3 board (docs/05 §2) falls to the back row when front and middle of the lane are empty" time="0">
+    </testcase>
+    <testcase classname="pickTarget — 3×3 board (docs/05 §2) cross-lane fallback checks each col fully (front→mid→back) before the next col" name="pickTarget — 3×3 board (docs/05 §2) cross-lane fallback checks each col fully (front→mid→back) before the next col" time="0.001">
+    </testcase>
+    <testcase classname="pickTarget — 3×3 board (docs/05 §2) Tank 2★ Prioritize: a fighter targets the enemy 2★ Tank over the front row" name="pickTarget — 3×3 board (docs/05 §2) Tank 2★ Prioritize: a fighter targets the enemy 2★ Tank over the front row" time="0.001">
+    </testcase>
+    <testcase classname="pickTarget — 3×3 board (docs/05 §2) Tank 2★ Prioritize does NOT steer a Ranger" name="pickTarget — 3×3 board (docs/05 §2) Tank 2★ Prioritize does NOT steer a Ranger" time="0">
+    </testcase>
+    <testcase classname="pickTarget — 3×3 board (docs/05 §2) Ranger 2★ Global: lowest HP anywhere on the 9-slot team, ignoring lanes" name="pickTarget — 3×3 board (docs/05 §2) Ranger 2★ Global: lowest HP anywhere on the 9-slot team, ignoring lanes" time="0">
+    </testcase>
+    <testcase classname="pickTarget — 3×3 board (docs/05 §2) Fighter tie-break: lowest col, then lowest row, then instanceId" name="pickTarget — 3×3 board (docs/05 §2) Fighter tie-break: lowest col, then lowest row, then instanceId" time="0.001">
+    </testcase>
+    <testcase classname="pickTarget — 3×3 board (docs/05 §2) Ranger 0★/1★ picks the lowest-HP unit among the lane candidates" name="pickTarget — 3×3 board (docs/05 §2) Ranger 0★/1★ picks the lowest-HP unit among the lane candidates" time="0.001">
+    </testcase>
+    <testcase classname="pickTarget — 3×3 board (docs/05 §2) skips dead enemies" name="pickTarget — 3×3 board (docs/05 §2) skips dead enemies" time="0.001">
+    </testcase>
+  </testsuite>
+  <testsuite name="combat timing" errors="0" failures="0" skipped="0" timestamp="2026-09-20T14:18:07" time="0.044" tests="3">
+    <testcase classname="combat timing keeps the result alive beyond the fallback worker deadline" name="combat timing keeps the result alive beyond the fallback worker deadline" time="0">
+    </testcase>
+    <testcase classname="combat timing allows an explicit short local-test timeout" name="combat timing allows an explicit short local-test timeout" time="0">
+    </testcase>
+    <testcase classname="combat timing uses the real playback budget for missing or invalid configuration" name="combat timing uses the real playback budget for missing or invalid configuration" time="0">
+    </testcase>
+  </testsuite>
+  <testsuite name="phase_flip.lua — atomic CAS phase transition (R6/R10)" errors="0" failures="0" skipped="0" timestamp="2026-09-20T14:18:07" time="0.131" tests="13">
+    <testcase classname="phase_flip.lua — atomic CAS phase transition (R6/R10) flips when the expected phase matches and tags the lock on entering battle" name="phase_flip.lua — atomic CAS phase transition (R6/R10) flips when the expected phase matches and tags the lock on entering battle" time="0.009">
+    </testcase>
+    <testcase classname="phase_flip.lua — atomic CAS phase transition (R6/R10) is a no-op and returns 0 when the current phase does not match (lost CAS)" name="phase_flip.lua — atomic CAS phase transition (R6/R10) is a no-op and returns 0 when the current phase does not match (lost CAS)" time="0.003">
+    </testcase>
+    <testcase classname="phase_flip.lua — atomic CAS phase transition (R6/R10) does not tag combatLockInstance for a non-battle transition" name="phase_flip.lua — atomic CAS phase transition (R6/R10) does not tag combatLockInstance for a non-battle transition" time="0.007">
+    </testcase>
+    <testcase classname="combat_done.lua — idempotent per-player ack (R12) counts distinct acks and ignores a repeat from the same player" name="combat_done.lua — idempotent per-player ack (R12) counts distinct acks and ignores a repeat from the same player" time="0.007">
+    </testcase>
+    <testcase classname="combat_done.lua — idempotent per-player ack (R12) keeps the FIRST ack timestamp for a player" name="combat_done.lua — idempotent per-player ack (R12) keeps the FIRST ack timestamp for a player" time="0.005">
+    </testcase>
+    <testcase classname="combat_done.lua — idempotent per-player ack (R12) sets a TTL on the hash" name="combat_done.lua — idempotent per-player ack (R12) sets a TTL on the hash" time="0.003">
+    </testcase>
+    <testcase classname="action_log.lua — idempotent action write (R7) records a new clientActionId once, rejects the duplicate" name="action_log.lua — idempotent action write (R7) records a new clientActionId once, rejects the duplicate" time="0.008">
+    </testcase>
+    <testcase classname="action_log.lua — idempotent action write (R7) keeps the first timestamp and sets a TTL" name="action_log.lua — idempotent action write (R7) keeps the first timestamp and sets a TTL" time="0.005">
+    </testcase>
+    <testcase classname="action_log.lua — idempotent action write (R7) atomically validates and commits a runtime-only action" name="action_log.lua — idempotent action write (R7) atomically validates and commits a runtime-only action" time="0.006">
+    </testcase>
+    <testcase classname="match_pair.lua — atomic FIFO pop (R4/R5) returns the two longest-waiting members and removes them" name="match_pair.lua — atomic FIFO pop (R4/R5) returns the two longest-waiting members and removes them" time="0.005">
+    </testcase>
+    <testcase classname="match_pair.lua — atomic FIFO pop (R4/R5) returns an empty array and touches nothing with fewer than two members" name="match_pair.lua — atomic FIFO pop (R4/R5) returns an empty array and touches nothing with fewer than two members" time="0.004">
+    </testcase>
+    <testcase classname="match_pair.lua — atomic FIFO pop (R4/R5) is FIFO by score (join timestamp), not insertion order" name="match_pair.lua — atomic FIFO pop (R4/R5) is FIFO by score (join timestamp), not insertion order" time="0.004">
+    </testcase>
+    <testcase classname="ws_rate_limit.lua — shared sliding-window counter (P1-BE-01) counts every hit atomically and expires its bookkeeping keys" name="ws_rate_limit.lua — shared sliding-window counter (P1-BE-01) counts every hit atomically and expires its bookkeeping keys" time="0.01">
     </testcase>
   </testsuite>
 </testsuites>

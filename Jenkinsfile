@@ -36,7 +36,7 @@ pipeline {
         stage('Unit Test') {
             steps {
                 dir('backend') {
-                    sh 'npm test -- --coverage'
+                    sh 'npm test -- --coverage --runInBand'
                 }
             }
         }
