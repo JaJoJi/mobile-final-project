@@ -44,6 +44,8 @@ pipeline {
         stage('SonarQube Analysis') {
             steps {
                 script {
+                    sh 'apk add --no-cache openjdk17-jre'
+
                     def scannerHome = tool 'SonarScanner'
 
                     withSonarQubeEnv('SonarQube') {
