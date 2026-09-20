@@ -36,6 +36,22 @@ double? _tileSize(GlobalKey boardKey) {
   return (board.size.width - 2 * AppSpacing.xs) / 3;
 }
 
+UnitSnapshot? _attackerSnapshot(AttackEvent event) {
+  final snapshots = event.unitStates;
+  if (snapshots == null) return null;
+
+  for (final snapshot in snapshots) {
+    if (snapshot.instanceId == event.attacker) return snapshot;
+  }
+  for (final snapshot in snapshots) {
+    if (snapshot.side == event.attackerSide &&
+        snapshot.slot == event.attackerSlot) {
+      return snapshot;
+    }
+  }
+  return null;
+}
+
 /// Center of board [slot], expressed in [ancestor]'s local coordinate
 /// space instead of the screen's global space. Resolving relative to a
 /// shared ancestor (a single `localToGlobal(point, ancestor: ...)` hop)
@@ -186,6 +202,7 @@ class CombatEffectsOverlay extends StatelessWidget {
         attackerSide == mySide ? myBoardKey : opponentBoardKey,
       );
       if (size == null) return null;
+      final attackerSnapshot = _attackerSnapshot(event);
       return Stack(
         children: [
           Positioned(
@@ -199,12 +216,16 @@ class CombatEffectsOverlay extends StatelessWidget {
                 child: RepaintBoundary(
                   child: UnitAvatar(
                     unitId: attackerUnitId.toJson(),
-                    star: event.attackerStar ?? 0,
+                    star: attackerSnapshot?.star ?? event.attackerStar ?? 0,
                     variant: UnitAvatarVariant.replay,
                     side:
                         attackerSide == mySide ? UnitSide.ally : UnitSide.enemy,
-                    hp: 1,
-                    maxHp: 1,
+                    // The travelling sprite replaces the copy on its home
+                    // tile, so it must carry the same health state. A legacy
+                    // event without snapshots omits the bar instead of
+                    // briefly lying that the unit is at full health.
+                    hp: attackerSnapshot?.hp,
+                    maxHp: attackerSnapshot?.maxHp,
                     expand: true,
                   ),
                 ),

@@ -1,4 +1,5 @@
 import 'package:auto_chess_mobile/core/theme/app_theme.dart';
+import 'package:auto_chess_mobile/core/widgets/health_bar.dart';
 import 'package:auto_chess_mobile/core/widgets/unit_avatar.dart';
 import 'package:auto_chess_mobile/features/match/battle/combat_effects_math.dart';
 import 'package:auto_chess_mobile/features/match/battle/combat_effects_overlay.dart';
@@ -119,6 +120,62 @@ void main() {
     forcePortrait(tester);
     await tester.pumpWidget(buildTree(0.5));
     expect(find.byKey(const ValueKey('lunge-traveler')), findsOneWidget);
+  });
+
+  testWidgets('melee traveler keeps the attacker current health',
+      (tester) async {
+    forcePortrait(tester);
+    const damagedAttacker = AttackEvent(
+      cycle: 1,
+      tick: 1,
+      attacker: 'wounded-fighter',
+      target: 'target',
+      damage: 10,
+      targetHpAfter: 90,
+      attackerSide: MatchSide.p1,
+      attackerSlot: 0,
+      attackerUnitId: UnitId.fighter,
+      attackerStar: 1,
+      targetSide: MatchSide.p2,
+      targetSlot: 4,
+      unitStates: [
+        UnitSnapshot(
+          instanceId: 'wounded-fighter',
+          unitId: UnitId.fighter,
+          star: 1,
+          hp: 37,
+          maxHp: 100,
+          slot: 0,
+          side: MatchSide.p1,
+          alive: true,
+        ),
+      ],
+    );
+    await tester.pumpWidget(
+      buildTree(
+        0.5,
+        eventsBatch: const CombatEventBatch(
+          matchId: 'health-test',
+          round: 1,
+          cycleCount: 1,
+          endedAt: 0,
+          events: [damagedAttacker],
+        ),
+      ),
+    );
+
+    final traveler = find.descendant(
+      of: find.byKey(const ValueKey('lunge-traveler')),
+      matching: find.byType(UnitAvatar),
+    );
+    final avatar = tester.widget<UnitAvatar>(traveler);
+    expect(avatar.hp, 37);
+    expect(avatar.maxHp, 100);
+    final healthBar = tester.widget<HealthBar>(
+      find.descendant(of: traveler, matching: find.byType(HealthBar)),
+    );
+    expect(healthBar.current, 37);
+    expect(healthBar.max, 100);
   });
 
   testWidgets('fighter and tank retain resting size and anchor at every tier',
