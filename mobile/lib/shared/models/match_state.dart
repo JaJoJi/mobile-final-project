@@ -22,6 +22,7 @@ enum MatchSide {
 /// The caller's own roster: board (9 slots), bench (8 slots), gold, hp.
 class PlayerRoster {
   const PlayerRoster({
+    this.username,
     required this.board,
     required this.bench,
     required this.gold,
@@ -30,6 +31,7 @@ class PlayerRoster {
 
   /// 9 slots, row-major (`col = slot % 3`, `row = slot ~/ 3`). `null` = empty.
   final List<Unit?> board;
+  final String? username;
 
   /// 8 slots. `null` = empty.
   final List<Unit?> bench;
@@ -37,6 +39,7 @@ class PlayerRoster {
   final int hp;
 
   factory PlayerRoster.fromJson(Map<String, dynamic> j) => PlayerRoster(
+        username: j['username'] as String?,
         board: Unit.slotsFromJson(j['board'], 9),
         bench: Unit.slotsFromJson(j['bench'], 8),
         gold: (j['gold'] as num?)?.toInt() ?? 0,
@@ -60,6 +63,7 @@ class OpponentUnit {
 /// What the caller is allowed to know about the opponent.
 class OpponentView {
   const OpponentView({
+    this.username,
     required this.gold,
     required this.hp,
     required this.scoutRound,
@@ -68,6 +72,7 @@ class OpponentView {
   });
 
   final int gold;
+  final String? username;
   final int hp;
 
   /// The completed round that [boardSummary] was captured from.
@@ -84,6 +89,7 @@ class OpponentView {
   factory OpponentView.fromJson(Map<String, dynamic> j) {
     final raw = (j['boardSummary'] as List<dynamic>?) ?? const [];
     return OpponentView(
+      username: j['username'] as String?,
       gold: (j['gold'] as num?)?.toInt() ?? 0,
       hp: (j['hp'] as num?)?.toInt() ?? 0,
       scoutRound: (j['scoutRound'] as num?)?.toInt(),

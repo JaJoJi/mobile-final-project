@@ -72,13 +72,19 @@ export class MatchRuntimeAdapter {
   /** Creates the shared Redis runtime and starts round one's 40 s timer. */
   async initializeMatch(match: Match): Promise<void> {
     const key = runtimeKey(match.id);
-    await this.redis.client.hset(key, initialRuntimeHash(match));
+    const names = await this.matches.usernamesForPlayers(
+      match.player1Id,
+      match.player2Id,
+    );
+    await this.redis.client.hset(key, initialRuntimeHash(match, names));
     await this.redis.client.expire(key, RUNTIME_TTL_SECONDS);
     await this.queue.schedulePhaseStart(match.id, 1, SHOP_PHASE_MS);
     const runtime: MatchRuntimeState = {
       matchId: match.id,
       player1Id: match.player1Id,
       player2Id: match.player2Id,
+      player1Name: names.player1Name,
+      player2Name: names.player2Name,
       matchSeed: match.matchSeed,
       phase: 'shop_place',
       round: 1,
@@ -651,10 +657,25 @@ export class MatchRuntimeAdapter {
   }
 
   private async findRuntime(matchId: string): Promise<MatchRuntimeState | null> {
-    return parseRuntimeHash(
-      matchId,
-      await this.redis.client.hgetall(runtimeKey(matchId)),
-    );
+    const key = runtimeKey(matchId);
+    const hash = await this.redis.client.hgetall(key);
+    const runtime = parseRuntimeHash(matchId, hash);
+    if (!runtime) return null;
+
+    // Runtime hashes created before player names were added have no name
+    // fields. Hydrate those active matches once instead of showing the
+    // client-facing fallbacks ("คุณ" / "คู่แข่ง") for the rest of the game.
+    if (!hash.player1Name || !hash.player2Name) {
+      const names = await this.matches.usernamesForPlayers(
+        runtime.player1Id,
+        runtime.player2Id,
+      );
+      runtime.player1Name = names.player1Name;
+      runtime.player2Name = names.player2Name;
+      await this.redis.client.hset(key, names);
+    }
+
+    return runtime;
   }
 
   /**
@@ -725,12 +746,14 @@ export class MatchRuntimeAdapter {
       players: [
         {
           id: runtime.player1Id,
+          username: runtime.player1Name,
           hp: runtime.p1State.hp,
           gold: runtime.p1State.gold,
           ready: runtime.readyP1,
         },
         {
           id: runtime.player2Id,
+          username: runtime.player2Name,
           hp: runtime.p2State.hp,
           gold: runtime.p2State.gold,
           ready: runtime.readyP2,

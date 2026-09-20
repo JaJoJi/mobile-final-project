@@ -32,6 +32,8 @@ export interface MatchRuntimeState {
   matchId: string;
   player1Id: string;
   player2Id: string;
+  player1Name: string;
+  player2Name: string;
   matchSeed: string;
   phase: MatchPhase;
   round: number;
@@ -52,7 +54,13 @@ export const runtimeKey = (matchId: string) => `match:${matchId}:runtime`;
 export const combatDoneKey = (matchId: string) => `match:${matchId}:combat-done`;
 export const combatLockKey = (matchId: string) => `combat-lock:${matchId}`;
 
-export function initialRuntimeHash(match: Match): Record<string, string> {
+export function initialRuntimeHash(
+  match: Match,
+  names: { player1Name: string; player2Name: string } = {
+    player1Name: '',
+    player2Name: '',
+  },
+): Record<string, string> {
   const p1State = normalizePlayerState(match.p1State);
   const p2State = normalizePlayerState(match.p2State);
   p1State.ready = false;
@@ -61,6 +69,8 @@ export function initialRuntimeHash(match: Match): Record<string, string> {
     matchId: match.id,
     player1Id: match.player1Id,
     player2Id: match.player2Id,
+    player1Name: names.player1Name,
+    player2Name: names.player2Name,
     matchSeed: match.matchSeed,
     phase: 'shop_place',
     round: '1',
@@ -89,6 +99,8 @@ export function parseRuntimeHash(
       matchId,
       player1Id: hash.player1Id,
       player2Id: hash.player2Id,
+      player1Name: hash.player1Name || 'ผู้เล่น 1',
+      player2Name: hash.player2Name || 'ผู้เล่น 2',
       matchSeed: hash.matchSeed,
       phase: hash.phase,
       round,
@@ -132,12 +144,14 @@ export function matchStatePayload(
     round: runtime.round,
     yourSide: side,
     roster: {
+      username: side === 'p1' ? runtime.player1Name : runtime.player2Name,
       board: own.board,
       bench: own.bench,
       gold: own.gold,
       hp: own.hp,
     },
     opponent: {
+      username: side === 'p1' ? runtime.player2Name : runtime.player1Name,
       gold: opponent.gold,
       hp: opponent.hp,
       scoutRound: runtime.scoutRound,

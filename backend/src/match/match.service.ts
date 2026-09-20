@@ -40,6 +40,15 @@ export class MatchService {
     return this.matches.findActiveByUserId(userId);
   }
 
+  async usernamesForPlayers(player1Id: string, player2Id: string) {
+    const players = await this.users.findByIds([player1Id, player2Id]);
+    const names = new Map(players.map((player) => [player.id, player.username]));
+    return {
+      player1Name: names.get(player1Id) ?? 'ผู้เล่น 1',
+      player2Name: names.get(player2Id) ?? 'ผู้เล่น 2',
+    };
+  }
+
   async updateState(
     matchId: string,
     side: 'p1' | 'p2',

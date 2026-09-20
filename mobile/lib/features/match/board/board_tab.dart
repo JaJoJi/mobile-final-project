@@ -103,7 +103,10 @@ class _BoardTabState extends State<BoardTab>
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        _OpponentScout(opponent: widget.match.opponent),
+        _OpponentScout(
+          opponent: widget.match.opponent,
+          currentRound: widget.match.round,
+        ),
         const SizedBox(height: AppSpacing.xs),
         Row(
           children: [
@@ -431,14 +434,17 @@ class _CountBadge extends StatelessWidget {
 }
 
 class _OpponentScout extends StatelessWidget {
-  const _OpponentScout({required this.opponent});
+  const _OpponentScout({required this.opponent, required this.currentRound});
 
   final OpponentView opponent;
+  final int currentRound;
 
   @override
   Widget build(BuildContext context) {
     final units = opponent.boardSummary.whereType<OpponentUnit>().toList();
-    final hasSnapshot = opponent.scoutRound != null;
+    final hasSnapshot = opponent.scoutRound != null || units.isNotEmpty;
+    final snapshotRound =
+        opponent.scoutRound ?? (currentRound - 1).clamp(1, currentRound);
     final game = Theme.of(context).extension<GameTheme>()!;
     return Material(
       key: const ValueKey('scout-panel-frame'),
@@ -449,7 +455,8 @@ class _OpponentScout extends StatelessWidget {
       ),
       clipBehavior: Clip.antiAlias,
       child: InkWell(
-        onTap: hasSnapshot ? () => _showFullBoard(context) : null,
+        onTap:
+            hasSnapshot ? () => _showFullBoard(context, snapshotRound) : null,
         child: Padding(
           padding: const EdgeInsets.symmetric(
             horizontal: AppSpacing.md,
@@ -472,7 +479,7 @@ class _OpponentScout extends StatelessWidget {
                       children: [
                         Text(
                           hasSnapshot
-                              ? 'ทีมคู่แข่งจากรอบ ${opponent.scoutRound}'
+                              ? 'ทีมคู่แข่งจากรอบ $snapshotRound'
                               : 'ยังไม่มีข้อมูลการสอดแนม',
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
@@ -511,7 +518,7 @@ class _OpponentScout extends StatelessWidget {
     );
   }
 
-  void _showFullBoard(BuildContext context) {
+  void _showFullBoard(BuildContext context, int snapshotRound) {
     showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
@@ -533,7 +540,7 @@ class _OpponentScout extends StatelessWidget {
                   const SizedBox(width: AppSpacing.sm),
                   Expanded(
                     child: Text(
-                      'ทีมคู่แข่งจากรอบ ${opponent.scoutRound}',
+                      'ทีมคู่แข่งจากรอบ $snapshotRound',
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: Theme.of(context).textTheme.titleLarge,

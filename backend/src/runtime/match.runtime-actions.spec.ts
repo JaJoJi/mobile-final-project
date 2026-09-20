@@ -41,6 +41,10 @@ async function harness() {
       client.eval(LUA_SCRIPTS[name], keys.length, ...keys, ...args.map(String)),
   };
   const matches = {
+    usernamesForPlayers: jest.fn(async () => ({
+      player1Name: 'player1',
+      player2Name: 'player2',
+    })),
     findActiveByUserId: jest.fn(async (userId: string) =>
       userId === match.player1Id || userId === match.player2Id ? match : null),
     updateState: jest.fn(async () => undefined),
@@ -75,6 +79,15 @@ describe('MatchRuntimeAdapter WS action seam', () => {
     expect(resumed.opponent.scoutRound).toBeNull();
     expect(resumed.opponent.boardSummary).toEqual(Array(9).fill(null));
     expect(resumed.opponent.battleBoardSummary).toBeNull();
+    expect(resumed.roster.username).toBe('player1');
+    expect(resumed.opponent.username).toBe('player2');
+    expect(h.matches.usernamesForPlayers).toHaveBeenCalledWith(
+      match.player1Id,
+      match.player2Id,
+    );
+    await expect(
+      h.client.hmget(runtimeKey(match.id), 'player1Name', 'player2Name'),
+    ).resolves.toEqual(['player1', 'player2']);
   });
 
   it('keeps the completed-round scout snapshot stable and exposes live units only in battle',

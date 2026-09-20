@@ -373,10 +373,26 @@ class _MatchHud extends StatelessWidget {
   final MatchState match;
   final DateTime deadline;
 
+  String _playerName(MatchSide side, String? stateName) {
+    final current = stateName?.trim();
+    if (current != null && current.isNotEmpty) return current;
+
+    final index = side == MatchSide.p1 ? 0 : 1;
+    if (index < phase.players.length) {
+      final phaseName = phase.players[index].username?.trim();
+      if (phaseName != null && phaseName.isNotEmpty) return phaseName;
+    }
+    return side == MatchSide.p1 ? 'ผู้เล่น 1' : 'ผู้เล่น 2';
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final game = theme.extension<GameTheme>()!;
+    final opponentSide =
+        match.yourSide == MatchSide.p1 ? MatchSide.p2 : MatchSide.p1;
+    final playerName = _playerName(match.yourSide, match.roster.username);
+    final opponentName = _playerName(opponentSide, match.opponent.username);
     return Material(
       color: Colors.transparent,
       child: SafeArea(
@@ -412,7 +428,7 @@ class _MatchHud extends StatelessWidget {
                     children: [
                       Expanded(
                         child: _PlayerHp(
-                          label: 'คุณ',
+                          label: playerName,
                           hp: match.roster.hp,
                           icon: Icons.shield_outlined,
                           color: game.ally,
@@ -424,7 +440,7 @@ class _MatchHud extends StatelessWidget {
                       ),
                       Expanded(
                         child: _PlayerHp(
-                          label: 'คู่แข่ง',
+                          label: opponentName,
                           hp: match.opponent.hp,
                           icon: Icons.sports_martial_arts_outlined,
                           color: game.enemy,
