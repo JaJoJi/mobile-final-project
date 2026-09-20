@@ -73,9 +73,9 @@ pipeline {
         always {
             junit 'backend/reports/junit.xml'
 
-            publishCoverage(
-                adapters: [
-                    coberturaAdapter('backend/coverage/cobertura-coverage.xml')
+            recordCoverage(
+                tools: [
+                    cobertura(pattern: 'backaend/coverage/cobertura-coverage.xml')
                 ]
             )
 
