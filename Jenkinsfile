@@ -36,7 +36,7 @@ pipeline {
         stage('Unit Test') {
             steps {
                 dir('backend') {
-                    sh 'npm test'
+                    sh 'npm test -- --coverage'
                 }
             }
         }
@@ -71,6 +71,14 @@ pipeline {
         }
 
         always {
+            junit 'backend/reports/junit.xml'
+
+            publishCoverage(
+                adapters: [
+                    coberturaAdapter('backend/coverage/cobertura-coverage.xml')
+                ]
+            )
+
             archiveArtifacts(
                 artifacts: 'backend/npm-debug.log*',
                 allowEmptyArchive: true
