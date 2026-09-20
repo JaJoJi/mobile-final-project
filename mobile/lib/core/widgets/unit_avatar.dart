@@ -376,33 +376,58 @@ class UnitAvatar extends StatelessWidget {
                           size: _width,
                         ),
                 ),
-                Positioned(
-                  left: AppSpacing.xxs,
-                  top: AppSpacing.xxs,
-                  child: DecoratedBox(
-                    decoration: BoxDecoration(
-                      color: Colors.black.withValues(alpha: 0.55),
-                      borderRadius: AppRadius.allFull,
-                    ),
-                    child: Padding(
-                      padding: const EdgeInsets.all(AppSpacing.xxs),
+                if (isBoardPiece)
+                  Positioned.fill(
+                    key: const ValueKey('unit-star-layer'),
+                    child: Align(
+                      alignment: Alignment(
+                        0,
+                        hp != null && maxHp != null ? 1.45 : 1,
+                      ),
                       child: _StarBadge(
+                        key: const ValueKey('unit-star-indicator'),
                         star: displayStar,
                         color: game.starColor(star),
+                        size: 13,
+                        framed: true,
                       ),
                     ),
                   ),
-                ),
+                // Paint the health bar after the star badge so its frame can
+                // never cover the bar when both layers get close on a small
+                // tile. Their responsive positions remain unchanged.
                 if (isBoardPiece && hp != null && maxHp != null)
+                  Positioned.fill(
+                    key: const ValueKey('unit-health-layer'),
+                    child: Align(
+                      alignment: const Alignment(0, 0.84),
+                      child: FractionallySizedBox(
+                        widthFactor: 0.72,
+                        child: HealthBar(
+                          current: hp!,
+                          max: maxHp!,
+                          size: HealthBarSize.sm,
+                          showText: false,
+                          compactUnitStyle: true,
+                        ),
+                      ),
+                    ),
+                  ),
+                if (isReservePiece)
                   Positioned(
-                    left: AppSpacing.xxs,
-                    right: AppSpacing.xxs,
-                    bottom: AppSpacing.xxs,
-                    child: HealthBar(
-                      current: hp!,
-                      max: maxHp!,
-                      size: HealthBarSize.sm,
-                      showText: false,
+                    left: 0,
+                    right: 0,
+                    top: AppSpacing.xxs,
+                    child: Center(
+                      child: FittedBox(
+                        fit: BoxFit.scaleDown,
+                        child: _StarBadge(
+                          key: const ValueKey('unit-star-indicator'),
+                          star: displayStar,
+                          color: game.starColor(star),
+                          framed: true,
+                        ),
+                      ),
                     ),
                   ),
               ],
@@ -570,19 +595,66 @@ class _UnitArt extends StatelessWidget {
 }
 
 class _StarBadge extends StatelessWidget {
-  const _StarBadge({required this.star, required this.color});
+  const _StarBadge({
+    super.key,
+    required this.star,
+    required this.color,
+    this.size = 12,
+    this.framed = false,
+  });
 
   final int star;
   final Color color;
+  final double size;
+  final bool framed;
 
   @override
   Widget build(BuildContext context) {
     // This receives the one-based display level, never the server's 0..2 tier.
-    return Row(
+    final stars = Row(
       mainAxisSize: MainAxisSize.min,
-      children: List.generate(
-        star.clamp(1, 3),
-        (_) => Icon(Icons.star, size: 12, color: color),
+      children: [
+        for (var index = 0; index < star.clamp(1, 3); index++) ...[
+          if (index > 0) const SizedBox(width: 1),
+          SizedBox.square(
+            dimension: size + 2,
+            child: Stack(
+              alignment: Alignment.center,
+              children: [
+                Icon(
+                  Icons.star_border,
+                  size: size + 2,
+                  color: Colors.black.withValues(alpha: 0.9),
+                ),
+                Icon(Icons.star, size: size, color: color),
+              ],
+            ),
+          ),
+        ],
+      ],
+    );
+    if (!framed) return stars;
+
+    return DecoratedBox(
+      key: const ValueKey('unit-star-frame'),
+      decoration: BoxDecoration(
+        color: const Color(0xFF071827).withValues(alpha: 0.88),
+        borderRadius: AppRadius.allFull,
+        border: Border.all(color: color.withValues(alpha: 0.82)),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.46),
+            blurRadius: 4,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(
+          horizontal: AppSpacing.xs,
+          vertical: 1,
+        ),
+        child: stars,
       ),
     );
   }

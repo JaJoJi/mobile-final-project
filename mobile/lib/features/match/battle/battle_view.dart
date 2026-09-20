@@ -46,6 +46,12 @@ final battlePlaybackProvider = StateNotifierProvider.autoDispose
   (ref, matchId) => BattlePlaybackController(),
 );
 
+String _visiblePlayerName(String? username, MatchSide side) {
+  final name = username?.trim();
+  if (name != null && name.isNotEmpty) return name;
+  return side == MatchSide.p1 ? 'ผู้เล่น 1' : 'ผู้เล่น 2';
+}
+
 /// `BattleView` — 2a skeleton.
 class BattleView extends ConsumerStatefulWidget {
   const BattleView({
@@ -521,10 +527,18 @@ class _BattleStage extends StatelessWidget {
     final orientation = MediaQuery.orientationOf(context);
     final enemySide =
         match.yourSide == MatchSide.p1 ? MatchSide.p2 : MatchSide.p1;
+    final playerName = _visiblePlayerName(
+      match.roster.username,
+      match.yourSide,
+    );
+    final opponentName = _visiblePlayerName(
+      match.opponent.username,
+      enemySide,
+    );
     final mine = _BoardPreview(
       boardKey: const ValueKey('battle-player-board'),
       positionKey: myBoardKey,
-      label: 'คุณ',
+      label: playerName,
       icon: Icons.shield_outlined,
       color: game.ally,
       units: match.roster.board,
@@ -536,7 +550,7 @@ class _BattleStage extends StatelessWidget {
     final opponent = _BoardPreview(
       boardKey: const ValueKey('battle-opponent-board'),
       positionKey: opponentBoardKey,
-      label: 'คู่แข่ง',
+      label: opponentName,
       icon: Icons.sports_martial_arts_outlined,
       color: game.enemy,
       opponentUnits:
@@ -565,6 +579,8 @@ class _BattleStage extends StatelessWidget {
         ),
         Expanded(child: opponent),
         _PortraitVersusDivider(
+          opponentName: opponentName,
+          playerName: playerName,
           opponentColor: game.enemy,
           playerColor: game.ally,
         ),
@@ -723,7 +739,9 @@ class _BattleTileState extends State<BattleTile> with TickerProviderStateMixin {
   late final Animation<double> _healBubbleAnim;
   late final AnimationController _recoilCtrl;
   late final Animation<double> _recoilAnim;
-  int? _lastFloatingDamage;
+  String? _lastFloatingToken;
+  int? _visibleFloatingAmount;
+  bool _visibleFloatingIsHeal = false;
   int? _lastDamageIndex;
   int? _lastHealIndex;
   int? _lastRecoilIndex;
@@ -740,7 +758,7 @@ class _BattleTileState extends State<BattleTile> with TickerProviderStateMixin {
     super.initState();
     _floatCtrl = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 800),
+      duration: const Duration(milliseconds: 950),
       // These four are functional combat feedback (hit shake, recoil, heal
       // bubble, floating damage), not decoration. Without `preserve`,
       // Flutter runs every AnimationBehavior.normal controller at 5% of
@@ -752,6 +770,11 @@ class _BattleTileState extends State<BattleTile> with TickerProviderStateMixin {
     _floatAnim = Tween<double>(begin: 0, end: 1).animate(
       CurvedAnimation(parent: _floatCtrl, curve: AppMotion.standard),
     );
+    _floatCtrl.addStatusListener((status) {
+      if (status == AnimationStatus.completed && mounted) {
+        setState(() => _visibleFloatingAmount = null);
+      }
+    });
     // Hit shake: constant intensity, ~200ms, horizontal only.
     _shakeCtrl = AnimationController(
       vsync: this,
@@ -785,11 +808,20 @@ class _BattleTileState extends State<BattleTile> with TickerProviderStateMixin {
   void didUpdateWidget(BattleTile oldWidget) {
     super.didUpdateWidget(oldWidget);
     final floatingAmount = widget.unitState?.floatingDamage;
-    final hasFloating = floatingAmount != null;
-    if (hasFloating && floatingAmount != _lastFloatingDamage) {
+    final floatingIsHeal = widget.unitState?.floatingIsHeal ?? false;
+    final floatingEventIndex = floatingIsHeal
+        ? widget.unitState?.healEventIndex
+        : widget.unitState?.lastDamageEventIndex;
+    final floatingToken = floatingAmount == null
+        ? null
+        : '${floatingIsHeal ? 'heal' : 'damage'}:'
+            '${floatingEventIndex ?? 'unknown'}:$floatingAmount';
+    if (floatingToken != null && floatingToken != _lastFloatingToken) {
+      _visibleFloatingAmount = floatingAmount;
+      _visibleFloatingIsHeal = floatingIsHeal;
       _floatCtrl.forward(from: 0);
     }
-    _lastFloatingDamage = floatingAmount;
+    if (floatingToken != null) _lastFloatingToken = floatingToken;
     // Hit shake: trigger on new damage event index.
     final damageIdx = widget.unitState?.lastDamageEventIndex;
     if (damageIdx != null && damageIdx != _lastDamageIndex) {
@@ -825,8 +857,9 @@ class _BattleTileState extends State<BattleTile> with TickerProviderStateMixin {
   Widget build(BuildContext context) {
     final uv = widget.unitState;
     final isAlive = uv?.alive ?? false;
+    final floatingAmount = _visibleFloatingAmount;
     return AnimatedOpacity(
-      opacity: uv == null ? 0.3 : (isAlive ? 1.0 : 0.3),
+      opacity: uv == null ? 0.3 : 1.0,
       duration: const Duration(milliseconds: 200),
       child: AnimatedBuilder(
         animation: Listenable.merge([_shakeAnim, _recoilAnim]),
@@ -865,11 +898,12 @@ class _BattleTileState extends State<BattleTile> with TickerProviderStateMixin {
           children: [
             StoneBoardTile(
               slot: widget.slot,
-              unitSide: widget.unitSide,
+              broken: uv != null && !isAlive,
+              unitSide: isAlive ? widget.unitSide : null,
               // While this unit is mid-attack its sprite is drawn by
               // CombatEffectsOverlay travelling to the target, so the tile
               // leaves its square empty rather than showing it twice.
-              child: uv == null || uv.isMeleeAttacking
+              child: uv == null || !isAlive || uv.isMeleeAttacking
                   ? null
                   : UnitAvatar(
                       unitId: uv.unitId.toJson(),
@@ -885,7 +919,7 @@ class _BattleTileState extends State<BattleTile> with TickerProviderStateMixin {
                     ),
             ),
             // Debuff tint overlay — persistent blue wash when debuff active.
-            if (uv?.debuff != null)
+            if (isAlive && uv?.debuff != null)
               Positioned.fill(
                 child: DecoratedBox(
                   decoration: BoxDecoration(
@@ -895,7 +929,7 @@ class _BattleTileState extends State<BattleTile> with TickerProviderStateMixin {
                 ),
               ),
             // Debuff badge — small icon in top-right corner.
-            if (uv?.debuff != null)
+            if (isAlive && uv?.debuff != null)
               const Positioned(
                 top: 2,
                 right: 2,
@@ -908,7 +942,7 @@ class _BattleTileState extends State<BattleTile> with TickerProviderStateMixin {
             // Healing feedback — shown only for a server Heal/Lifesteal
             // event. The ornate sigil belongs specifically to Healer;
             // Fighter lifesteal retains the lighter legacy pulse.
-            if (uv != null && uv.healEventIndex != null)
+            if (isAlive && uv != null && uv.healEventIndex != null)
               Positioned.fill(
                 child: AnimatedBuilder(
                   animation: _healBubbleAnim,
@@ -944,43 +978,33 @@ class _BattleTileState extends State<BattleTile> with TickerProviderStateMixin {
                 ),
               ),
             // Floating damage/heal number.
-            if (uv != null && uv.floatingDamage != null)
+            if (floatingAmount != null)
               Positioned.fill(
                 child: AnimatedBuilder(
                   animation: _floatAnim,
                   builder: (context, _) {
                     final progress = _floatAnim.value;
-                    final isHeal = uv.floatingIsHeal;
+                    final isHeal = _visibleFloatingIsHeal;
+                    final popScale = progress < 0.2
+                        ? 0.72 + (progress / 0.2) * 0.46
+                        : progress < 0.5
+                            ? 1.18 - ((progress - 0.2) / 0.3) * 0.18
+                            : 1.0;
                     return Opacity(
                       opacity: (1.0 - progress).clamp(0.0, 1.0),
                       child: Align(
                         alignment: Alignment.topCenter,
                         child: Transform.translate(
                           offset: Offset(0, -32 * progress),
-                          child: isHeal
-                              ? Container(
-                                  padding: const EdgeInsets.all(4),
-                                  decoration: BoxDecoration(
-                                    color: Colors.green.withValues(alpha: 0.3),
-                                    shape: BoxShape.circle,
-                                  ),
-                                  child: Text(
-                                    '+${uv.floatingDamage}',
-                                    style: const TextStyle(
-                                      fontSize: 14,
-                                      fontWeight: FontWeight.bold,
-                                      color: Colors.green,
-                                    ),
-                                  ),
-                                )
-                              : Text(
-                                  '-${uv.floatingDamage}',
-                                  style: const TextStyle(
-                                    fontSize: 16,
-                                    fontWeight: FontWeight.bold,
-                                    color: Colors.red,
-                                  ),
-                                ),
+                          child: Transform.scale(
+                            scale: popScale,
+                            child: _FloatingCombatNumber(
+                              amount: floatingAmount,
+                              isHeal: isHeal,
+                              fontSize:
+                                  (widget.tileWidth * 0.24).clamp(20.0, 30.0),
+                            ),
+                          ),
                         ),
                       ),
                     );
@@ -989,6 +1013,70 @@ class _BattleTileState extends State<BattleTile> with TickerProviderStateMixin {
               ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+class _FloatingCombatNumber extends StatelessWidget {
+  const _FloatingCombatNumber({
+    required this.amount,
+    required this.isHeal,
+    required this.fontSize,
+  });
+
+  final int amount;
+  final bool isHeal;
+  final double fontSize;
+
+  @override
+  Widget build(BuildContext context) {
+    final label = '${isHeal ? '+' : '-'}$amount';
+    final color = isHeal ? const Color(0xFF62F2A5) : const Color(0xFFFF6B62);
+    final baseStyle = TextStyle(
+      fontSize: fontSize,
+      height: 1,
+      fontWeight: FontWeight.w900,
+      letterSpacing: 0.4,
+    );
+
+    return Semantics(
+      label: isHeal ? 'ฟื้นฟูพลังชีวิต $amount' : 'ได้รับความเสียหาย $amount',
+      child: Stack(
+        key: ValueKey(
+          isHeal ? 'floating-heal-number' : 'floating-damage-number',
+        ),
+        alignment: Alignment.center,
+        children: [
+          ExcludeSemantics(
+            child: Text(
+              label,
+              style: baseStyle.copyWith(
+                foreground: Paint()
+                  ..style = PaintingStyle.stroke
+                  ..strokeWidth = 4
+                  ..strokeJoin = StrokeJoin.round
+                  ..color = Colors.black.withValues(alpha: 0.9),
+              ),
+            ),
+          ),
+          Text(
+            label,
+            style: baseStyle.copyWith(
+              color: color,
+              shadows: [
+                Shadow(
+                  color: color.withValues(alpha: 0.9),
+                  blurRadius: 8,
+                ),
+                const Shadow(
+                  blurRadius: 2,
+                  offset: Offset(0, 2),
+                ),
+              ],
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -1035,10 +1123,14 @@ class _BatchSummary extends StatelessWidget {
 
 class _PortraitVersusDivider extends StatelessWidget {
   const _PortraitVersusDivider({
+    required this.opponentName,
+    required this.playerName,
     required this.opponentColor,
     required this.playerColor,
   });
 
+  final String opponentName;
+  final String playerName;
   final Color opponentColor;
   final Color playerColor;
 
@@ -1049,7 +1141,7 @@ class _PortraitVersusDivider extends StatelessWidget {
           children: [
             Expanded(
               child: _InlineSideLabel(
-                label: 'คู่แข่ง',
+                label: opponentName,
                 icon: Icons.sports_martial_arts_outlined,
                 color: opponentColor,
               ),
@@ -1057,7 +1149,7 @@ class _PortraitVersusDivider extends StatelessWidget {
             const _VersusDivider(horizontal: true),
             Expanded(
               child: _InlineSideLabel(
-                label: 'คุณ',
+                label: playerName,
                 icon: Icons.shield_outlined,
                 color: playerColor,
               ),

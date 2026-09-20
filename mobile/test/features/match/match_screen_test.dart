@@ -117,8 +117,8 @@ void main() {
     expect(frameAssets, isNot(contains(GameUiAssets.hudEnemyFrame)));
     expect(buttonAssets, contains(GameUiAssets.readyButtonFrame));
     expect(
-      tester.getCenter(find.text('คุณ')).dx,
-      lessThan(tester.getCenter(find.text('คู่แข่ง')).dx),
+      tester.getCenter(find.text('player1')).dx,
+      lessThan(tester.getCenter(find.text('player2')).dx),
     );
     final verticalLists = tester
         .widgetList<ListView>(find.byType(ListView))
@@ -603,6 +603,37 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets('legacy snapshot without scoutRound remains tappable',
+      (tester) async {
+    final transport = FakeWsTransport();
+    final client = WsClient(
+      url: 'ws://localhost',
+      getAccessToken: () async => 'token',
+      transport: transport,
+    );
+    addTearDown(client.dispose);
+    final connected = client.connect();
+    transport.serverConnect();
+    await connected;
+    _seed(transport, round: 3, legacyScoutUnit: true);
+
+    await pumpScreen(
+      tester,
+      const MatchScreen(matchId: 'm1'),
+      overrides: [wsClientProvider.overrideWithValue(client)],
+      surfaceSize: const Size(360, 640),
+    );
+    await tester.pump();
+
+    final scout = find.text('ทีมคู่แข่งจากรอบ 2');
+    await tester.ensureVisible(scout);
+    await tester.pump();
+    await tester.tap(scout);
+    await tester.pump(const Duration(milliseconds: 300));
+    expect(find.byKey(const ValueKey('opponent-scout-grid')), findsOneWidget);
+    expect(find.text('ทีมคู่แข่งจากรอบ 2'), findsNWidgets(2));
+  });
+
   testWidgets('shows round damage then the complete match result',
       (tester) async {
     final transport = FakeWsTransport();
@@ -807,11 +838,15 @@ void main() {
     final playerBoard = tester.getCenter(
       find.byKey(const ValueKey('battle-player-board')),
     );
-    final opponentLabel = tester.getCenter(find.text('คู่แข่ง').last);
-    final playerLabel = tester.getCenter(find.text('คุณ').last);
+    final opponentLabel = tester.getCenter(find.text('player2').last);
+    final playerLabel = tester.getCenter(find.text('player1').last);
     final skip = tester.getCenter(
       find.byKey(const ValueKey('skip-combat-button')),
     );
+    expect(find.text('player1'), findsAtLeastNWidgets(2));
+    expect(find.text('player2'), findsAtLeastNWidgets(2));
+    expect(find.text('คุณ'), findsNothing);
+    expect(find.text('คู่แข่ง'), findsNothing);
     expect(opponentBoard.dy, lessThan(versus.dy));
     expect(damageLane.height, AppSpacing.xxl);
     expect(versus.dy, lessThan(playerBoard.dy));
@@ -916,11 +951,13 @@ void _seed(
   bool withUnits = false,
   int gold = 5,
   int? scoutRound,
+  int round = 1,
+  bool legacyScoutUnit = false,
 }) {
   transport.emitFromServer(GameEvents.matchPhase, {
     'matchId': 'm1',
     'phase': 'shop_place',
-    'round': 1,
+    'round': round,
     'timer': 40,
     'players': [
       {'id': 'p1', 'hp': 100, 'gold': gold, 'ready': false},
@@ -929,9 +966,10 @@ void _seed(
   });
   transport.emitFromServer(GameEvents.matchState, {
     'matchId': 'm1',
-    'round': 1,
+    'round': round,
     'yourSide': 'p1',
     'roster': {
+      'username': 'player1',
       'board': List<Object?>.filled(9, null),
       'bench': [
         if (withUnits)
@@ -950,17 +988,21 @@ void _seed(
       'hp': 100,
     },
     'opponent': {
+      'username': 'player2',
       'gold': 5,
       'hp': 100,
       'scoutRound': scoutRound,
-      'boardSummary': List<Object?>.filled(9, null),
+      'boardSummary': [
+        if (legacyScoutUnit) {'unitId': 'tank', 'star': 1} else null,
+        ...List<Object?>.filled(8, null),
+      ],
       'battleBoardSummary': null,
     },
     'readyCount': 0,
   });
   transport.emitFromServer(GameEvents.shopOffer, {
     'matchId': 'm1',
-    'round': 1,
+    'round': round,
     'offers': [
       {'offerId': '1', 'unitId': 'fighter', 'star': 0},
       {'offerId': '2', 'unitId': 'healer', 'star': 0},

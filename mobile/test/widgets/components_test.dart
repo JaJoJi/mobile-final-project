@@ -153,21 +153,37 @@ void main() {
       expect(find.text('Ranger'), findsNothing);
       expect(find.byIcon(Icons.change_history), findsNothing);
       expect(find.byIcon(Icons.star), findsNWidgets(3));
+      expect(find.byIcon(Icons.star_border), findsNWidgets(3));
+      expect(find.byKey(const ValueKey('unit-star-frame')), findsOneWidget);
       expect(find.byType(Image), findsOneWidget);
+      expect(
+        tester.getCenter(find.byKey(const ValueKey('unit-star-indicator'))).dx,
+        closeTo(tester.getCenter(find.byType(UnitAvatar)).dx, 0.1),
+      );
     });
 
     testWidgets('base fusion tier is presented as one star', (tester) async {
       await pumpThemed(
         tester,
-        const UnitAvatar(
-          unitId: 'fighter',
-          star: 0,
-          variant: UnitAvatarVariant.bench,
+        const SizedBox.square(
+          key: ValueKey('avatar-test-box'),
+          dimension: 100,
+          child: UnitAvatar(
+            unitId: 'fighter',
+            star: 0,
+          ),
         ),
       );
 
       expect(find.byIcon(Icons.star), findsOneWidget);
       expect(find.bySemanticsLabel('Fighter 1 ดาว'), findsOneWidget);
+      expect(find.byKey(const ValueKey('unit-star-frame')), findsOneWidget);
+      expect(
+        tester.getCenter(find.byKey(const ValueKey('unit-star-indicator'))).dy,
+        greaterThan(
+          tester.getCenter(find.byKey(const ValueKey('avatar-test-box'))).dy,
+        ),
+      );
     });
   });
 

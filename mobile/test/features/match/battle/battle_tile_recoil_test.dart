@@ -53,6 +53,28 @@ const _lifestealing = UnitVisualState(
   healEventIndex: 5,
 );
 
+const _damaged = UnitVisualState(
+  unitId: UnitId.fighter,
+  star: 1,
+  hp: 100,
+  maxHp: 100,
+  alive: true,
+  floatingDamage: 12,
+  lastDamageEventIndex: 6,
+);
+
+const _healed = UnitVisualState(
+  unitId: UnitId.healer,
+  star: 2,
+  hp: 70,
+  maxHp: 70,
+  alive: true,
+  floatingDamage: 18,
+  floatingIsHeal: true,
+  healEventIndex: 7,
+  isHealerHeal: true,
+);
+
 void main() {
   testWidgets(
       'BattleTile nudges the attacker toward its target on a new '
@@ -217,5 +239,99 @@ void main() {
 
     expect(find.byKey(const ValueKey('healer-heal-vfx')), findsNothing);
     expect(find.byKey(const ValueKey('lifesteal-pulse')), findsOneWidget);
+  });
+
+  testWidgets('damage number uses large outlined combat text', (tester) async {
+    await pumpThemed(
+      tester,
+      const BattleTile(slot: 0, unitSide: UnitSide.ally, unitState: _idle),
+    );
+    await pumpThemed(
+      tester,
+      const BattleTile(
+        slot: 0,
+        unitSide: UnitSide.ally,
+        unitState: _damaged,
+      ),
+    );
+    await tester.pump(const Duration(milliseconds: 80));
+
+    expect(
+      find.byKey(const ValueKey('floating-damage-number')),
+      findsOneWidget,
+    );
+    final labels = tester.widgetList<Text>(find.text('-12')).toList();
+    expect(labels, hasLength(2));
+    expect(labels.any((text) => text.style?.foreground != null), isTrue);
+    expect(labels.every((text) => (text.style?.fontSize ?? 0) >= 20), isTrue);
+    expect(
+      labels.every((text) => text.style?.fontWeight == FontWeight.w900),
+      isTrue,
+    );
+  });
+
+  testWidgets('heal number uses the same prominent treatment', (tester) async {
+    await pumpThemed(
+      tester,
+      const BattleTile(
+        slot: 0,
+        unitSide: UnitSide.ally,
+        unitState: _idleHealer,
+      ),
+    );
+    await pumpThemed(
+      tester,
+      const BattleTile(
+        slot: 0,
+        unitSide: UnitSide.ally,
+        unitState: _healed,
+      ),
+    );
+    await tester.pump(const Duration(milliseconds: 80));
+
+    expect(
+      find.byKey(const ValueKey('floating-heal-number')),
+      findsOneWidget,
+    );
+    final labels = tester.widgetList<Text>(find.text('+18')).toList();
+    expect(labels, hasLength(2));
+    expect(labels.any((text) => text.style?.foreground != null), isTrue);
+    expect(labels.every((text) => (text.style?.fontSize ?? 0) >= 20), isTrue);
+  });
+
+  testWidgets('ranged impact number survives the event boundary',
+      (tester) async {
+    await pumpThemed(
+      tester,
+      const BattleTile(slot: 0, unitSide: UnitSide.ally, unitState: _idle),
+    );
+    await pumpThemed(
+      tester,
+      const BattleTile(
+        slot: 0,
+        unitSide: UnitSide.ally,
+        unitState: _damaged,
+      ),
+    );
+    await tester.pump(const Duration(milliseconds: 80));
+
+    // A ranged hit lands near the end of its event. The next event clears
+    // floatingDamage from UnitVisualState almost immediately, but the number
+    // must finish its own animation instead of disappearing with that event.
+    await pumpThemed(
+      tester,
+      const BattleTile(slot: 0, unitSide: UnitSide.ally, unitState: _idle),
+    );
+    await tester.pump(const Duration(milliseconds: 400));
+    expect(
+      find.byKey(const ValueKey('floating-damage-number')),
+      findsOneWidget,
+    );
+
+    await tester.pump(const Duration(milliseconds: 600));
+    expect(
+      find.byKey(const ValueKey('floating-damage-number')),
+      findsNothing,
+    );
   });
 }
