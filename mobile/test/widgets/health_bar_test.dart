@@ -59,4 +59,23 @@ void main() {
       const Color(0xFF424242),
     );
   });
+
+  testWidgets('low unit HP keeps the full requested bar width', (tester) async {
+    await pumpThemed(
+      tester,
+      const HealthBar(
+        current: 10,
+        max: 100,
+        width: 120,
+        showText: false,
+        compactUnitStyle: true,
+      ),
+    );
+
+    expect(find.byIcon(Icons.warning_amber_rounded), findsNothing);
+    expect(
+      tester.getSize(find.byKey(const ValueKey('unit-health-bar-frame'))).width,
+      120,
+    );
+  });
 }

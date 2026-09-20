@@ -83,13 +83,12 @@ void main() {
       );
     });
 
-    testWidgets('low HP adds a warning icon (not colour alone)',
-        (tester) async {
+    testWidgets('low HP keeps the bar clear of warning icons', (tester) async {
       await pumpThemed(
         tester,
         const SizedBox(width: 200, child: HealthBar(current: 10, max: 150)),
       );
-      expect(find.byIcon(Icons.warning_amber_rounded), findsOneWidget);
+      expect(find.byIcon(Icons.warning_amber_rounded), findsNothing);
     });
   });
 

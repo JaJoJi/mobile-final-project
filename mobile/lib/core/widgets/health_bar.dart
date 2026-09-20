@@ -22,8 +22,8 @@ enum HealthBarSize {
 /// * Fill colour: `hp.high` > 50 % · `hp.mid` 20–50 % · `hp.low` < 20 %.
 /// * Width tweens over `short4` with `emphasized`.
 /// * A "ghost" of damage just taken lingers in `error @40 %` for 500 ms.
-/// * Below 20 % the bar pulses once per second and shows a warning icon —
-///   **[MUST]** never colour alone.
+/// * Below 20 % the bar pulses once per second without consuming horizontal
+///   space, so compact unit bars keep a stable width at every HP value.
 /// * Numerals are always shown (unless [showText] is false) with tabular
 ///   figures; the row carries a Thai semantics label.
 class HealthBar extends StatefulWidget {
@@ -198,14 +198,6 @@ class _HealthBarState extends State<HealthBar>
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            if (_isLow) ...[
-              Icon(
-                Icons.warning_amber_rounded,
-                size: widget.thickness + 8,
-                color: game.hpLow,
-              ),
-              const SizedBox(width: AppSpacing.xs),
-            ],
             Flexible(child: animatedBar),
             if (widget.showText) ...[
               const SizedBox(width: AppSpacing.sm),
