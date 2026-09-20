@@ -109,6 +109,10 @@ class _BattleViewState extends ConsumerState<BattleView>
   int? _cachedStatesIndex;
   bool? _cachedStatesLanded;
   Map<UnitKey, UnitVisualState>? _cachedStates;
+  Widget? _cachedStage;
+  Map<UnitKey, UnitVisualState>? _stageStates;
+  MatchState? _stageMatch;
+  GameTheme? _stageTheme;
   final GlobalKey _myBoardKey = GlobalKey();
   final GlobalKey _opponentBoardKey = GlobalKey();
   bool _vfxPrecached = false;
@@ -338,7 +342,7 @@ class _BattleViewState extends ConsumerState<BattleView>
     // showed up as combat feeling sluggish. Cache it against the index —
     // plus the one other thing the result depends on, whether the event
     // being played has connected yet, which flips once per event too.
-    final unitStates = <UnitKey, UnitVisualState>{};
+    Map<UnitKey, UnitVisualState> unitStates = const {};
     if (view.batch != null) {
       final current = currentEventEffect(
         view.batch!.events,
@@ -377,7 +381,28 @@ class _BattleViewState extends ConsumerState<BattleView>
           initialBoard: view.batch!.initialBoard,
         );
       }
-      unitStates.addAll(_cachedStates!);
+      unitStates = _cachedStates!;
+    }
+
+    // Reuse the board subtree between event/impact boundaries. Only the
+    // travelling overlay needs a rebuild on every playback tick. Local hit
+    // and heal controllers still animate independently inside the stage.
+    if (_cachedStage == null ||
+        !identical(_stageStates, unitStates) ||
+        !identical(_stageMatch, widget.match) ||
+        !identical(_stageTheme, game)) {
+      _stageStates = unitStates;
+      _stageMatch = widget.match;
+      _stageTheme = game;
+      _cachedStage = RepaintBoundary(
+        child: _BattleStage(
+          match: widget.match,
+          game: game,
+          unitStates: unitStates,
+          myBoardKey: _myBoardKey,
+          opponentBoardKey: _opponentBoardKey,
+        ),
+      );
     }
 
     return Padding(
@@ -387,13 +412,7 @@ class _BattleViewState extends ConsumerState<BattleView>
           Expanded(
             child: Stack(
               children: [
-                _BattleStage(
-                  match: widget.match,
-                  game: game,
-                  unitStates: unitStates,
-                  myBoardKey: _myBoardKey,
-                  opponentBoardKey: _opponentBoardKey,
-                ),
+                _cachedStage!,
                 CombatEffectsOverlay(
                   batch: view.batch,
                   playheadProgress: view.playheadProgress,

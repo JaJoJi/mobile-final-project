@@ -144,7 +144,7 @@ class StoneBoardTile extends StatelessWidget {
                   ),
                 if (child != null)
                   Positioned.fill(
-                    child: FractionalTranslation(
+                    child: BoardPiecePlacement(
                       // Unit PNGs carry transparent headroom and a low visual
                       // foot anchor. Lift the art so its feet meet the centre
                       // of the magic base instead of its front rim.
@@ -158,12 +158,7 @@ class StoneBoardTile extends StatelessWidget {
                       // cut off. Shrinking the art first leaves enough top
                       // margin that the same foot-alignment lift keeps the
                       // whole piece inside the tile (~8% headroom at top).
-                      translation: const Offset(0, -0.0833),
-                      child: FractionallySizedBox(
-                        widthFactor: 0.90,
-                        heightFactor: 0.72,
-                        child: child!,
-                      ),
+                      child: child!,
                     ),
                   ),
                 if (effectValue > 0)
@@ -213,4 +208,21 @@ class StoneBoardTile extends StatelessWidget {
       ),
     );
   }
+}
+
+/// Identical art bounds on the stone and while travelling between stones.
+class BoardPiecePlacement extends StatelessWidget {
+  const BoardPiecePlacement({super.key, required this.child});
+
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) => FractionalTranslation(
+        translation: const Offset(0, -0.0833),
+        child: FractionallySizedBox(
+          widthFactor: 0.90,
+          heightFactor: 0.72,
+          child: child,
+        ),
+      );
 }

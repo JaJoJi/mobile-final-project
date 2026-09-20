@@ -24,6 +24,7 @@ import '../../../core/widgets/unit_avatar.dart';
 import '../../../shared/models/combat_event.dart';
 import '../../../shared/models/match_state.dart';
 import '../../../shared/models/unit.dart';
+import '../board/stone_board_tile.dart';
 import 'combat_effect_assets.dart';
 import 'combat_effects_math.dart';
 
@@ -166,12 +167,14 @@ class CombatEffectsOverlay extends StatelessWidget {
     if (!isMelee && current.subProgress >= kProjectileImpactFraction) {
       return null;
     }
-    final reduceMotion = MediaQuery.disableAnimationsOf(context);
+    // Travel communicates who attacked whom, just like the melee lunge.
+    // Keep this functional motion on the preserved battle timeline even
+    // when the platform requests reduced decorative animations. Freezing
+    // progress at 0.85 made shots appear beside the victim for the whole
+    // event instead of travelling from their source.
     final progress = isMelee
-        ? triangleWave(current.subProgress)
-        : reduceMotion
-            ? 0.85
-            : projectileTravel(current.subProgress);
+        ? meleeTravel(current.subProgress)
+        : projectileTravel(current.subProgress);
     final position = Offset.lerp(attackerLocal, targetLocal, progress)!;
 
     // Melee reads as the unit itself charging the target and returning,
@@ -192,14 +195,19 @@ class CombatEffectsOverlay extends StatelessWidget {
             height: size,
             child: IgnorePointer(
               key: const ValueKey('lunge-traveler'),
-              child: UnitAvatar(
-                unitId: attackerUnitId.toJson(),
-                star: event.attackerStar ?? 0,
-                variant: UnitAvatarVariant.replay,
-                side: attackerSide == mySide ? UnitSide.ally : UnitSide.enemy,
-                hp: 1,
-                maxHp: 1,
-                expand: true,
+              child: BoardPiecePlacement(
+                child: RepaintBoundary(
+                  child: UnitAvatar(
+                    unitId: attackerUnitId.toJson(),
+                    star: event.attackerStar ?? 0,
+                    variant: UnitAvatarVariant.replay,
+                    side:
+                        attackerSide == mySide ? UnitSide.ally : UnitSide.enemy,
+                    hp: 1,
+                    maxHp: 1,
+                    expand: true,
+                  ),
+                ),
               ),
             ),
           ),

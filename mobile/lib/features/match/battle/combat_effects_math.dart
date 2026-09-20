@@ -37,6 +37,13 @@ double triangleWave(double subProgress) {
   return t <= 0.5 ? t * 2 : (1 - t) * 2;
 }
 
+/// Smooth acceleration and braking, with the original impact at 50%.
+/// Zero velocity at departure, impact and return avoids a sharp reversal.
+double meleeTravel(double subProgress) {
+  final t = triangleWave(subProgress);
+  return t * t * (3 - 2 * t);
+}
+
 /// Local-space center of board [slot] (0-8, row-major: depth = slot ~/ 3
 /// front..back, lane = slot % 3) inside a 3x3 grid sized [boardWidth] x
 /// [boardHeight], with [spacing] between cells (matching the `GridView`'s
