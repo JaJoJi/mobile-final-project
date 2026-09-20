@@ -74,9 +74,10 @@ pipeline {
             junit 'backend/reports/junit.xml'
 
             recordCoverage(
-                tools: [
-                    cobertura(pattern: 'backaend/coverage/cobertura-coverage.xml')
-                ]
+                tools: [[
+                    parser: 'COBERTURA',
+                    pattern: 'backend/coverage/cobertura-coverage.xml'
+                ]]
             )
 
             archiveArtifacts(
