@@ -389,9 +389,16 @@ class MatchController extends StateNotifier<MatchViewState> {
     });
   }
 
-  void fuse(Unit source, [Unit? target]) {
+  void fuse(Unit source, Unit target) {
     final match = state.match;
-    if (!state.canAct || match == null) return;
+    if (!state.canAct ||
+        match == null ||
+        source.instanceId == target.instanceId ||
+        source.unitId != target.unitId ||
+        source.star != target.star ||
+        source.star >= 2) {
+      return;
+    }
     final actionId = _actionId();
     _beginOptimistic();
     state = state.copyWith(
@@ -401,10 +408,8 @@ class MatchController extends StateNotifier<MatchViewState> {
     _client.emit(GameActions.shopFuse, {
       'round': match.round,
       'unitId': source.unitId.toJson(),
-      if (target != null) ...{
-        'sourceInstanceId': source.instanceId,
-        'targetInstanceId': target.instanceId,
-      },
+      'sourceInstanceId': source.instanceId,
+      'targetInstanceId': target.instanceId,
       'clientActionId': actionId,
     });
   }

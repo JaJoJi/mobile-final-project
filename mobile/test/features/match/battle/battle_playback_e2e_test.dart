@@ -113,6 +113,94 @@ Offset _attackerTileOffset(WidgetTester tester) {
 }
 
 void main() {
+  for (final unitId in ['ranger', 'healer']) {
+    testWidgets('$unitId travels during reduced-motion battle playback',
+        (tester) async {
+      tester.binding.platformDispatcher.accessibilityFeaturesTestValue =
+          const FakeAccessibilityFeatures(disableAnimations: true);
+      addTearDown(
+        tester.binding.platformDispatcher.clearAccessibilityFeaturesTestValue,
+      );
+      final transport = FakeWsTransport();
+      final client = WsClient(
+        url: 'ws://localhost',
+        getAccessToken: () async => 'token',
+        transport: transport,
+      );
+      addTearDown(client.dispose);
+      final connected = client.connect();
+      transport.serverConnect();
+      await connected;
+      _seedMatch(transport);
+      await pumpScreen(
+        tester,
+        const MatchScreen(matchId: 'm1'),
+        overrides: [wsClientProvider.overrideWithValue(client)],
+      );
+      transport.emitFromServer(GameEvents.matchPhase, {
+        'matchId': 'm1',
+        'phase': 'battle',
+        'round': 1,
+        'timer': 0,
+        'players': [
+          {'id': 'p1', 'hp': 100, 'gold': 5, 'ready': true},
+          {'id': 'p2', 'hp': 100, 'gold': 5, 'ready': true},
+        ],
+      });
+      await tester.pump();
+      final snapshots = _snapshot(targetHp: 90);
+      snapshots.first['unitId'] = unitId;
+      transport.emitFromServer(GameEvents.combatEvents, {
+        'matchId': 'm1',
+        'round': 1,
+        'cycleCount': 1,
+        'endedAt': 0,
+        'events': [
+          {
+            ..._attack(1, 90),
+            'attackerUnitId': unitId,
+            'unitStates': snapshots,
+          },
+        ],
+      });
+      await tester.pump();
+      await tester.pump();
+
+      // Sample ONE shot, so an event boundary cannot masquerade as travel.
+      final projectile = find.byKey(const ValueKey('projectile-mark'));
+      final positions = <Offset>[];
+      List<BattleTile>? previousTiles;
+      for (var i = 0; i < 12; i++) {
+        await tester.pump(const Duration(milliseconds: 100));
+        expect(projectile, findsOneWidget);
+        positions.add(tester.getCenter(projectile));
+        final tiles =
+            tester.widgetList<BattleTile>(find.byType(BattleTile)).toList();
+        expect(tiles, isNotEmpty);
+        if (previousTiles != null) {
+          for (var tile = 0; tile < tiles.length; tile++) {
+            expect(
+              tiles[tile],
+              same(previousTiles[tile]),
+              reason: 'Flight frames must not rebuild the stationary board',
+            );
+          }
+        }
+        previousTiles = tiles;
+      }
+      expect((positions.last - positions.first).distance, greaterThan(80));
+      for (var i = 1; i < positions.length; i++) {
+        // Portrait: our shooter is below the enemy. Each frame must move up.
+        expect(positions[i].dy, lessThan(positions[i - 1].dy));
+      }
+      await tester.pump(const Duration(milliseconds: 300));
+      expect(projectile, findsNothing);
+      expect(tester.takeException(), isNull);
+      await tester.pumpWidget(const SizedBox.shrink());
+      await tester.pump(const Duration(seconds: 1));
+    });
+  }
+
   testWidgets('combat playback advances and the melee attacker visibly moves',
       (tester) async {
     final transport = FakeWsTransport();

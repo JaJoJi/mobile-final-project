@@ -1,23 +1,25 @@
+import 'package:auto_chess_mobile/core/widgets/app_button.dart';
 import 'package:auto_chess_mobile/features/auth/register_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import '../_util.dart';
 
-// RegisterScreen predates the design system (raw colours, no AppTextField),
-// so no a11y-guideline sweep here yet — it gets restyled with the auth
-// polish pass. This is a render/behaviour smoke only.
 void main() {
-  final createButton = find.widgetWithText(ElevatedButton, 'Create account');
+  final createButton = find.widgetWithText(AppButton, 'สร้างบัญชี');
 
   testWidgets('renders three fields and the create-account button',
       (tester) async {
     await pumpScreen(tester, const RegisterScreen());
 
-    expect(find.text('Join Auto Chess'), findsOneWidget);
+    expect(find.text('สมัครเล่นออโต้เชส'), findsOneWidget);
     expect(find.byType(TextFormField), findsNWidgets(3));
     expect(createButton, findsOneWidget);
-    expect(find.text('Already have an account? Sign in'), findsOneWidget);
+    expect(find.text('มีบัญชีอยู่แล้ว? เข้าสู่ระบบ'), findsOneWidget);
+    expect(
+      find.byKey(const ValueKey('fantasy-page-background')),
+      findsOneWidget,
+    );
     expect(tester.takeException(), isNull);
   });
 
@@ -27,9 +29,23 @@ void main() {
     await tester.tap(createButton);
     await tester.pump();
 
-    expect(find.text('email required'), findsOneWidget);
-    expect(find.text('username required'), findsOneWidget);
-    expect(find.text('password required'), findsOneWidget);
+    expect(find.text('กรุณากรอกอีเมล'), findsOneWidget);
+    expect(find.text('กรุณากรอกชื่อผู้ใช้'), findsOneWidget);
+    expect(find.text('กรุณากรอกรหัสผ่าน'), findsOneWidget);
     expect(find.byType(SnackBar), findsNothing);
+  });
+
+  testWidgets('supports landscape and accessibility guidelines',
+      (tester) async {
+    await pumpScreen(
+      tester,
+      const RegisterScreen(),
+      surfaceSize: const Size(844, 500),
+    );
+    await tester.pumpAndSettle();
+
+    expect(createButton, findsOneWidget);
+    expect(tester.takeException(), isNull);
+    await expectMeetsA11yGuidelines(tester);
   });
 }

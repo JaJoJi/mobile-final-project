@@ -14,6 +14,8 @@
 /// sibling boards would never yet have a `size` to read.
 library;
 
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart' show RenderStack;
 
@@ -22,6 +24,8 @@ import '../../../core/widgets/unit_avatar.dart';
 import '../../../shared/models/combat_event.dart';
 import '../../../shared/models/match_state.dart';
 import '../../../shared/models/unit.dart';
+import '../board/stone_board_tile.dart';
+import 'combat_effect_assets.dart';
 import 'combat_effects_math.dart';
 
 /// Side length of one tile on the board behind [boardKey], or `null` if
@@ -30,6 +34,22 @@ double? _tileSize(GlobalKey boardKey) {
   final board = boardKey.currentContext?.findRenderObject() as RenderBox?;
   if (board == null || !board.hasSize) return null;
   return (board.size.width - 2 * AppSpacing.xs) / 3;
+}
+
+UnitSnapshot? _attackerSnapshot(AttackEvent event) {
+  final snapshots = event.unitStates;
+  if (snapshots == null) return null;
+
+  for (final snapshot in snapshots) {
+    if (snapshot.instanceId == event.attacker) return snapshot;
+  }
+  for (final snapshot in snapshots) {
+    if (snapshot.side == event.attackerSide &&
+        snapshot.slot == event.attackerSlot) {
+      return snapshot;
+    }
+  }
+  return null;
 }
 
 /// Center of board [slot], expressed in [ancestor]'s local coordinate
@@ -163,8 +183,13 @@ class CombatEffectsOverlay extends StatelessWidget {
     if (!isMelee && current.subProgress >= kProjectileImpactFraction) {
       return null;
     }
+    // Travel communicates who attacked whom, just like the melee lunge.
+    // Keep this functional motion on the preserved battle timeline even
+    // when the platform requests reduced decorative animations. Freezing
+    // progress at 0.85 made shots appear beside the victim for the whole
+    // event instead of travelling from their source.
     final progress = isMelee
-        ? triangleWave(current.subProgress)
+        ? meleeTravel(current.subProgress)
         : projectileTravel(current.subProgress);
     final position = Offset.lerp(attackerLocal, targetLocal, progress)!;
 
@@ -177,6 +202,7 @@ class CombatEffectsOverlay extends StatelessWidget {
         attackerSide == mySide ? myBoardKey : opponentBoardKey,
       );
       if (size == null) return null;
+      final attackerSnapshot = _attackerSnapshot(event);
       return Stack(
         children: [
           Positioned(
@@ -186,14 +212,23 @@ class CombatEffectsOverlay extends StatelessWidget {
             height: size,
             child: IgnorePointer(
               key: const ValueKey('lunge-traveler'),
-              child: UnitAvatar(
-                unitId: attackerUnitId.toJson(),
-                star: event.attackerStar ?? 0,
-                variant: UnitAvatarVariant.replay,
-                side: attackerSide == mySide ? UnitSide.ally : UnitSide.enemy,
-                hp: 1,
-                maxHp: 1,
-                expand: true,
+              child: BoardPiecePlacement(
+                child: RepaintBoundary(
+                  child: UnitAvatar(
+                    unitId: attackerUnitId.toJson(),
+                    star: attackerSnapshot?.star ?? event.attackerStar ?? 0,
+                    variant: UnitAvatarVariant.replay,
+                    side:
+                        attackerSide == mySide ? UnitSide.ally : UnitSide.enemy,
+                    // The travelling sprite replaces the copy on its home
+                    // tile, so it must carry the same health state. A legacy
+                    // event without snapshots omits the bar instead of
+                    // briefly lying that the unit is at full health.
+                    hp: attackerSnapshot?.hp,
+                    maxHp: attackerSnapshot?.maxHp,
+                    expand: true,
+                  ),
+                ),
               ),
             ),
           ),
@@ -206,7 +241,13 @@ class CombatEffectsOverlay extends StatelessWidget {
     final projectileSize =
         (_tileSize(attackerSide == mySide ? myBoardKey : opponentBoardKey) ??
                 60) *
-            0.4;
+            0.82;
+    final effectKind = combatEffectForEvent(event);
+    if (effectKind == null || effectKind == CombatEffectKind.healerHeal) {
+      return null;
+    }
+    final direction = targetLocal - attackerLocal;
+    final angle = math.atan2(direction.dy, direction.dx);
 
     // A self-contained `Stack` + `Positioned` pair, scoped to this
     // widget's own subtree, so the `Positioned` below always has a valid
@@ -217,15 +258,16 @@ class CombatEffectsOverlay extends StatelessWidget {
         Positioned(
           left: position.dx - projectileSize / 2,
           top: position.dy - projectileSize / 2,
-          child: Icon(
+          child: Transform.rotate(
             key: const ValueKey('projectile-mark'),
-            // A ranger looses an arrow; a healer's basic attack is a bolt
-            // of magic. The per-tile projectile this overlay replaced drew
-            // that distinction and it was lost in the move (#215).
-            attackerUnitId == UnitId.ranger ? Icons.arrow_forward : Icons.bolt,
-            size: projectileSize,
-            color:
-                attackerSide == mySide ? Colors.blueAccent : Colors.redAccent,
+            angle: angle,
+            child: Image.asset(
+              effectKind.assetPath,
+              key: ValueKey('projectile-${effectKind.name}'),
+              width: projectileSize,
+              height: projectileSize,
+              fit: BoxFit.contain,
+            ),
           ),
         ),
       ],

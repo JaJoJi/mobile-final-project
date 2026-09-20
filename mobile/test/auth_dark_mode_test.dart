@@ -22,13 +22,14 @@ void main() {
 
   testWidgets('LoginScreen renders on the dark scheme', (tester) async {
     await pumpDark(tester, const LoginScreen());
-    expect(find.text('Auto Chess'), findsOneWidget);
+    expect(find.text('ออโต้เชส'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 
   testWidgets('LoginScreen error box uses theme colours', (tester) async {
     await pumpDark(tester, const LoginScreen());
-    await tester.tap(find.text('Sign in')); // triggers validation, not the box
+    await tester
+        .tap(find.text('เข้าสู่ระบบ')); // triggers validation, not the box
     await tester.pump();
     // The inline error box only shows on a server AuthException; the
     // validation path is enough to prove the screen stays crash-free in dark.
@@ -37,7 +38,7 @@ void main() {
 
   testWidgets('RegisterScreen renders on the dark scheme', (tester) async {
     await pumpDark(tester, const RegisterScreen());
-    expect(find.text('Join Auto Chess'), findsOneWidget);
+    expect(find.text('สมัครเล่นออโต้เชส'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 

@@ -27,6 +27,171 @@ const _targetSnapshot = UnitSnapshot(
 );
 
 void main() {
+  test('keeps each Healer heal event attached to its actual target', () {
+    const allyA = UnitSnapshot(
+      instanceId: 'ally-a',
+      unitId: UnitId.fighter,
+      star: 0,
+      hp: 80,
+      maxHp: 100,
+      slot: 0,
+      side: MatchSide.p1,
+      alive: true,
+    );
+    const allyB = UnitSnapshot(
+      instanceId: 'ally-b',
+      unitId: UnitId.ranger,
+      star: 2,
+      hp: 50,
+      maxHp: 60,
+      slot: 1,
+      side: MatchSide.p1,
+      alive: true,
+    );
+    const events = [
+      HealEvent(
+        cycle: 1,
+        tick: 1,
+        target: 'ally-a',
+        by: 'healer',
+        amount: 10,
+        targetHpAfter: 80,
+        targetSide: MatchSide.p1,
+        targetSlot: 0,
+        byUnitId: UnitId.healer,
+        unitStates: [allyA, allyB],
+      ),
+      HealEvent(
+        cycle: 1,
+        tick: 1,
+        target: 'ally-b',
+        by: 'healer',
+        amount: 10,
+        targetHpAfter: 50,
+        targetSide: MatchSide.p1,
+        targetSlot: 1,
+        byUnitId: UnitId.healer,
+        unitStates: [allyA, allyB],
+      ),
+    ];
+
+    final map = deriveUnitStates(
+      events: events,
+      playheadIndex: 1,
+      playerBoard: const [],
+      opponentBoard: const [],
+      mySide: MatchSide.p1,
+    );
+
+    expect(
+      map[const UnitKey(side: MatchSide.p1, slot: 0)]?.healEventIndex,
+      0,
+    );
+    expect(
+      map[const UnitKey(side: MatchSide.p1, slot: 1)]?.healEventIndex,
+      1,
+    );
+    expect(
+      map[const UnitKey(side: MatchSide.p1, slot: 0)]?.isHealerHeal,
+      isTrue,
+    );
+    expect(
+      map[const UnitKey(side: MatchSide.p1, slot: 1)]?.isHealerHeal,
+      isTrue,
+    );
+  });
+
+  group('deriveUnitStates initial board fallback', () {
+    const eventWithoutSnapshots = AttackEvent(
+      cycle: 1,
+      tick: 1,
+      attacker: 'p1-fighter',
+      target: 'p2-ranger',
+      damage: 10,
+      targetHpAfter: 90,
+    );
+
+    test('uses the authoritative initial board when snapshots are absent', () {
+      const initialBoard = CombatBoardState(
+        p1: [
+          CombatUnit(
+            instanceId: 'p1-fighter',
+            unitId: UnitId.fighter,
+            star: 2,
+            hp: 140,
+            maxHp: 140,
+          ),
+        ],
+        p2: [
+          null,
+          CombatUnit(
+            instanceId: 'p2-ranger',
+            unitId: UnitId.ranger,
+            star: 1,
+            hp: 90,
+            maxHp: 100,
+          ),
+        ],
+      );
+
+      final map = deriveUnitStates(
+        events: const [eventWithoutSnapshots],
+        playheadIndex: 0,
+        playerBoard: const [],
+        opponentBoard: const [],
+        mySide: MatchSide.p1,
+        initialBoard: initialBoard,
+      );
+
+      expect(
+        map[const UnitKey(side: MatchSide.p1, slot: 0)]?.unitId,
+        UnitId.fighter,
+      );
+      expect(
+        map[const UnitKey(side: MatchSide.p1, slot: 0)]?.star,
+        2,
+      );
+      expect(
+        map[const UnitKey(side: MatchSide.p2, slot: 1)]?.unitId,
+        UnitId.ranger,
+      );
+    });
+
+    test('falls back to viewer-relative match boards for legacy batches', () {
+      const fighter = Unit(
+        instanceId: 'mine',
+        unitId: UnitId.fighter,
+        star: 0,
+        hp: 100,
+        maxHp: 100,
+      );
+      const healer = Unit(
+        instanceId: 'enemy',
+        unitId: UnitId.healer,
+        star: 1,
+        hp: 80,
+        maxHp: 100,
+      );
+
+      final map = deriveUnitStates(
+        events: const [eventWithoutSnapshots],
+        playheadIndex: 0,
+        playerBoard: const [null, fighter],
+        opponentBoard: const [healer],
+        mySide: MatchSide.p2,
+      );
+
+      expect(
+        map[const UnitKey(side: MatchSide.p2, slot: 1)]?.unitId,
+        UnitId.fighter,
+      );
+      expect(
+        map[const UnitKey(side: MatchSide.p1, slot: 0)]?.unitId,
+        UnitId.healer,
+      );
+    });
+  });
+
   group('deriveUnitStates recoil', () {
     test('sets a recoil trigger + direction on a melee attacker', () {
       const event = AttackEvent(

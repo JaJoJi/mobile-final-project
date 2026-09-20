@@ -3,9 +3,9 @@ import 'dart:convert';
 import 'package:auto_chess_mobile/core/api/api_client.dart';
 import 'package:auto_chess_mobile/core/auth/auth_gate.dart';
 import 'package:auto_chess_mobile/core/theme/app_theme.dart';
+import 'package:auto_chess_mobile/features/lobby/player_hub_navigation.dart';
 import 'package:auto_chess_mobile/features/profile/profile_screen.dart';
 import 'package:auto_chess_mobile/features/profile/settings_provider.dart';
-import 'package:auto_chess_mobile/features/profile/settings_tile.dart';
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -99,40 +99,21 @@ void main() {
     expect(find.text('เรตติ้ง 1200'), findsOneWidget);
   });
 
-  testWidgets('theme segmented button drives settingsProvider', (tester) async {
-    late ProviderContainer container;
+  testWidgets('removes settings and shows the shared player hub navigation',
+      (tester) async {
     await tester.pumpWidget(await app(adapter: okMe));
     await tester.pumpAndSettle();
 
-    container = ProviderScope.containerOf(
-      tester.element(find.byType(ProfileScreen)),
-    );
-    expect(container.read(settingsProvider).themeMode, ThemeMode.system);
-
-    await tester.tap(find.text('มืด'));
-    await tester.pumpAndSettle();
-
-    expect(container.read(settingsProvider).themeMode, ThemeMode.dark);
-  });
-
-  testWidgets('sound switch drives settingsProvider', (tester) async {
-    await tester.pumpWidget(await app(adapter: okMe));
-    await tester.pumpAndSettle();
-
-    final container = ProviderScope.containerOf(
-      tester.element(find.byType(ProfileScreen)),
-    );
-    final soundTile = find.ancestor(
-      of: find.text('เสียงเอฟเฟกต์'),
-      matching: find.byType(SettingsTile),
-    );
-    await tester.ensureVisible(soundTile);
-    await tester.pumpAndSettle();
-    await tester
-        .tap(find.descendant(of: soundTile, matching: find.byType(Switch)));
-    await tester.pumpAndSettle();
-
-    expect(container.read(settingsProvider).soundEnabled, isFalse);
+    expect(find.text('ตั้งค่า'), findsNothing);
+    expect(find.text('ธีม'), findsNothing);
+    expect(find.text('เสียงเอฟเฟกต์'), findsNothing);
+    expect(find.text('เชื่อมต่อใหม่อัตโนมัติ'), findsNothing);
+    expect(find.text('หน้าหลัก'), findsOneWidget);
+    expect(find.text('ยูนิต'), findsOneWidget);
+    expect(find.text('ประวัติ'), findsOneWidget);
+    expect(find.text('โปรไฟล์'), findsOneWidget);
+    expect(find.byType(PlayerHubNavigation), findsOneWidget);
+    expect(find.byType(NavigationBar), findsNothing);
   });
 
   testWidgets('logout asks for confirmation', (tester) async {

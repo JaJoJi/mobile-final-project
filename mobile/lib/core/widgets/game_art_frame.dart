@@ -8,11 +8,14 @@ abstract final class GameBackgroundAssets {
       'assets/images/backgrounds/arena_background_landscape.webp';
   static const String arenaBlurred =
       'assets/images/backgrounds/arena_background_blurred.webp';
+  static const String homeTeamBanner =
+      'assets/images/backgrounds/home_team_banner.png';
 
   static const List<String> all = [
     arenaPortrait,
     arenaLandscape,
     arenaBlurred,
+    homeTeamBanner,
   ];
 }
 

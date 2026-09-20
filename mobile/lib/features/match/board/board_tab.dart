@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../../core/theme/app_motion.dart';
 import '../../../core/theme/app_spacing.dart';
 import '../../../core/theme/game_theme.dart';
+import '../../../core/utils/unit_star_level.dart';
 import '../../../core/widgets/game_art_frame.dart';
 import '../../../core/widgets/health_bar.dart';
 import '../../../core/widgets/unit_avatar.dart';
@@ -85,7 +86,7 @@ class _BoardTabState extends State<BoardTab>
     final paths = <String>{
       ...StoneBoardTile.allAssetPaths,
       ...GameUiAssets.reserve,
-      for (final kind in UnitKind.values) kind.artPath,
+      ...allUnitArtPaths,
     };
     for (final path in paths) {
       if (_precachedAssets.add(path)) {
@@ -102,7 +103,10 @@ class _BoardTabState extends State<BoardTab>
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        _OpponentScout(opponent: widget.match.opponent),
+        _OpponentScout(
+          opponent: widget.match.opponent,
+          currentRound: widget.match.round,
+        ),
         const SizedBox(height: AppSpacing.xs),
         Row(
           children: [
@@ -430,13 +434,17 @@ class _CountBadge extends StatelessWidget {
 }
 
 class _OpponentScout extends StatelessWidget {
-  const _OpponentScout({required this.opponent});
+  const _OpponentScout({required this.opponent, required this.currentRound});
 
   final OpponentView opponent;
+  final int currentRound;
 
   @override
   Widget build(BuildContext context) {
     final units = opponent.boardSummary.whereType<OpponentUnit>().toList();
+    final hasSnapshot = opponent.scoutRound != null || units.isNotEmpty;
+    final snapshotRound =
+        opponent.scoutRound ?? (currentRound - 1).clamp(1, currentRound);
     final game = Theme.of(context).extension<GameTheme>()!;
     return Material(
       key: const ValueKey('scout-panel-frame'),
@@ -447,7 +455,8 @@ class _OpponentScout extends StatelessWidget {
       ),
       clipBehavior: Clip.antiAlias,
       child: InkWell(
-        onTap: () => _showFullBoard(context),
+        onTap:
+            hasSnapshot ? () => _showFullBoard(context, snapshotRound) : null,
         child: Padding(
           padding: const EdgeInsets.symmetric(
             horizontal: AppSpacing.md,
@@ -469,13 +478,17 @@ class _OpponentScout extends StatelessWidget {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          'สอดแนมคู่แข่ง',
+                          hasSnapshot
+                              ? 'ทีมคู่แข่งจากรอบ $snapshotRound'
+                              : 'ยังไม่มีข้อมูลการสอดแนม',
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                           style: Theme.of(context).textTheme.titleSmall,
                         ),
                         Text(
-                          '${units.length}/9 ตัว · แตะเพื่อดูกระดาน',
+                          hasSnapshot
+                              ? '${units.length}/9 ตัว · แตะเพื่อดูกระดาน'
+                              : 'ข้อมูลจะพร้อมเมื่อรอบแรกจบลง',
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                           style: Theme.of(context).textTheme.bodySmall,
@@ -495,7 +508,7 @@ class _OpponentScout extends StatelessWidget {
                           ),
                         ),
                       ),
-                  const Icon(Icons.chevron_right),
+                  if (hasSnapshot) const Icon(Icons.chevron_right),
                 ],
               );
             },
@@ -505,7 +518,7 @@ class _OpponentScout extends StatelessWidget {
     );
   }
 
-  void _showFullBoard(BuildContext context) {
+  void _showFullBoard(BuildContext context, int snapshotRound) {
     showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
@@ -525,9 +538,13 @@ class _OpponentScout extends StatelessWidget {
                 children: [
                   const Icon(Icons.visibility_outlined),
                   const SizedBox(width: AppSpacing.sm),
-                  Text(
-                    'กระดานคู่แข่ง',
-                    style: Theme.of(context).textTheme.titleLarge,
+                  Expanded(
+                    child: Text(
+                      'ทีมคู่แข่งจากรอบ $snapshotRound',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: Theme.of(context).textTheme.titleLarge,
+                    ),
                   ),
                 ],
               ),
@@ -647,6 +664,7 @@ class _UnitDetailSheet extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final info = _UnitInfo.of(unitId, star);
+    final displayStar = displayStarLevel(star);
     return SafeArea(
       child: Padding(
         padding: const EdgeInsets.fromLTRB(
@@ -677,7 +695,7 @@ class _UnitDetailSheet extends StatelessWidget {
                         style: Theme.of(context).textTheme.headlineSmall,
                       ),
                       Text(
-                        '${star == 0 ? 'พื้นฐาน' : '$star ดาว'} · ${info.role}',
+                        '$displayStar ดาว · ${info.role}',
                       ),
                     ],
                   ),

@@ -19,6 +19,19 @@ const _attack = AttackEvent(
 );
 
 void main() {
+  test('melee travel eases both legs without moving the impact time', () {
+    expect(meleeTravel(0), 0);
+    expect(meleeTravel(0.5), 1);
+    expect(meleeTravel(1), 0);
+    expect(meleeTravel(0.001), lessThan(0.00002));
+    expect(1 - meleeTravel(0.499), lessThan(0.00002));
+    for (var i = 1; i <= 50; i++) {
+      final t = i / 100;
+      expect(meleeTravel(t), greaterThan(meleeTravel(t - 0.01)));
+      expect(meleeTravel(t), closeTo(meleeTravel(1 - t), 0.000001));
+    }
+  });
+
   group('currentEventEffect', () {
     test('returns null for an empty event list', () {
       expect(currentEventEffect(const [], 0.5), isNull);

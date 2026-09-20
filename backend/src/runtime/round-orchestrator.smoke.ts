@@ -78,6 +78,9 @@ class FakePubsub {
 class FakeMatches {
   readonly snapshots: any[] = [];
   readonly finalized: any[] = [];
+  async usernamesForPlayers() {
+    return { player1Name: 'alice', player2Name: 'bob' };
+  }
   async updateRuntimeSnapshot(matchId: string, input: unknown) {
     this.snapshots.push({ matchId, input });
   }
@@ -199,6 +202,23 @@ async function run() {
     round2.p2State.hp === 95 && round2.p2State.gold === 10 &&
       round2.wipeIndexP2 === 1 && !round2.readyP1 && !round2.readyP2,
     `p2Hp=${round2.p2State.hp} gold=${round2.p2State.gold} wipe=${round2.wipeIndexP2}`,
+  );
+  add(
+    results,
+    'round completion persists the scouting snapshot for the next planning phase',
+    round2.scoutRound === 1 && round2.scoutP1Board.length === 9 &&
+      round2.scoutP2Board.length === 9,
+    `scoutRound=${round2.scoutRound} slots=${round2.scoutP1Board.length}/${round2.scoutP2Board.length}`,
+  );
+  const round2States = h.pubsub.events.filter((event) =>
+    event.type === 'game:match:state' && event.payload.round === 2);
+  add(
+    results,
+    'round-two clients receive tappable scout metadata and player names',
+    round2States.length === 2 && round2States.every((event) =>
+      event.payload.opponent.scoutRound === 1 &&
+      event.payload.roster.username && event.payload.opponent.username),
+    `states=${round2States.length} scout=${round2States.map((event) => event.payload.opponent.scoutRound).join('/')}`,
   );
   add(
     results,
