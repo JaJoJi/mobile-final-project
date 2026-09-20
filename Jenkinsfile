@@ -40,6 +40,27 @@ pipeline {
                 }
             }
         }
+
+        stage('Deploy — Staging') {
+        when {
+            branch 'jj/dev'
+        }
+        steps {
+            sh 'echo deploying to staging--.'
+        }
+    }
+
+    stage('Deploy — Production') {
+        when {
+            branch 'jj/main'
+        }
+        input {
+            message 'Deploy to production?'
+        }
+        steps {
+            sh 'echo deploying to production--.'
+        }
+    }
     }
 
     post {
