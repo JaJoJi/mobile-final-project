@@ -1,9 +1,11 @@
 import 'package:auto_chess_mobile/core/widgets/app_button.dart';
 import 'package:auto_chess_mobile/core/ws/ws_client.dart';
 import 'package:auto_chess_mobile/core/ws/ws_providers.dart';
+import 'package:auto_chess_mobile/features/history/history_providers.dart';
 import 'package:auto_chess_mobile/features/lobby/find_match_button.dart';
 import 'package:auto_chess_mobile/features/lobby/lobby_screen.dart';
 import 'package:auto_chess_mobile/features/lobby/logout_button.dart';
+import 'package:auto_chess_mobile/features/lobby/player_hub_navigation.dart';
 import 'package:auto_chess_mobile/features/lobby/profile_card.dart';
 import 'package:auto_chess_mobile/shared/models/game_events.dart';
 import 'package:flutter/material.dart';
@@ -43,12 +45,15 @@ void main() {
   /// Pump [LobbyScreen] inside a GoRouter so `context.go('/match/<id>')`
   /// in the screen is observable (we watch the router for the location
   /// change in test 4).
-  Future<GoRouter> pumpLobby(WidgetTester tester) async {
+  Future<GoRouter> pumpLobby(
+    WidgetTester tester, {
+    Size surfaceSize = const Size(390, 844),
+  }) async {
     final connectFuture = wsClient.connect();
     transport.serverConnect();
     await connectFuture;
 
-    tester.view.physicalSize = const Size(390, 844);
+    tester.view.physicalSize = surfaceSize;
     tester.view.devicePixelRatio = 1.0;
     addTearDown(tester.view.reset);
 
@@ -77,6 +82,7 @@ void main() {
           currentUserProvider.overrideWith(
             (ref) async => {'username': 'alice', 'rating': 1234},
           ),
+          matchHistoryProvider.overrideWith((ref) async => []),
         ],
         child: MaterialApp.router(routerConfig: router),
       ),
@@ -92,21 +98,56 @@ void main() {
     await pumpLobby(tester);
     expect(find.byType(ProfileCard), findsOneWidget);
     expect(find.byType(FindMatchButton), findsOneWidget);
-    expect(find.text('Find match'), findsOneWidget);
+    expect(find.text('จับคู่ด่วน'), findsOneWidget);
     expect(find.text('Searching\u2026'), findsNothing);
     expect(find.byType(LogoutButton), findsOneWidget);
+    expect(find.text('เข้าสู่สนาม'), findsOneWidget);
+    expect(find.text('อันดับประจำฤดูกาล'), findsOneWidget);
+    expect(find.text('การแข่งขันล่าสุด'), findsOneWidget);
+    expect(find.text('สร้างห้อง'), findsOneWidget);
+    expect(find.text('เข้าร่วมห้อง'), findsOneWidget);
+    expect(find.text('หน้าหลัก'), findsOneWidget);
+    expect(find.text('ยูนิต'), findsOneWidget);
+    expect(find.text('ประวัติ'), findsOneWidget);
+    expect(find.text('โปรไฟล์'), findsOneWidget);
+    expect(find.byType(PlayerHubNavigation), findsOneWidget);
+    expect(find.byType(NavigationBar), findsNothing);
+    expect(find.byKey(const ValueKey('home-team-banner')), findsOneWidget);
+    expect(
+      find.byKey(const ValueKey('fantasy-page-background')),
+      findsOneWidget,
+    );
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('tap Find match → state searching + button shows Cancel',
+  testWidgets('adapts to landscape and meets accessibility guidelines',
+      (tester) async {
+    await pumpLobby(tester, surfaceSize: const Size(900, 500));
+
+    expect(find.byType(ProfileCard), findsOneWidget);
+    expect(find.text('จับคู่ด่วน'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+    await expectMeetsA11yGuidelines(tester);
+  });
+
+  testWidgets('tap Quick match → state searching + button shows Cancel',
       (tester) async {
     await pumpLobby(tester);
-    await tester.tap(find.text('Find match'));
+    await tester.tap(find.text('จับคู่ด่วน'));
     await tester.pump();
 
-    expect(find.text('Cancel'), findsOneWidget);
-    expect(find.text('Find match'), findsNothing);
-    expect(find.text('Searching\u2026'), findsOneWidget);
+    expect(find.text('ยกเลิก'), findsOneWidget);
+    expect(find.text('จับคู่ด่วน'), findsNothing);
+    expect(
+      find.byKey(const ValueKey('matchmaking-timer-badge')),
+      findsOneWidget,
+    );
+    expect(find.text('กำลังค้นหา'), findsOneWidget);
+    expect(find.text('00:00'), findsOneWidget);
+    expect(find.text('Searching\u2026'), findsNothing);
+
+    await tester.pump(const Duration(seconds: 2));
+    expect(find.text('00:02'), findsOneWidget);
 
     // The notifier should have emitted `game:matchmaking:join` on the WS.
     expect(transport.sent, hasLength(1));
@@ -118,22 +159,22 @@ void main() {
     await pumpLobby(tester);
     transport.withholdAck = true;
 
-    await tester.tap(find.text('Find match'));
+    await tester.tap(find.text('จับคู่ด่วน'));
     await tester.pump();
 
-    expect(find.text('Joining queue…'), findsWidgets);
+    expect(find.text('กำลังเข้าคิว…'), findsWidgets);
     expect(find.text('Searching…'), findsNothing);
-    expect(find.text('Cancel'), findsNothing);
+    expect(find.text('ยกเลิก'), findsNothing);
     expect(transport.sent.single.event, GameActions.matchmakingJoin);
 
     // A missing ACK must not leave the button stuck forever.
     await tester.pump(const Duration(seconds: 5));
     await tester.pump();
-    expect(find.text('Find match'), findsOneWidget);
-    expect(find.text('Joining queue…'), findsNothing);
+    expect(find.text('จับคู่ด่วน'), findsOneWidget);
+    expect(find.text('กำลังเข้าคิว…'), findsNothing);
   });
 
-  testWidgets('Find match stays disabled while WebSocket is disconnected',
+  testWidgets('Quick match stays disabled while WebSocket is disconnected',
       (tester) async {
     await pumpLobby(tester);
     transport.serverDisconnect();
@@ -148,12 +189,12 @@ void main() {
   testWidgets('tap Cancel → state idle + emit matchmaking:leave',
       (tester) async {
     await pumpLobby(tester);
-    await tester.tap(find.text('Find match'));
+    await tester.tap(find.text('จับคู่ด่วน'));
     await tester.pump();
-    await tester.tap(find.text('Cancel'));
+    await tester.tap(find.text('ยกเลิก'));
     await tester.pump();
 
-    expect(find.text('Find match'), findsOneWidget);
+    expect(find.text('จับคู่ด่วน'), findsOneWidget);
     expect(find.text('Searching\u2026'), findsNothing);
     expect(transport.sent.map((e) => e.event).toList(), [
       GameActions.matchmakingJoin,
@@ -164,7 +205,7 @@ void main() {
   testWidgets('game:match:phase event while searching → state matched + nav',
       (tester) async {
     final router = await pumpLobby(tester);
-    await tester.tap(find.text('Find match'));
+    await tester.tap(find.text('จับคู่ด่วน'));
     await tester.pump();
 
     // Server pairs us.
@@ -192,7 +233,7 @@ void main() {
     // Returning after the game must clear the terminal matchmaking state.
     router.go('/lobby');
     await tester.pumpAndSettle();
-    expect(find.text('Find match'), findsOneWidget);
+    expect(find.text('จับคู่ด่วน'), findsOneWidget);
     expect(find.text('Match found!'), findsNothing);
   });
 
@@ -204,19 +245,19 @@ void main() {
       await tester.tap(find.byIcon(Icons.logout));
       await tester.pumpAndSettle();
 
-      expect(find.text('Sign out?'), findsOneWidget);
+      expect(find.text('ออกจากระบบ?'), findsOneWidget);
       expect(
-        find.text("You'll have to sign in again to play."),
+        find.text('คุณต้องเข้าสู่ระบบใหม่เพื่อเล่นอีกครั้ง'),
         findsOneWidget,
       );
       expect(find.text('ยกเลิก'), findsWidgets);
-      expect(find.text('Sign out'), findsWidgets);
+      expect(find.text('ออกจากระบบ'), findsWidgets);
 
       // Cancel closes the dialog.
       final cancelButtons = find.text('ยกเลิก');
       await tester.tap(cancelButtons.first);
       await tester.pumpAndSettle();
-      expect(find.text('Sign out?'), findsNothing);
+      expect(find.text('ออกจากระบบ?'), findsNothing);
     },
   );
 }

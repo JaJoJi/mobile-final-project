@@ -24,7 +24,7 @@ class LogoutButton extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     return IconButton(
-      tooltip: 'Sign out',
+      tooltip: 'ออกจากระบบ',
       icon: const Icon(Icons.logout),
       onPressed: () => _confirmAndLogout(context, ref),
     );
@@ -33,9 +33,9 @@ class LogoutButton extends ConsumerWidget {
   Future<void> _confirmAndLogout(BuildContext context, WidgetRef ref) async {
     final confirmed = await AppModal.confirm(
       context,
-      title: 'Sign out?',
-      message: "You'll have to sign in again to play.",
-      confirmLabel: 'Sign out',
+      title: 'ออกจากระบบ?',
+      message: 'คุณต้องเข้าสู่ระบบใหม่เพื่อเล่นอีกครั้ง',
+      confirmLabel: 'ออกจากระบบ',
       destructive: true,
     );
     if (!confirmed) return;
