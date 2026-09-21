@@ -790,7 +790,7 @@ class _BattleTileState extends State<BattleTile> with TickerProviderStateMixin {
     );
     _hitCtrl = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 340),
+      duration: const Duration(milliseconds: 460),
       animationBehavior: AnimationBehavior.preserve,
     );
     _hitAnim = Tween<double>(begin: 0, end: 1).animate(
@@ -955,7 +955,7 @@ class _BattleTileState extends State<BattleTile> with TickerProviderStateMixin {
                     animation: _hitAnim,
                     builder: (context, _) => Center(
                       child: SizedBox.square(
-                        dimension: widget.tileWidth * 0.58,
+                        dimension: widget.tileWidth * 0.82,
                         child: CustomPaint(
                           key: ValueKey(
                             kind == HitEffectKind.slash
@@ -1094,24 +1094,30 @@ class _BattleHitPainter extends CustomPainter {
   }
 
   void _paintSlash(Canvas canvas, Size size) {
-    final reveal = (progress / 0.55).clamp(0.0, 1.0);
-    final fade = (1 - ((progress - 0.55) / 0.45).clamp(0.0, 1.0));
+    final reveal = (progress / 0.42).clamp(0.0, 1.0);
+    final fade = (1 - ((progress - 0.68) / 0.32).clamp(0.0, 1.0));
+    final flash = (1 - (progress / 0.32).clamp(0.0, 1.0));
+    canvas.drawCircle(
+      size.center(Offset.zero),
+      size.shortestSide * (0.20 + progress * 0.22),
+      Paint()..color = const Color(0xFFFF8A3D).withValues(alpha: 0.18 * flash),
+    );
     final paths = [
       Path()
-        ..moveTo(size.width * 0.17, size.height * 0.76)
+        ..moveTo(size.width * 0.10, size.height * 0.83)
         ..quadraticBezierTo(
-          size.width * 0.52,
-          size.height * 0.38,
-          size.width * 0.84,
-          size.height * 0.18,
+          size.width * 0.48,
+          size.height * 0.34,
+          size.width * 0.91,
+          size.height * 0.10,
         ),
       Path()
-        ..moveTo(size.width * 0.30, size.height * 0.84)
+        ..moveTo(size.width * 0.22, size.height * 0.91)
         ..quadraticBezierTo(
           size.width * 0.55,
           size.height * 0.56,
-          size.width * 0.74,
-          size.height * 0.40,
+          size.width * 0.82,
+          size.height * 0.30,
         ),
     ];
     for (var i = 0; i < paths.length; i++) {
@@ -1120,26 +1126,38 @@ class _BattleHitPainter extends CustomPainter {
       canvas.drawPath(
         visible,
         Paint()
-          ..color = const Color(0xFFFFC94A).withValues(alpha: 0.30 * fade)
+          ..color = const Color(0xFFFF6B35).withValues(alpha: 0.50 * fade)
           ..style = PaintingStyle.stroke
-          ..strokeWidth = i == 0 ? 9 : 6
+          ..strokeWidth = i == 0 ? 14 : 10
           ..strokeCap = StrokeCap.round,
       );
       canvas.drawPath(
         visible,
         Paint()
-          ..color = Colors.white.withValues(alpha: 0.95 * fade)
+          ..color = const Color(0xFFFFF6D6).withValues(alpha: fade)
           ..style = PaintingStyle.stroke
-          ..strokeWidth = i == 0 ? 2.8 : 1.8
+          ..strokeWidth = i == 0 ? 4.2 : 3.0
           ..strokeCap = StrokeCap.round,
       );
     }
     final sparkPaint = Paint()
       ..color = const Color(0xFFFFD85A).withValues(alpha: fade);
-    for (final point in const [Offset(0.25, 0.32), Offset(0.73, 0.69)]) {
-      canvas.drawCircle(
-        Offset(point.dx * size.width, point.dy * size.height),
-        size.shortestSide * (0.022 + progress * 0.012),
+    for (final point in const [
+      Offset(0.22, 0.34),
+      Offset(0.48, 0.20),
+      Offset(0.76, 0.66),
+      Offset(0.86, 0.42),
+    ]) {
+      final center = Offset(point.dx * size.width, point.dy * size.height);
+      final sparkSize = size.shortestSide * (0.035 + progress * 0.018);
+      canvas.drawLine(
+        center - Offset(sparkSize, 0),
+        center + Offset(sparkSize, 0),
+        sparkPaint..strokeWidth = 2.2,
+      );
+      canvas.drawLine(
+        center - Offset(0, sparkSize),
+        center + Offset(0, sparkSize),
         sparkPaint,
       );
     }
@@ -1148,12 +1166,12 @@ class _BattleHitPainter extends CustomPainter {
   void _paintProjectileImpact(Canvas canvas, Size size) {
     final center = size.center(Offset.zero);
     final fade = 1 - Curves.easeIn.transform(progress);
-    final radius = size.shortestSide * (0.08 + progress * 0.30);
+    final radius = size.shortestSide * (0.10 + progress * 0.34);
     canvas.drawCircle(
       center,
       radius,
       Paint()
-        ..color = const Color(0xFF67E8FF).withValues(alpha: 0.16 * fade)
+        ..color = const Color(0xFF67E8FF).withValues(alpha: 0.24 * fade)
         ..style = PaintingStyle.fill,
     );
     canvas.drawCircle(
@@ -1162,11 +1180,11 @@ class _BattleHitPainter extends CustomPainter {
       Paint()
         ..color = const Color(0xFFBFF7FF).withValues(alpha: 0.85 * fade)
         ..style = PaintingStyle.stroke
-        ..strokeWidth = 2.2,
+        ..strokeWidth = 3.2,
     );
     final rayPaint = Paint()
       ..color = const Color(0xFFFFE780).withValues(alpha: 0.92 * fade)
-      ..strokeWidth = 2.4
+      ..strokeWidth = 3.0
       ..strokeCap = StrokeCap.round;
     for (var i = 0; i < 6; i++) {
       final angle = i * math.pi / 3 + progress * 0.22;

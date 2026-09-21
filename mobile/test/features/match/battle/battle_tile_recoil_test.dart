@@ -252,7 +252,7 @@ void main() {
     expect(find.byKey(const ValueKey('slash-hit-vfx')), findsOneWidget);
     expect(find.byKey(const ValueKey('projectile-hit-vfx')), findsNothing);
 
-    await tester.pump(const Duration(milliseconds: 300));
+    await tester.pump(const Duration(milliseconds: 420));
     expect(find.byKey(const ValueKey('slash-hit-vfx')), findsNothing);
   });
 
