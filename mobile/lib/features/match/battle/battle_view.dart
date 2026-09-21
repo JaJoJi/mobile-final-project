@@ -958,9 +958,11 @@ class _BattleTileState extends State<BattleTile> with TickerProviderStateMixin {
                         dimension: widget.tileWidth * 0.82,
                         child: CustomPaint(
                           key: ValueKey(
-                            kind == HitEffectKind.slash
-                                ? 'slash-hit-vfx'
-                                : 'projectile-hit-vfx',
+                            switch (kind) {
+                              HitEffectKind.slash => 'slash-hit-vfx',
+                              HitEffectKind.tankImpact => 'tank-hit-vfx',
+                              HitEffectKind.projectile => 'projectile-hit-vfx',
+                            },
                           ),
                           painter: _BattleHitPainter(
                             kind: kind,
@@ -1086,10 +1088,13 @@ class _BattleHitPainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
-    if (kind == HitEffectKind.slash) {
-      _paintSlash(canvas, size);
-    } else {
-      _paintProjectileImpact(canvas, size);
+    switch (kind) {
+      case HitEffectKind.slash:
+        _paintSlash(canvas, size);
+      case HitEffectKind.tankImpact:
+        _paintTankImpact(canvas, size);
+      case HitEffectKind.projectile:
+        _paintProjectileImpact(canvas, size);
     }
   }
 
@@ -1102,23 +1107,15 @@ class _BattleHitPainter extends CustomPainter {
       size.shortestSide * (0.20 + progress * 0.22),
       Paint()..color = const Color(0xFFFF8A3D).withValues(alpha: 0.18 * flash),
     );
+    // Mirrored, equal-length strokes make a deliberate sword-cut X. The old
+    // unequal curves looked skewed as they crossed the character artwork.
     final paths = [
       Path()
-        ..moveTo(size.width * 0.10, size.height * 0.83)
-        ..quadraticBezierTo(
-          size.width * 0.48,
-          size.height * 0.34,
-          size.width * 0.91,
-          size.height * 0.10,
-        ),
+        ..moveTo(size.width * 0.18, size.height * 0.18)
+        ..lineTo(size.width * 0.82, size.height * 0.82),
       Path()
-        ..moveTo(size.width * 0.22, size.height * 0.91)
-        ..quadraticBezierTo(
-          size.width * 0.55,
-          size.height * 0.56,
-          size.width * 0.82,
-          size.height * 0.30,
-        ),
+        ..moveTo(size.width * 0.82, size.height * 0.18)
+        ..lineTo(size.width * 0.18, size.height * 0.82),
     ];
     for (var i = 0; i < paths.length; i++) {
       final metric = paths[i].computeMetrics().first;
@@ -1143,10 +1140,10 @@ class _BattleHitPainter extends CustomPainter {
     final sparkPaint = Paint()
       ..color = const Color(0xFFFFD85A).withValues(alpha: fade);
     for (final point in const [
-      Offset(0.22, 0.34),
-      Offset(0.48, 0.20),
-      Offset(0.76, 0.66),
-      Offset(0.86, 0.42),
+      Offset(0.18, 0.18),
+      Offset(0.82, 0.18),
+      Offset(0.18, 0.82),
+      Offset(0.82, 0.82),
     ]) {
       final center = Offset(point.dx * size.width, point.dy * size.height);
       final sparkSize = size.shortestSide * (0.035 + progress * 0.018);
@@ -1161,6 +1158,55 @@ class _BattleHitPainter extends CustomPainter {
         sparkPaint,
       );
     }
+  }
+
+  void _paintTankImpact(Canvas canvas, Size size) {
+    final center = size.center(Offset.zero);
+    final reveal = Curves.easeOutCubic.transform(progress);
+    final fade = 1 - ((progress - 0.62) / 0.38).clamp(0.0, 1.0);
+    final radius = size.shortestSide * (0.12 + 0.32 * reveal);
+
+    canvas.drawCircle(
+      center,
+      radius,
+      Paint()..color = const Color(0xFF64D8FF).withValues(alpha: 0.16 * fade),
+    );
+    canvas.drawCircle(
+      center,
+      radius,
+      Paint()
+        ..color = const Color(0xFFB9F2FF).withValues(alpha: 0.92 * fade)
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 5.0,
+    );
+    canvas.drawCircle(
+      center,
+      radius * 0.68,
+      Paint()
+        ..color = const Color(0xFFFFD45C).withValues(alpha: 0.78 * fade)
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 3.0,
+    );
+
+    final chunkPaint = Paint()
+      ..color = const Color(0xFFFFFFFF).withValues(alpha: 0.92 * fade)
+      ..strokeWidth = 4.0
+      ..strokeCap = StrokeCap.square;
+    for (var i = 0; i < 4; i++) {
+      final angle = math.pi / 4 + i * math.pi / 2;
+      final direction = Offset(math.cos(angle), math.sin(angle));
+      canvas.drawLine(
+        center + direction * radius * 0.78,
+        center + direction * radius * 1.16,
+        chunkPaint,
+      );
+    }
+
+    final coreSize = size.shortestSide * (0.12 - progress * 0.05);
+    canvas.drawRect(
+      Rect.fromCenter(center: center, width: coreSize, height: coreSize),
+      Paint()..color = const Color(0xFFFFF1AD).withValues(alpha: fade),
+    );
   }
 
   void _paintProjectileImpact(Canvas canvas, Size size) {

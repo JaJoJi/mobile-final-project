@@ -75,6 +75,17 @@ const _projectileDamaged = UnitVisualState(
   hitEffectKind: HitEffectKind.projectile,
 );
 
+const _tankDamaged = UnitVisualState(
+  unitId: UnitId.fighter,
+  star: 1,
+  hp: 88,
+  maxHp: 100,
+  alive: true,
+  floatingDamage: 12,
+  lastDamageEventIndex: 8,
+  hitEffectKind: HitEffectKind.tankImpact,
+);
+
 const _healed = UnitVisualState(
   unitId: UnitId.healer,
   star: 2,
@@ -277,6 +288,29 @@ void main() {
 
     await tester.pump(const Duration(milliseconds: 600));
     expect(find.byKey(const ValueKey('projectile-hit-vfx')), findsNothing);
+  });
+
+  testWidgets('tank damage uses a heavy impact instead of sword slashes',
+      (tester) async {
+    await pumpThemed(
+      tester,
+      const BattleTile(slot: 0, unitSide: UnitSide.ally, unitState: _idle),
+    );
+    await pumpThemed(
+      tester,
+      const BattleTile(
+        slot: 0,
+        unitSide: UnitSide.ally,
+        unitState: _tankDamaged,
+      ),
+    );
+    await tester.pump(const Duration(milliseconds: 80));
+
+    expect(find.byKey(const ValueKey('tank-hit-vfx')), findsOneWidget);
+    expect(find.byKey(const ValueKey('slash-hit-vfx')), findsNothing);
+
+    await tester.pump(const Duration(milliseconds: 600));
+    expect(find.byKey(const ValueKey('tank-hit-vfx')), findsNothing);
   });
 
   testWidgets('Fighter lifesteal does not borrow the Healer sigil',

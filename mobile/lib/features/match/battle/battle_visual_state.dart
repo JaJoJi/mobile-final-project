@@ -41,7 +41,7 @@ class UnitDebuff {
 /// Lightweight impact language used by [BattleTile]. The projectile itself is
 /// animated by the combat overlay; this describes only the small effect shown
 /// when it reaches the target.
-enum HitEffectKind { slash, projectile }
+enum HitEffectKind { slash, tankImpact, projectile }
 
 /// Per-unit visual state derived from the server snapshot at the current
 /// playhead position. Consumed by [BattleTile] to render the correct
@@ -252,7 +252,8 @@ Map<UnitKey, UnitVisualState> deriveUnitStates({
     if (e is AttackEvent && e.targetSide != null && e.targetSlot != null) {
       target = UnitKey(side: e.targetSide!, slot: e.targetSlot!);
       hitEffectKind = switch (e.attackerUnitId) {
-        UnitId.fighter || UnitId.tank => HitEffectKind.slash,
+        UnitId.fighter => HitEffectKind.slash,
+        UnitId.tank => HitEffectKind.tankImpact,
         UnitId.ranger || UnitId.healer => HitEffectKind.projectile,
         _ => null,
       };

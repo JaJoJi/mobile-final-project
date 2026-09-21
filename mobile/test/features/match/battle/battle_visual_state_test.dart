@@ -309,6 +309,48 @@ void main() {
       );
     });
 
+    test('tank attacks use a distinct heavy impact', () {
+      const event = AttackEvent(
+        cycle: 1,
+        tick: 1,
+        attacker: 'tank1',
+        target: 'b1',
+        damage: 10,
+        targetHpAfter: 90,
+        attackerSide: MatchSide.p1,
+        attackerSlot: 0,
+        attackerUnitId: UnitId.tank,
+        targetSide: MatchSide.p2,
+        targetSlot: 4,
+        unitStates: [
+          UnitSnapshot(
+            instanceId: 'tank1',
+            unitId: UnitId.tank,
+            star: 1,
+            hp: 100,
+            maxHp: 100,
+            slot: 0,
+            side: MatchSide.p1,
+            alive: true,
+          ),
+          _targetSnapshot,
+        ],
+      );
+
+      final map = deriveUnitStates(
+        events: const [event],
+        playheadIndex: 0,
+        playerBoard: const [],
+        opponentBoard: const [],
+        mySide: MatchSide.p1,
+      );
+
+      expect(
+        map[const UnitKey(side: MatchSide.p2, slot: 4)]?.hitEffectKind,
+        HitEffectKind.tankImpact,
+      );
+    });
+
     test(
         'recoil trigger persists across later events until this unit '
         'attacks again', () {
