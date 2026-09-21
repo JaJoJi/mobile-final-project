@@ -13,26 +13,11 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../shared/models/combat_event.dart';
 import 'battle_visual_state.dart';
 
-/// Preferred duration for each combat event on the playhead.
+/// Fixed duration for every combat event on the playhead.
 ///
-/// This deliberately sits close to the compressed rate of a real dense
-/// battle. The old 1600ms preference made sparse boards play at 1600ms per
-/// action while a 77-event board hit the round cap and fell to ~675ms per
-/// action — so adding units visibly doubled animation speed. A 900ms target
-/// keeps sparse and dense boards in the same visual range while leaving each
-/// hit readable with the local impact animations layered on top.
-const Duration kCombatEventDuration = Duration(milliseconds: 900);
-
-/// Hard ceiling on one round's replay. The server abandons a round after
-/// `COMBAT_DONE_TIMEOUT_MS` (60s) if it hasn't received both clients'
-/// `combat_done` acks, so a replay longer than that hangs the match: a
-/// real 77-event round at the preferred rate would run over two minutes.
-/// Long rounds compress rather than overrun.
-///
-/// Kept below the server's 60-second acknowledgement timeout. At this cap a
-/// known 77-event dense round runs at ~714ms per event, only ~21% faster than
-/// a sparse round's 900ms instead of the old 2.37x difference.
-const Duration kMaxCombatPlayback = Duration(seconds: 55);
+/// The total replay is intentionally allowed to grow with the event count.
+/// This keeps attacks at the same readable speed regardless of team size.
+const Duration kCombatEventDuration = Duration(milliseconds: 800);
 
 /// Most of a replay a late client is allowed to fast-forward past so it
 /// can line up with the client that got the batch first.
@@ -52,18 +37,15 @@ const Duration kMaxCombatPlayback = Duration(seconds: 55);
 /// was drawn.
 ///
 /// The cost of the cap is that a genuine mid-replay reconnect now
-/// over-plays instead of catching up, and may miss the server's
-/// `COMBAT_DONE_TIMEOUT_MS` window — in which case the server advances
-/// the round itself. Playing combat and occasionally falling back to the
-/// server timeout is the better failure of the two.
+/// over-plays instead of catching up. The server deadline grows with the
+/// replay length, but can still advance the round if a client stalls. Playing
+/// combat and occasionally falling back to that deadline is the better
+/// failure of the two.
 const Duration kMaxPlaybackCatchUp = Duration(seconds: 3);
 
-/// Total playback time for [eventCount] events: the preferred rate, or a
-/// compressed rate when that would exceed [kMaxCombatPlayback].
-Duration combatPlaybackDuration(int eventCount) {
-  final preferred = kCombatEventDuration * eventCount;
-  return preferred > kMaxCombatPlayback ? kMaxCombatPlayback : preferred;
-}
+/// Total playback time for [eventCount] events at the fixed event rate.
+Duration combatPlaybackDuration(int eventCount) =>
+    kCombatEventDuration * eventCount;
 
 class BattlePlaybackController extends StateNotifier<BattleVisualState> {
   BattlePlaybackController() : super(BattleVisualState.empty);

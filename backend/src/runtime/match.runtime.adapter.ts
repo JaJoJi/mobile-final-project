@@ -410,7 +410,7 @@ export class MatchRuntimeAdapter {
     return this.matches.forfeitDisconnectedPlayer(matchId, userId);
   }
 
-  /** Shared path for the second ack and BullMQ's 60 s timeout. */
+  /** Shared path for the second ack and BullMQ's replay-length timeout. */
   async applyDamageAndAdvance(matchId: string, round: number): Promise<boolean> {
     const runtime = await this.findRuntime(matchId);
     if (!runtime) return false;

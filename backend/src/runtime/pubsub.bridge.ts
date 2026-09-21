@@ -175,7 +175,7 @@ export class PubsubBridge implements OnModuleInit, OnModuleDestroy {
     );
   }
 
-  // ─── 60 s late-subscriber cache (race R14) ─────────────────────────────
+  // ─── Late-subscriber cache (race R14) ──────────────────────────────────
 
   /**
    * Cache the full combat-event batch for `matchId` so a client that
@@ -183,12 +183,16 @@ export class PubsubBridge implements OnModuleInit, OnModuleDestroy {
    * {@link getCombatResult}. The TTL includes a safety margin beyond the
    * combat-done timeout so the fallback worker can always read the result.
    */
-  async writeCombatResult(matchId: string, events: CombatEvent[]): Promise<void> {
+  async writeCombatResult(
+    matchId: string,
+    events: CombatEvent[],
+    ttlSeconds = COMBAT_RESULT_TTL_SECONDS,
+  ): Promise<void> {
     await this.redis.client.set(
       `match:${matchId}:combat-result`,
       JSON.stringify(events),
       'EX',
-      COMBAT_RESULT_TTL_SECONDS,
+      ttlSeconds,
     );
   }
 
