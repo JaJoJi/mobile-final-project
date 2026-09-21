@@ -16,6 +16,7 @@
 library;
 
 import 'dart:async';
+import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart' show SchedulerBinding;
@@ -735,6 +736,8 @@ class _BattleTileState extends State<BattleTile> with TickerProviderStateMixin {
   late final Animation<double> _floatAnim;
   late final AnimationController _shakeCtrl;
   late final Animation<double> _shakeAnim;
+  late final AnimationController _hitCtrl;
+  late final Animation<double> _hitAnim;
   late final AnimationController _healBubbleCtrl;
   late final Animation<double> _healBubbleAnim;
   late final AnimationController _recoilCtrl;
@@ -743,6 +746,7 @@ class _BattleTileState extends State<BattleTile> with TickerProviderStateMixin {
   int? _visibleFloatingAmount;
   bool _visibleFloatingIsHeal = false;
   int? _lastDamageIndex;
+  HitEffectKind? _visibleHitEffectKind;
   int? _lastHealIndex;
   int? _lastRecoilIndex;
 
@@ -784,6 +788,19 @@ class _BattleTileState extends State<BattleTile> with TickerProviderStateMixin {
     _shakeAnim = Tween<double>(begin: 0, end: 1).animate(
       CurvedAnimation(parent: _shakeCtrl, curve: Curves.easeOut),
     );
+    _hitCtrl = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 340),
+      animationBehavior: AnimationBehavior.preserve,
+    );
+    _hitAnim = Tween<double>(begin: 0, end: 1).animate(
+      CurvedAnimation(parent: _hitCtrl, curve: Curves.easeOutCubic),
+    );
+    _hitCtrl.addStatusListener((status) {
+      if (status == AnimationStatus.completed && mounted) {
+        setState(() => _visibleHitEffectKind = null);
+      }
+    });
     // Heal bubble: expanding green circle, ~600ms, emit-and-dispose.
     _healBubbleCtrl = AnimationController(
       vsync: this,
@@ -825,7 +842,9 @@ class _BattleTileState extends State<BattleTile> with TickerProviderStateMixin {
     // Hit shake: trigger on new damage event index.
     final damageIdx = widget.unitState?.lastDamageEventIndex;
     if (damageIdx != null && damageIdx != _lastDamageIndex) {
+      _visibleHitEffectKind = widget.unitState?.hitEffectKind;
       _shakeCtrl.forward(from: 0);
+      if (_visibleHitEffectKind != null) _hitCtrl.forward(from: 0);
     }
     _lastDamageIndex = damageIdx;
 
@@ -848,6 +867,7 @@ class _BattleTileState extends State<BattleTile> with TickerProviderStateMixin {
   void dispose() {
     _floatCtrl.dispose();
     _shakeCtrl.dispose();
+    _hitCtrl.dispose();
     _healBubbleCtrl.dispose();
     _recoilCtrl.dispose();
     super.dispose();
@@ -928,6 +948,30 @@ class _BattleTileState extends State<BattleTile> with TickerProviderStateMixin {
                   ),
                 ),
               ),
+            if (_visibleHitEffectKind case final kind?)
+              Positioned.fill(
+                child: IgnorePointer(
+                  child: AnimatedBuilder(
+                    animation: _hitAnim,
+                    builder: (context, _) => Center(
+                      child: SizedBox.square(
+                        dimension: widget.tileWidth * 0.58,
+                        child: CustomPaint(
+                          key: ValueKey(
+                            kind == HitEffectKind.slash
+                                ? 'slash-hit-vfx'
+                                : 'projectile-hit-vfx',
+                          ),
+                          painter: _BattleHitPainter(
+                            kind: kind,
+                            progress: _hitAnim.value,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
             // Debuff badge — small icon in top-right corner.
             if (isAlive && uv?.debuff != null)
               const Positioned(
@@ -954,13 +998,29 @@ class _BattleTileState extends State<BattleTile> with TickerProviderStateMixin {
                     return Opacity(
                       opacity: (1.0 - progress).clamp(0.0, 1.0),
                       child: uv.isHealerHeal
-                          ? Transform.scale(
-                              scale: scale,
-                              child: Image.asset(
-                                CombatEffectKind.healerHeal.assetPath,
-                                key: const ValueKey('healer-heal-vfx'),
-                                fit: BoxFit.contain,
-                              ),
+                          ? Stack(
+                              alignment: Alignment.center,
+                              children: [
+                                Transform.rotate(
+                                  angle: progress * 0.18,
+                                  child: Transform.scale(
+                                    scale: scale,
+                                    child: Image.asset(
+                                      CombatEffectKind.healerHeal.assetPath,
+                                      key: const ValueKey('healer-heal-vfx'),
+                                      fit: BoxFit.contain,
+                                    ),
+                                  ),
+                                ),
+                                Positioned.fill(
+                                  child: CustomPaint(
+                                    key: const ValueKey(
+                                      'healer-heal-particles',
+                                    ),
+                                    painter: _HealParticlePainter(progress),
+                                  ),
+                                ),
+                              ],
                             )
                           : Center(
                               child: Container(
@@ -1016,6 +1076,156 @@ class _BattleTileState extends State<BattleTile> with TickerProviderStateMixin {
       ),
     );
   }
+}
+
+class _BattleHitPainter extends CustomPainter {
+  const _BattleHitPainter({required this.kind, required this.progress});
+
+  final HitEffectKind kind;
+  final double progress;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    if (kind == HitEffectKind.slash) {
+      _paintSlash(canvas, size);
+    } else {
+      _paintProjectileImpact(canvas, size);
+    }
+  }
+
+  void _paintSlash(Canvas canvas, Size size) {
+    final reveal = (progress / 0.55).clamp(0.0, 1.0);
+    final fade = (1 - ((progress - 0.55) / 0.45).clamp(0.0, 1.0));
+    final paths = [
+      Path()
+        ..moveTo(size.width * 0.17, size.height * 0.76)
+        ..quadraticBezierTo(
+          size.width * 0.52,
+          size.height * 0.38,
+          size.width * 0.84,
+          size.height * 0.18,
+        ),
+      Path()
+        ..moveTo(size.width * 0.30, size.height * 0.84)
+        ..quadraticBezierTo(
+          size.width * 0.55,
+          size.height * 0.56,
+          size.width * 0.74,
+          size.height * 0.40,
+        ),
+    ];
+    for (var i = 0; i < paths.length; i++) {
+      final metric = paths[i].computeMetrics().first;
+      final visible = metric.extractPath(0, metric.length * reveal);
+      canvas.drawPath(
+        visible,
+        Paint()
+          ..color = const Color(0xFFFFC94A).withValues(alpha: 0.30 * fade)
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = i == 0 ? 9 : 6
+          ..strokeCap = StrokeCap.round,
+      );
+      canvas.drawPath(
+        visible,
+        Paint()
+          ..color = Colors.white.withValues(alpha: 0.95 * fade)
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = i == 0 ? 2.8 : 1.8
+          ..strokeCap = StrokeCap.round,
+      );
+    }
+    final sparkPaint = Paint()
+      ..color = const Color(0xFFFFD85A).withValues(alpha: fade);
+    for (final point in const [Offset(0.25, 0.32), Offset(0.73, 0.69)]) {
+      canvas.drawCircle(
+        Offset(point.dx * size.width, point.dy * size.height),
+        size.shortestSide * (0.022 + progress * 0.012),
+        sparkPaint,
+      );
+    }
+  }
+
+  void _paintProjectileImpact(Canvas canvas, Size size) {
+    final center = size.center(Offset.zero);
+    final fade = 1 - Curves.easeIn.transform(progress);
+    final radius = size.shortestSide * (0.08 + progress * 0.30);
+    canvas.drawCircle(
+      center,
+      radius,
+      Paint()
+        ..color = const Color(0xFF67E8FF).withValues(alpha: 0.16 * fade)
+        ..style = PaintingStyle.fill,
+    );
+    canvas.drawCircle(
+      center,
+      radius,
+      Paint()
+        ..color = const Color(0xFFBFF7FF).withValues(alpha: 0.85 * fade)
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 2.2,
+    );
+    final rayPaint = Paint()
+      ..color = const Color(0xFFFFE780).withValues(alpha: 0.92 * fade)
+      ..strokeWidth = 2.4
+      ..strokeCap = StrokeCap.round;
+    for (var i = 0; i < 6; i++) {
+      final angle = i * math.pi / 3 + progress * 0.22;
+      final inner = radius * 0.65;
+      final outer = radius * 1.22;
+      canvas.drawLine(
+        center + Offset(math.cos(angle), math.sin(angle)) * inner,
+        center + Offset(math.cos(angle), math.sin(angle)) * outer,
+        rayPaint,
+      );
+    }
+    canvas.drawCircle(
+      center,
+      size.shortestSide * (0.09 * (1 - progress * 0.45)),
+      Paint()..color = Colors.white.withValues(alpha: 0.9 * fade),
+    );
+  }
+
+  @override
+  bool shouldRepaint(covariant _BattleHitPainter oldDelegate) =>
+      oldDelegate.kind != kind || oldDelegate.progress != progress;
+}
+
+class _HealParticlePainter extends CustomPainter {
+  const _HealParticlePainter(this.progress);
+
+  final double progress;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final center = size.center(Offset.zero);
+    final fade = (1 - progress).clamp(0.0, 1.0);
+    const directions = [
+      Offset(-0.24, -0.42),
+      Offset(0.24, -0.48),
+      Offset(-0.38, -0.16),
+      Offset(0.38, -0.20),
+    ];
+    for (var i = 0; i < directions.length; i++) {
+      final direction = directions[i];
+      final position = center +
+          Offset(
+            direction.dx * size.width * progress,
+            direction.dy * size.height * progress,
+          );
+      canvas.drawCircle(
+        position,
+        size.shortestSide * (i.isEven ? 0.025 : 0.019),
+        Paint()
+          ..color =
+              (i.isEven ? const Color(0xFF7EF0A5) : const Color(0xFFFFD75A))
+                  .withValues(alpha: 0.88 * fade),
+      );
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant _HealParticlePainter oldDelegate) =>
+      oldDelegate.progress != progress;
 }
 
 class _FloatingCombatNumber extends StatelessWidget {

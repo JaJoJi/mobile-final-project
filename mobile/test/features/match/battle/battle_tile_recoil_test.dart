@@ -61,6 +61,18 @@ const _damaged = UnitVisualState(
   alive: true,
   floatingDamage: 12,
   lastDamageEventIndex: 6,
+  hitEffectKind: HitEffectKind.slash,
+);
+
+const _projectileDamaged = UnitVisualState(
+  unitId: UnitId.fighter,
+  star: 1,
+  hp: 88,
+  maxHp: 100,
+  alive: true,
+  floatingDamage: 12,
+  lastDamageEventIndex: 7,
+  hitEffectKind: HitEffectKind.projectile,
 );
 
 const _healed = UnitVisualState(
@@ -220,6 +232,51 @@ void main() {
       (image.image as AssetImage).assetName,
       'assets/images/vfx/healer_heal_burst.png',
     );
+    expect(
+      find.byKey(const ValueKey('healer-heal-particles')),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets('melee damage paints a short slash impact', (tester) async {
+    await pumpThemed(
+      tester,
+      const BattleTile(slot: 0, unitSide: UnitSide.ally, unitState: _idle),
+    );
+    await pumpThemed(
+      tester,
+      const BattleTile(slot: 0, unitSide: UnitSide.ally, unitState: _damaged),
+    );
+    await tester.pump(const Duration(milliseconds: 80));
+
+    expect(find.byKey(const ValueKey('slash-hit-vfx')), findsOneWidget);
+    expect(find.byKey(const ValueKey('projectile-hit-vfx')), findsNothing);
+
+    await tester.pump(const Duration(milliseconds: 300));
+    expect(find.byKey(const ValueKey('slash-hit-vfx')), findsNothing);
+  });
+
+  testWidgets('ranged damage paints a compact projectile impact',
+      (tester) async {
+    await pumpThemed(
+      tester,
+      const BattleTile(slot: 0, unitSide: UnitSide.ally, unitState: _idle),
+    );
+    await pumpThemed(
+      tester,
+      const BattleTile(
+        slot: 0,
+        unitSide: UnitSide.ally,
+        unitState: _projectileDamaged,
+      ),
+    );
+    await tester.pump(const Duration(milliseconds: 80));
+
+    expect(find.byKey(const ValueKey('projectile-hit-vfx')), findsOneWidget);
+    expect(find.byKey(const ValueKey('slash-hit-vfx')), findsNothing);
+
+    await tester.pump(const Duration(milliseconds: 600));
+    expect(find.byKey(const ValueKey('projectile-hit-vfx')), findsNothing);
   });
 
   testWidgets('Fighter lifesteal does not borrow the Healer sigil',

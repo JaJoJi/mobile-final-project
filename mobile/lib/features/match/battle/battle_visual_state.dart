@@ -38,6 +38,11 @@ class UnitDebuff {
   final Color color;
 }
 
+/// Lightweight impact language used by [BattleTile]. The projectile itself is
+/// animated by the combat overlay; this describes only the small effect shown
+/// when it reaches the target.
+enum HitEffectKind { slash, projectile }
+
 /// Per-unit visual state derived from the server snapshot at the current
 /// playhead position. Consumed by [BattleTile] to render the correct
 /// sprite, HP bar, and alive/dead state.
@@ -53,6 +58,7 @@ class UnitVisualState {
     this.healEventIndex,
     this.isHealerHeal = false,
     this.lastDamageEventIndex,
+    this.hitEffectKind,
     this.recoilEventIndex,
     this.recoilDx = 0,
     this.recoilDy = 0,
@@ -80,6 +86,9 @@ class UnitVisualState {
   /// Index of the most recent damage event targeting this unit.
   /// [BattleTile] uses this as a trigger key for the hit shake animation.
   final int? lastDamageEventIndex;
+
+  /// Visual impact associated with [lastDamageEventIndex].
+  final HitEffectKind? hitEffectKind;
 
   /// Index of the most recent melee attack event this unit was the
   /// attacker in. [BattleTile] uses this as a trigger key for a small
@@ -235,18 +244,27 @@ Map<UnitKey, UnitVisualState> deriveUnitStates({
   // lastDamage[unitKey] = most recent attack/pierce event index targeting
   // this unit at or before limit.
   final lastDamage = <UnitKey, int>{};
+  final hitEffectKinds = <UnitKey, HitEffectKind>{};
   for (var i = 0; i <= landedLimit; i++) {
     final e = events[i];
     UnitKey? target;
+    HitEffectKind? hitEffectKind;
     if (e is AttackEvent && e.targetSide != null && e.targetSlot != null) {
       target = UnitKey(side: e.targetSide!, slot: e.targetSlot!);
+      hitEffectKind = switch (e.attackerUnitId) {
+        UnitId.fighter || UnitId.tank => HitEffectKind.slash,
+        UnitId.ranger || UnitId.healer => HitEffectKind.projectile,
+        _ => null,
+      };
     } else if (e is PierceEvent &&
         e.targetSide != null &&
         e.targetSlot != null) {
       target = UnitKey(side: e.targetSide!, slot: e.targetSlot!);
+      hitEffectKind = HitEffectKind.projectile;
     }
     if (target != null) {
       lastDamage[target] = i;
+      if (hitEffectKind != null) hitEffectKinds[target] = hitEffectKind;
     }
   }
 
@@ -381,6 +399,7 @@ Map<UnitKey, UnitVisualState> deriveUnitStates({
       isHealerHeal: healEventIndex[key] != null &&
           healerHealEventIndex[key] == healEventIndex[key],
       lastDamageEventIndex: lastDamage[key],
+      hitEffectKind: hitEffectKinds[key],
       recoilEventIndex: r?.index,
       recoilDx: r?.dx ?? 0,
       recoilDy: r?.dy ?? 0,
