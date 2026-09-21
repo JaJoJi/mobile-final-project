@@ -3,6 +3,17 @@ import 'package:auto_chess_mobile/shared/models/combat_event.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
+  group('combatPlaybackDuration', () {
+    test('uses exactly the same duration per event at every battle size', () {
+      for (final eventCount in [1, 10, 77, 2000]) {
+        expect(
+          combatPlaybackDuration(eventCount).inMilliseconds ~/ eventCount,
+          800,
+        );
+      }
+    });
+  });
+
   group('BattlePlaybackController.loadBatch', () {
     test('drops death events — the paired attack already carries the kill', () {
       // `applyDamage` (backend/src/game/damage.ts) emits a `death` event

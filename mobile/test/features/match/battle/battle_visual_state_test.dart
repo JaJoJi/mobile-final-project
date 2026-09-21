@@ -224,6 +224,10 @@ void main() {
       // the viewer's own unit: it sits on the bottom board and nudges up.
       expect(attacker.recoilDx, 1.0);
       expect(attacker.recoilDy, -1.0);
+      expect(
+        map[const UnitKey(side: MatchSide.p2, slot: 4)]?.hitEffectKind,
+        HitEffectKind.slash,
+      );
     });
 
     test('recoil direction is relative to the viewer, not the absolute side',
@@ -299,6 +303,52 @@ void main() {
       expect(attacker!.recoilEventIndex, isNull);
       expect(attacker.recoilDx, 0.0);
       expect(attacker.recoilDy, 0.0);
+      expect(
+        map[const UnitKey(side: MatchSide.p2, slot: 4)]?.hitEffectKind,
+        HitEffectKind.projectile,
+      );
+    });
+
+    test('tank attacks use a distinct heavy impact', () {
+      const event = AttackEvent(
+        cycle: 1,
+        tick: 1,
+        attacker: 'tank1',
+        target: 'b1',
+        damage: 10,
+        targetHpAfter: 90,
+        attackerSide: MatchSide.p1,
+        attackerSlot: 0,
+        attackerUnitId: UnitId.tank,
+        targetSide: MatchSide.p2,
+        targetSlot: 4,
+        unitStates: [
+          UnitSnapshot(
+            instanceId: 'tank1',
+            unitId: UnitId.tank,
+            star: 1,
+            hp: 100,
+            maxHp: 100,
+            slot: 0,
+            side: MatchSide.p1,
+            alive: true,
+          ),
+          _targetSnapshot,
+        ],
+      );
+
+      final map = deriveUnitStates(
+        events: const [event],
+        playheadIndex: 0,
+        playerBoard: const [],
+        opponentBoard: const [],
+        mySide: MatchSide.p1,
+      );
+
+      expect(
+        map[const UnitKey(side: MatchSide.p2, slot: 4)]?.hitEffectKind,
+        HitEffectKind.tankImpact,
+      );
     });
 
     test(
@@ -430,6 +480,7 @@ void main() {
         0,
         reason: 'the hit shake fired for an event still in flight',
       );
+      expect(target?.hitEffectKind, HitEffectKind.projectile);
     });
 
     test('on impact the hit lands', () {
@@ -437,6 +488,7 @@ void main() {
       expect(target?.hp, 76);
       expect(target?.floatingDamage, 12);
       expect(target?.lastDamageEventIndex, 1);
+      expect(target?.hitEffectKind, HitEffectKind.projectile);
     });
 
     test('the attacker keeps animating while its shot is in flight', () {

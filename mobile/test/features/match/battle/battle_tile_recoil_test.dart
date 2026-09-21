@@ -61,6 +61,29 @@ const _damaged = UnitVisualState(
   alive: true,
   floatingDamage: 12,
   lastDamageEventIndex: 6,
+  hitEffectKind: HitEffectKind.slash,
+);
+
+const _projectileDamaged = UnitVisualState(
+  unitId: UnitId.fighter,
+  star: 1,
+  hp: 88,
+  maxHp: 100,
+  alive: true,
+  floatingDamage: 12,
+  lastDamageEventIndex: 7,
+  hitEffectKind: HitEffectKind.projectile,
+);
+
+const _tankDamaged = UnitVisualState(
+  unitId: UnitId.fighter,
+  star: 1,
+  hp: 88,
+  maxHp: 100,
+  alive: true,
+  floatingDamage: 12,
+  lastDamageEventIndex: 8,
+  hitEffectKind: HitEffectKind.tankImpact,
 );
 
 const _healed = UnitVisualState(
@@ -220,6 +243,89 @@ void main() {
       (image.image as AssetImage).assetName,
       'assets/images/vfx/healer_heal_burst.png',
     );
+    expect(
+      find.byKey(const ValueKey('healer-heal-particles')),
+      findsOneWidget,
+    );
+
+    await tester.pump(const Duration(milliseconds: 650));
+    final healOpacity = tester.widget<Opacity>(
+      find
+          .ancestor(
+            of: find.byKey(const ValueKey('healer-heal-vfx')),
+            matching: find.byType(Opacity),
+          )
+          .first,
+    );
+    expect(
+      healOpacity.opacity,
+      greaterThan(0.5),
+      reason: 'the healer effect should remain readable past its first flash',
+    );
+  });
+
+  testWidgets('melee damage paints a short slash impact', (tester) async {
+    await pumpThemed(
+      tester,
+      const BattleTile(slot: 0, unitSide: UnitSide.ally, unitState: _idle),
+    );
+    await pumpThemed(
+      tester,
+      const BattleTile(slot: 0, unitSide: UnitSide.ally, unitState: _damaged),
+    );
+    await tester.pump(const Duration(milliseconds: 80));
+
+    expect(find.byKey(const ValueKey('slash-hit-vfx')), findsOneWidget);
+    expect(find.byKey(const ValueKey('projectile-hit-vfx')), findsNothing);
+
+    await tester.pump(const Duration(milliseconds: 420));
+    expect(find.byKey(const ValueKey('slash-hit-vfx')), findsNothing);
+  });
+
+  testWidgets('ranged damage paints a compact projectile impact',
+      (tester) async {
+    await pumpThemed(
+      tester,
+      const BattleTile(slot: 0, unitSide: UnitSide.ally, unitState: _idle),
+    );
+    await pumpThemed(
+      tester,
+      const BattleTile(
+        slot: 0,
+        unitSide: UnitSide.ally,
+        unitState: _projectileDamaged,
+      ),
+    );
+    await tester.pump(const Duration(milliseconds: 80));
+
+    expect(find.byKey(const ValueKey('projectile-hit-vfx')), findsOneWidget);
+    expect(find.byKey(const ValueKey('slash-hit-vfx')), findsNothing);
+
+    await tester.pump(const Duration(milliseconds: 600));
+    expect(find.byKey(const ValueKey('projectile-hit-vfx')), findsNothing);
+  });
+
+  testWidgets('tank damage uses a heavy impact instead of sword slashes',
+      (tester) async {
+    await pumpThemed(
+      tester,
+      const BattleTile(slot: 0, unitSide: UnitSide.ally, unitState: _idle),
+    );
+    await pumpThemed(
+      tester,
+      const BattleTile(
+        slot: 0,
+        unitSide: UnitSide.ally,
+        unitState: _tankDamaged,
+      ),
+    );
+    await tester.pump(const Duration(milliseconds: 80));
+
+    expect(find.byKey(const ValueKey('tank-hit-vfx')), findsOneWidget);
+    expect(find.byKey(const ValueKey('slash-hit-vfx')), findsNothing);
+
+    await tester.pump(const Duration(milliseconds: 600));
+    expect(find.byKey(const ValueKey('tank-hit-vfx')), findsNothing);
   });
 
   testWidgets('Fighter lifesteal does not borrow the Healer sigil',

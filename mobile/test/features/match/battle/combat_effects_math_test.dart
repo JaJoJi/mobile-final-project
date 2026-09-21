@@ -182,6 +182,18 @@ void main() {
       amount: 10,
       targetHpAfter: 100,
     );
+    const positionedHeal = HealEvent(
+      cycle: 1,
+      tick: 1,
+      by: 'h',
+      target: 'b',
+      amount: 10,
+      targetHpAfter: 100,
+      bySide: MatchSide.p1,
+      bySlot: 0,
+      targetSide: MatchSide.p1,
+      targetSlot: 4,
+    );
 
     test('a melee attack lands at the peak of its lunge', () {
       // triangleWave peaks at 0.5, which is exactly where the attacker
@@ -213,6 +225,11 @@ void main() {
 
     test('an event with no travel lands immediately', () {
       expect(impactFraction(heal), 0.0);
+    });
+
+    test('a positioned heal lands when its source energy arrives', () {
+      expect(impactFraction(positionedHeal), kHealImpactFraction);
+      expect(healTravel(kHealImpactFraction / 2), closeTo(0.5, 0.001));
     });
   });
 
