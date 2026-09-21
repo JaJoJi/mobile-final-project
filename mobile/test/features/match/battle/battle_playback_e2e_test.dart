@@ -170,9 +170,9 @@ void main() {
       final projectile = find.byKey(const ValueKey('projectile-mark'));
       final positions = <Offset>[];
       List<BattleTile>? previousTiles;
-      // The normalized event window is 900ms; sample through 700ms so the
-      // projectile is still in flight (impact is at 90% = 810ms).
-      for (var i = 0; i < 7; i++) {
+      // The normalized event window is 800ms; sample through 600ms so the
+      // projectile is still in flight (impact is at 90% = 720ms).
+      for (var i = 0; i < 6; i++) {
         await tester.pump(const Duration(milliseconds: 100));
         expect(projectile, findsOneWidget);
         positions.add(tester.getCenter(projectile));
@@ -391,6 +391,77 @@ void main() {
 
     // Tear the tree down so BattleView cancels its timers, then drain the
     // 500ms battle_end freeze the completion path schedules.
+    await tester.pumpWidget(const SizedBox.shrink());
+    await tester.pump(const Duration(seconds: 1));
+  });
+
+  testWidgets('speed control cycles x1 x2 x3 and accelerates local playback',
+      (tester) async {
+    final transport = FakeWsTransport();
+    final client = WsClient(
+      url: 'ws://localhost',
+      getAccessToken: () async => 'token',
+      transport: transport,
+    );
+    addTearDown(client.dispose);
+    final connected = client.connect();
+    transport.serverConnect();
+    await connected;
+    _seedMatch(transport);
+
+    await pumpScreen(
+      tester,
+      const MatchScreen(matchId: 'm1'),
+      overrides: [wsClientProvider.overrideWithValue(client)],
+    );
+    transport.emitFromServer(GameEvents.matchPhase, {
+      'matchId': 'm1',
+      'phase': 'battle',
+      'round': 1,
+      'timer': 0,
+      'players': [
+        {'id': 'p1', 'hp': 100, 'gold': 5, 'ready': true},
+        {'id': 'p2', 'hp': 100, 'gold': 5, 'ready': true},
+      ],
+    });
+    await tester.pump();
+    transport.emitFromServer(GameEvents.combatEvents, {
+      'matchId': 'm1',
+      'round': 1,
+      'cycleCount': 1,
+      'endedAt': 0,
+      'events': [for (var i = 1; i <= 9; i++) _attack(i, 100 - i)],
+    });
+    await tester.pump();
+    await tester.pump();
+
+    final speedButton = find.byKey(const ValueKey('battle-speed-button'));
+    expect(speedButton, findsOneWidget);
+    expect(find.text('x1'), findsOneWidget);
+
+    await tester.tap(speedButton);
+    await tester.pump();
+    expect(find.text('x2'), findsOneWidget);
+    await tester.tap(speedButton);
+    await tester.pump();
+    expect(find.text('x3'), findsOneWidget);
+    await tester.tap(speedButton);
+    await tester.pump();
+    expect(find.text('x1'), findsOneWidget);
+    await tester.tap(speedButton);
+    await tester.pump();
+    await tester.tap(speedButton);
+    await tester.pump();
+    expect(find.text('x3'), findsOneWidget);
+
+    bool ackSent() =>
+        transport.sent.any((m) => m.event == GameActions.matchCombatDone);
+    await tester.pump(const Duration(seconds: 2));
+    expect(ackSent(), isFalse);
+    await tester.pump(const Duration(seconds: 2));
+    expect(ackSent(), isTrue);
+    expect(find.text('รอคู่แข่ง…'), findsOneWidget);
+
     await tester.pumpWidget(const SizedBox.shrink());
     await tester.pump(const Duration(seconds: 1));
   });

@@ -94,6 +94,7 @@ class _BattleViewState extends ConsumerState<BattleView>
   /// untestable and the test for it flaky.
   Duration? _playbackStart;
   Duration _playbackTotal = Duration.zero;
+  int _playbackSpeed = 1;
 
   /// How far into the replay this client already was when it loaded the
   /// batch, measured from the server's own `endedAt` timestamp.
@@ -239,6 +240,7 @@ class _BattleViewState extends ConsumerState<BattleView>
     _staleTimer?.cancel();
     _staleDetected = false;
     _acked = false;
+    _playbackSpeed = 1;
     _controller.loadBatch(batch);
     final filtered = _controller.events!;
     final totalMs = combatPlaybackDuration(filtered.length).inMilliseconds;
@@ -272,19 +274,61 @@ class _BattleViewState extends ConsumerState<BattleView>
     );
     // The controller only drives repaints now — position comes from the
     // clock in [_pushPlayhead], so a throttled tab self-corrects.
+    _scheduleRemainingPlayback(remaining);
+    setState(() {}); // refresh the playhead listener binding below
+  }
+
+  Duration _realDurationAtCurrentSpeed(Duration playbackDuration) => Duration(
+        microseconds: (playbackDuration.inMicroseconds / _playbackSpeed).ceil(),
+      );
+
+  /// Restarts the repaint ticker and completion timer without changing the
+  /// logical playhead. Playback speed is local-only; completion still sends
+  /// the same idempotent `combat_done` acknowledgement to the server.
+  void _scheduleRemainingPlayback(Duration playbackRemaining) {
+    final realRemaining = _realDurationAtCurrentSpeed(playbackRemaining);
     _playhead
-      ..duration = remaining
+      ..stop()
+      ..duration = realRemaining
       ..forward(from: 0);
     // Ack on a timer, not on animation completion: a background tab gets
-    // no animation frames at all, so a frame-driven ack would never fire
-    // and the round would hang until the server's 60s combat timeout.
+    // no animation frames at all, so a frame-driven ack would never fire.
     // Browsers throttle background timers but do still run them.
     _ackTimer?.cancel();
     _ackTimer = Timer(
-      remaining + const Duration(milliseconds: 500),
+      realRemaining + const Duration(milliseconds: 500),
       () => _ack('ack-timer'),
     );
-    setState(() {}); // refresh the playhead listener binding below
+  }
+
+  Duration _elapsedPlaybackAt(Duration timestamp) {
+    final start = _playbackStart;
+    if (start == null) return _playbackOffset;
+    final realElapsed = timestamp - start;
+    final scaledElapsed = Duration(
+      microseconds: realElapsed.inMicroseconds * _playbackSpeed,
+    );
+    final elapsed = _playbackOffset + scaledElapsed;
+    return elapsed > _playbackTotal ? _playbackTotal : elapsed;
+  }
+
+  void _cyclePlaybackSpeed() {
+    if (_acked || _controller.events == null || _playbackStart == null) return;
+    final now = SchedulerBinding.instance.currentSystemFrameTimeStamp;
+    final elapsed = _elapsedPlaybackAt(now);
+    if (elapsed >= _playbackTotal) return;
+
+    _playbackOffset = elapsed;
+    _playbackStart = now;
+    setState(() {
+      _playbackSpeed = _playbackSpeed == 3 ? 1 : _playbackSpeed + 1;
+    });
+    _scheduleRemainingPlayback(_playbackTotal - elapsed);
+    combatTrace(
+      'playback SPEED x$_playbackSpeed round=$_loadedRound '
+      'elapsedMs=${elapsed.inMilliseconds} '
+      'remainingMs=${(_playbackTotal - elapsed).inMilliseconds}',
+    );
   }
 
   bool _acked = false;
@@ -427,6 +471,17 @@ class _BattleViewState extends ConsumerState<BattleView>
                   opponentBoardKey: _opponentBoardKey,
                   mySide: widget.match.yourSide,
                 ),
+                Positioned(
+                  top: AppSpacing.xs,
+                  right: AppSpacing.xs,
+                  child: _PlaybackSpeedButton(
+                    speed: _playbackSpeed,
+                    onPressed:
+                        view.batch == null || _acked || widget.skipSubmitted
+                            ? null
+                            : _cyclePlaybackSpeed,
+                  ),
+                ),
               ],
             ),
           ),
@@ -468,11 +523,11 @@ class _BattleViewState extends ConsumerState<BattleView>
   /// This — not the [AnimationController]'s own value — is the authority
   /// on how far the replay has actually got.
   double? _clockProgress() {
-    final start = _playbackStart;
     final totalMs = _playbackTotal.inMilliseconds;
-    if (start == null || totalMs <= 0) return null;
-    final elapsed = _playbackOffset +
-        (SchedulerBinding.instance.currentSystemFrameTimeStamp - start);
+    if (_playbackStart == null || totalMs <= 0) return null;
+    final elapsed = _elapsedPlaybackAt(
+      SchedulerBinding.instance.currentSystemFrameTimeStamp,
+    );
     return (elapsed.inMilliseconds / totalMs).clamp(0.0, 1.0);
   }
 
@@ -483,9 +538,9 @@ class _BattleViewState extends ConsumerState<BattleView>
       _controller.seekTo(_playhead.value);
       return;
     }
-    final elapsedMs = (_playbackOffset +
-            (SchedulerBinding.instance.currentSystemFrameTimeStamp - start))
-        .inMilliseconds;
+    final elapsedMs = _elapsedPlaybackAt(
+      SchedulerBinding.instance.currentSystemFrameTimeStamp,
+    ).inMilliseconds;
     final progress = _clockProgress() ?? 0.0;
     // One line per quarter of the replay, so the trace shows how far the
     // playhead actually travelled before the round was resolved without
@@ -502,6 +557,63 @@ class _BattleViewState extends ConsumerState<BattleView>
       );
     }
     _controller.seekTo(progress);
+  }
+}
+
+class _PlaybackSpeedButton extends StatelessWidget {
+  const _PlaybackSpeedButton({
+    required this.speed,
+    required this.onPressed,
+  });
+
+  final int speed;
+  final VoidCallback? onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final game = theme.extension<GameTheme>()!;
+    final enabled = onPressed != null;
+
+    return Tooltip(
+      message: 'ความเร็วการต่อสู้ x$speed',
+      child: Material(
+        color: theme.colorScheme.surface.withValues(alpha: 0.28),
+        shape: CircleBorder(
+          side: BorderSide(
+            color: enabled
+                ? game.gold.withValues(alpha: 0.62)
+                : theme.colorScheme.outline.withValues(alpha: 0.28),
+            width: 1.25,
+          ),
+        ),
+        elevation: 0,
+        shadowColor: Colors.transparent,
+        child: InkWell(
+          key: const ValueKey('battle-speed-button'),
+          customBorder: const CircleBorder(),
+          onTap: onPressed,
+          child: SizedBox.square(
+            dimension: 44,
+            child: Center(
+              child: Text(
+                'x$speed',
+                key: const ValueKey('battle-speed-label'),
+                style: theme.textTheme.titleMedium?.copyWith(
+                  color: enabled
+                      ? game.gold.withValues(alpha: 0.88)
+                      : theme.colorScheme.onSurfaceVariant.withValues(
+                          alpha: 0.55,
+                        ),
+                  fontWeight: FontWeight.w900,
+                  height: 1,
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
   }
 }
 

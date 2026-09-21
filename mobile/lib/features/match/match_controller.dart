@@ -300,7 +300,7 @@ class MatchController extends StateNotifier<MatchViewState> {
   void ready() => toggleReady();
 
   /// Skips local playback by acknowledging the server's combat batch.
-  /// The server still waits for both players (or its 60-second fallback),
+  /// The server still waits for both players (or its replay-length fallback),
   /// so one player cannot force the other player to skip.
   void skipCombat() {
     final phase = state.phase;
