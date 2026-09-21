@@ -587,7 +587,6 @@ class _PlaybackSpeedButton extends StatelessWidget {
             width: 1.25,
           ),
         ),
-        elevation: 0,
         shadowColor: Colors.transparent,
         child: InkWell(
           key: const ValueKey('battle-speed-button'),
