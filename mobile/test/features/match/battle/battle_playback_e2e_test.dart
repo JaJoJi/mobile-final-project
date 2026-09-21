@@ -170,7 +170,9 @@ void main() {
       final projectile = find.byKey(const ValueKey('projectile-mark'));
       final positions = <Offset>[];
       List<BattleTile>? previousTiles;
-      for (var i = 0; i < 12; i++) {
+      // The normalized event window is 900ms; sample through 700ms so the
+      // projectile is still in flight (impact is at 90% = 810ms).
+      for (var i = 0; i < 7; i++) {
         await tester.pump(const Duration(milliseconds: 100));
         expect(projectile, findsOneWidget);
         positions.add(tester.getCenter(projectile));

@@ -13,17 +13,15 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../shared/models/combat_event.dart';
 import 'battle_visual_state.dart';
 
-/// Preferred duration for each combat event on the playhead. Raised from
-/// the original 600ms (locked Step 2 plan) over successive rounds of live
-/// testing — 600 → 1000 → 1600ms — because combat kept reading as too
-/// fast to follow once the melee travel animation landed (P4-FE-01).
-/// Each attack now owns ~1.6s, which the attacker spends travelling to
-/// its target and back.
+/// Preferred duration for each combat event on the playhead.
 ///
-/// This is a *preferred* rate, not a guarantee — see [kMaxCombatPlayback]
-/// and [combatPlaybackDuration]. It is also the single knob for combat
-/// pacing: nothing else hardcodes a per-event duration.
-const Duration kCombatEventDuration = Duration(milliseconds: 1600);
+/// This deliberately sits close to the compressed rate of a real dense
+/// battle. The old 1600ms preference made sparse boards play at 1600ms per
+/// action while a 77-event board hit the round cap and fell to ~675ms per
+/// action — so adding units visibly doubled animation speed. A 900ms target
+/// keeps sparse and dense boards in the same visual range while leaving each
+/// hit readable with the local impact animations layered on top.
+const Duration kCombatEventDuration = Duration(milliseconds: 900);
 
 /// Hard ceiling on one round's replay. The server abandons a round after
 /// `COMBAT_DONE_TIMEOUT_MS` (60s) if it hasn't received both clients'
@@ -31,19 +29,10 @@ const Duration kCombatEventDuration = Duration(milliseconds: 1600);
 /// real 77-event round at the preferred rate would run over two minutes.
 /// Long rounds compress rather than overrun.
 ///
-/// Raised from 45s to 52s post-merge: the Ranger SPD nerf (90 → 67, see
-/// `constants.ts`) means real matches now regularly run long enough —
-/// several units still alive several cycles in — to push a round well
-/// past the ~28-event point where this ceiling used to start
-/// compressing. Every round past that point was replaying compressed
-/// (each event getting less than its preferred 1.6s), which read as
-/// "combat is fast" exactly for the rounds that should showcase the
-/// slower pacing that nerf bought. Kept 8s under the server's 60s
-/// timeout — still comfortable margin for a slow client's ack (see
-/// [combatPlaybackDuration]'s caller, `+500ms` on the ack timer) —
-/// instead of raising [kCombatEventDuration] itself, which would recompress
-/// short rounds too.
-const Duration kMaxCombatPlayback = Duration(seconds: 52);
+/// Kept below the server's 60-second acknowledgement timeout. At this cap a
+/// known 77-event dense round runs at ~714ms per event, only ~21% faster than
+/// a sparse round's 900ms instead of the old 2.37x difference.
+const Duration kMaxCombatPlayback = Duration(seconds: 55);
 
 /// Most of a replay a late client is allowed to fast-forward past so it
 /// can line up with the client that got the batch first.

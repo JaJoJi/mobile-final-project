@@ -3,6 +3,29 @@ import 'package:auto_chess_mobile/shared/models/combat_event.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
+  group('combatPlaybackDuration', () {
+    test('keeps sparse and dense battle animation speeds comparable', () {
+      const sparseEvents = 10;
+      const denseEvents = 77;
+      final sparseMs =
+          combatPlaybackDuration(sparseEvents).inMilliseconds / sparseEvents;
+      final denseMs =
+          combatPlaybackDuration(denseEvents).inMilliseconds / denseEvents;
+
+      expect(sparseMs, 900);
+      expect(denseMs, greaterThanOrEqualTo(700));
+      expect(sparseMs / denseMs, lessThan(1.3));
+    });
+
+    test('still finishes before the server combat timeout', () {
+      expect(combatPlaybackDuration(2000), kMaxCombatPlayback);
+      expect(
+        kMaxCombatPlayback + const Duration(milliseconds: 500),
+        lessThan(const Duration(seconds: 60)),
+      );
+    });
+  });
+
   group('BattlePlaybackController.loadBatch', () {
     test('drops death events — the paired attack already carries the kill', () {
       // `applyDamage` (backend/src/game/damage.ts) emits a `death` event
