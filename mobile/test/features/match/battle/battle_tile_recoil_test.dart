@@ -247,6 +247,21 @@ void main() {
       find.byKey(const ValueKey('healer-heal-particles')),
       findsOneWidget,
     );
+
+    await tester.pump(const Duration(milliseconds: 650));
+    final healOpacity = tester.widget<Opacity>(
+      find
+          .ancestor(
+            of: find.byKey(const ValueKey('healer-heal-vfx')),
+            matching: find.byType(Opacity),
+          )
+          .first,
+    );
+    expect(
+      healOpacity.opacity,
+      greaterThan(0.5),
+      reason: 'the healer effect should remain readable past its first flash',
+    );
   });
 
   testWidgets('melee damage paints a short slash impact', (tester) async {

@@ -801,10 +801,10 @@ class _BattleTileState extends State<BattleTile> with TickerProviderStateMixin {
         setState(() => _visibleHitEffectKind = null);
       }
     });
-    // Heal bubble: expanding green circle, ~600ms, emit-and-dispose.
+    // Heal sigil: long enough to read during a busy combat exchange.
     _healBubbleCtrl = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 600),
+      duration: const Duration(milliseconds: 1050),
       animationBehavior: AnimationBehavior.preserve,
     );
     _healBubbleAnim = Tween<double>(begin: 0, end: 1).animate(
@@ -993,12 +993,22 @@ class _BattleTileState extends State<BattleTile> with TickerProviderStateMixin {
                 child: AnimatedBuilder(
                   animation: _healBubbleAnim,
                   builder: (context, _) {
-                    final progress = _healBubbleAnim.value;
+                    // Use controller time for the hold/fade phases. The
+                    // curved animation accelerates early, which previously
+                    // made a nominally long heal still disappear too soon.
+                    final progress = _healBubbleCtrl.value;
                     final reduceMotion =
                         MediaQuery.disableAnimationsOf(context);
-                    final scale = reduceMotion ? 0.88 : 0.48 + progress * 0.62;
+                    final scale = reduceMotion
+                        ? 0.95
+                        : 0.58 + Curves.easeOutBack.transform(progress) * 0.48;
+                    final opacity = uv.isHealerHeal
+                        ? progress < 0.55
+                            ? 1.0
+                            : (1 - (progress - 0.55) / 0.45).clamp(0.0, 1.0)
+                        : (1.0 - progress).clamp(0.0, 1.0);
                     return Opacity(
-                      opacity: (1.0 - progress).clamp(0.0, 1.0),
+                      opacity: opacity,
                       child: uv.isHealerHeal
                           ? Stack(
                               alignment: Alignment.center,
@@ -1109,42 +1119,60 @@ class _BattleHitPainter extends CustomPainter {
       size.shortestSide * (0.20 + progress * 0.22),
       Paint()..color = const Color(0xFFFF8A3D).withValues(alpha: 0.18 * flash),
     );
-    // One clean rising sword cut. Keeping a single path makes it read as a
-    // blade trail rather than an X icon or a pair of unrelated bent lines.
-    final slash = Path()
-      ..moveTo(size.width * 0.12, size.height * 0.84)
-      ..quadraticBezierTo(
-        size.width * 0.47,
-        size.height * 0.48,
-        size.width * 0.88,
-        size.height * 0.16,
+    // Two parallel cuts moving in the same direction. They read as a quick
+    // two-hit sword combo without turning into an X icon.
+    final slashes = [
+      (
+        path: Path()
+          ..moveTo(size.width * 0.08, size.height * 0.72)
+          ..quadraticBezierTo(
+            size.width * 0.39,
+            size.height * 0.38,
+            size.width * 0.76,
+            size.height * 0.11,
+          ),
+        weight: 1.0,
+      ),
+      (
+        path: Path()
+          ..moveTo(size.width * 0.24, size.height * 0.91)
+          ..quadraticBezierTo(
+            size.width * 0.55,
+            size.height * 0.57,
+            size.width * 0.92,
+            size.height * 0.30,
+          ),
+        weight: 0.84,
+      ),
+    ];
+    for (final slash in slashes) {
+      final metric = slash.path.computeMetrics().first;
+      final visible = metric.extractPath(0, metric.length * reveal);
+      canvas.drawPath(
+        visible,
+        Paint()
+          ..color = const Color(0xFFFF5B2E).withValues(alpha: 0.46 * fade)
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 18 * slash.weight
+          ..strokeCap = StrokeCap.round,
       );
-    final metric = slash.computeMetrics().first;
-    final visible = metric.extractPath(0, metric.length * reveal);
-    canvas.drawPath(
-      visible,
-      Paint()
-        ..color = const Color(0xFFFF5B2E).withValues(alpha: 0.46 * fade)
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = 18
-        ..strokeCap = StrokeCap.round,
-    );
-    canvas.drawPath(
-      visible,
-      Paint()
-        ..color = const Color(0xFFFFC94A).withValues(alpha: 0.92 * fade)
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = 8
-        ..strokeCap = StrokeCap.round,
-    );
-    canvas.drawPath(
-      visible,
-      Paint()
-        ..color = const Color(0xFFFFFFFF).withValues(alpha: fade)
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = 3.2
-        ..strokeCap = StrokeCap.round,
-    );
+      canvas.drawPath(
+        visible,
+        Paint()
+          ..color = const Color(0xFFFFC94A).withValues(alpha: 0.92 * fade)
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 8 * slash.weight
+          ..strokeCap = StrokeCap.round,
+      );
+      canvas.drawPath(
+        visible,
+        Paint()
+          ..color = const Color(0xFFFFFFFF).withValues(alpha: fade)
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 3.2 * slash.weight
+          ..strokeCap = StrokeCap.round,
+      );
+    }
 
     final sparkPaint = Paint()
       ..color = const Color(0xFFFFE38A).withValues(alpha: fade)
@@ -1272,12 +1300,34 @@ class _HealParticlePainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
     final center = size.center(Offset.zero);
-    final fade = (1 - progress).clamp(0.0, 1.0);
+    final fade =
+        progress < 0.58 ? 1.0 : (1 - (progress - 0.58) / 0.42).clamp(0.0, 1.0);
+    final ringRadius = size.shortestSide * (0.18 + progress * 0.27);
+    canvas.drawCircle(
+      center,
+      ringRadius,
+      Paint()
+        ..color = const Color(0xFF76F7AC).withValues(alpha: 0.72 * fade)
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 3.2,
+    );
+    canvas.drawCircle(
+      center,
+      ringRadius * 0.72,
+      Paint()
+        ..color = const Color(0xFFFFDB65).withValues(alpha: 0.48 * fade)
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 2.0,
+    );
     const directions = [
       Offset(-0.24, -0.42),
       Offset(0.24, -0.48),
       Offset(-0.38, -0.16),
       Offset(0.38, -0.20),
+      Offset(-0.18, 0.34),
+      Offset(0.20, 0.38),
+      Offset(-0.42, 0.08),
+      Offset(0.44, 0.06),
     ];
     for (var i = 0; i < directions.length; i++) {
       final direction = directions[i];
