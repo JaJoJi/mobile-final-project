@@ -70,6 +70,29 @@ void main() {
     events: [rangedAttack],
   );
 
+  const heal = HealEvent(
+    cycle: 1,
+    tick: 1,
+    by: 'healer',
+    target: 'fighter',
+    amount: 20,
+    targetHpAfter: 80,
+    bySide: MatchSide.p1,
+    bySlot: 0,
+    byUnitId: UnitId.healer,
+    targetSide: MatchSide.p1,
+    targetSlot: 4,
+    targetUnitId: UnitId.fighter,
+  );
+
+  const healBatch = CombatEventBatch(
+    matchId: 'm1',
+    round: 1,
+    cycleCount: 1,
+    endedAt: 0,
+    events: [heal],
+  );
+
   Widget buildTree(
     double progress, {
     CombatEventBatch? eventsBatch,
@@ -332,6 +355,27 @@ void main() {
     // assertion actually proves which branch ran.
     expect(iconCenter.dx, closeTo(expectedX, 5));
     expect(iconCenter.dy, closeTo(expectedY, 5));
+  });
+
+  testWidgets('heal energy identifies the caster until it reaches its target',
+      (tester) async {
+    forcePortrait(tester);
+    await tester.pumpWidget(
+      buildTree(kHealImpactFraction / 2, eventsBatch: healBatch),
+    );
+    expect(
+      find.byKey(const ValueKey('healer-source-transfer-vfx')),
+      findsOneWidget,
+    );
+    expect(find.byKey(const ValueKey('projectile-mark')), findsNothing);
+
+    await tester.pumpWidget(
+      buildTree(kHealImpactFraction, eventsBatch: healBatch),
+    );
+    expect(
+      find.byKey(const ValueKey('healer-source-transfer-vfx')),
+      findsNothing,
+    );
   });
 
   testWidgets('traveller scales and repositions with the board size',

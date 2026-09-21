@@ -1,7 +1,7 @@
-/// Shared overlay rendered above both boards in `BattleView`, driving the
-/// melee lunge and ranged projectile from the real on-screen position of
-/// the attacker and target tiles instead of a hardcoded direction/distance
-/// (P4-FE-01). See `docs/09-combat-effects-overlay-design.md`.
+/// Shared overlay rendered above both boards in `BattleView`, driving melee
+/// lunges, ranged projectiles, and healer transfers between the real
+/// on-screen positions of source and target tiles instead of a hardcoded
+/// direction/distance (P4-FE-01).
 ///
 /// Position resolution deliberately happens inside a [LayoutBuilder]'s
 /// `builder` callback rather than in `build()`. `Stack` lays out its
@@ -77,10 +77,9 @@ Offset? _tileCenterRelativeTo({
   return board.localToGlobal(local, ancestor: ancestor);
 }
 
-/// Renders at most one attack effect (melee lunge or ranged projectile) —
-/// whichever `AttackEvent` is active at the current playhead position —
-/// travelling between the attacker's and target's real tile positions on
-/// their respective boards.
+/// Renders at most one travelling combat effect for the event active at the
+/// current playhead position, using the source and target's real tile
+/// positions on their respective boards.
 class CombatEffectsOverlay extends StatelessWidget {
   const CombatEffectsOverlay({
     super.key,
@@ -123,6 +122,17 @@ class CombatEffectsOverlay extends StatelessWidget {
     if (current == null) return null;
 
     final event = current.event;
+    final ancestor = context.findAncestorRenderObjectOfType<RenderStack>();
+    if (ancestor == null) return null;
+
+    if (event is HealEvent) {
+      return _resolveHealEffect(
+        context: context,
+        event: event,
+        subProgress: current.subProgress,
+        ancestor: ancestor,
+      );
+    }
     if (event is! AttackEvent) return null;
     final attackerSlot = event.attackerSlot;
     final attackerSide = event.attackerSide;
@@ -154,9 +164,6 @@ class CombatEffectsOverlay extends StatelessWidget {
     //    `Stack` specifically. If this widget is ever nested one level
     //    deeper inside another `Stack` (or `IndexedStack`) later, it will
     //    silently resolve to that nearer, wrong ancestor instead.
-    final ancestor = context.findAncestorRenderObjectOfType<RenderStack>();
-    if (ancestor == null) return null;
-
     final landscape =
         MediaQuery.orientationOf(context) == Orientation.landscape;
     final attackerLocal = _tileCenterRelativeTo(
@@ -273,4 +280,153 @@ class CombatEffectsOverlay extends StatelessWidget {
       ],
     );
   }
+
+  Widget? _resolveHealEffect({
+    required BuildContext context,
+    required HealEvent event,
+    required double subProgress,
+    required RenderObject ancestor,
+  }) {
+    final sourceSide = event.bySide;
+    final sourceSlot = event.bySlot;
+    final targetSide = event.targetSide;
+    final targetSlot = event.targetSlot;
+    if (sourceSide == null ||
+        sourceSlot == null ||
+        targetSide == null ||
+        targetSlot == null ||
+        subProgress >= kHealImpactFraction) {
+      return null;
+    }
+
+    final landscape =
+        MediaQuery.orientationOf(context) == Orientation.landscape;
+    final sourceBoardKey = sourceSide == mySide ? myBoardKey : opponentBoardKey;
+    final targetBoardKey = targetSide == mySide ? myBoardKey : opponentBoardKey;
+    final source = _tileCenterRelativeTo(
+      boardKey: sourceBoardKey,
+      slot: sourceSlot,
+      reverseRows: sourceSide != mySide,
+      landscape: landscape,
+      ancestor: ancestor,
+    );
+    final target = _tileCenterRelativeTo(
+      boardKey: targetBoardKey,
+      slot: targetSlot,
+      reverseRows: targetSide != mySide,
+      landscape: landscape,
+      ancestor: ancestor,
+    );
+    final tileSize = _tileSize(sourceBoardKey);
+    if (source == null || target == null || tileSize == null) return null;
+
+    return RepaintBoundary(
+      child: CustomPaint(
+        key: const ValueKey('healer-source-transfer-vfx'),
+        painter: _HealTransferPainter(
+          source: source,
+          target: target,
+          tileSize: tileSize,
+          progress: healTravel(subProgress),
+        ),
+        child: const SizedBox.expand(),
+      ),
+    );
+  }
+}
+
+class _HealTransferPainter extends CustomPainter {
+  const _HealTransferPainter({
+    required this.source,
+    required this.target,
+    required this.tileSize,
+    required this.progress,
+  });
+
+  final Offset source;
+  final Offset target;
+  final double tileSize;
+  final double progress;
+
+  Offset _controlPoint() {
+    final delta = target - source;
+    if (delta.distance < 1) return source + Offset(0, -tileSize * 0.78);
+    final normal = Offset(-delta.dy, delta.dx) / delta.distance;
+    return Offset.lerp(source, target, 0.5)! +
+        normal * math.min(tileSize * 0.55, delta.distance * 0.18);
+  }
+
+  Offset _pointAt(double t) {
+    final control = _controlPoint();
+    final inverse = 1 - t;
+    return source * (inverse * inverse) +
+        control * (2 * inverse * t) +
+        target * (t * t);
+  }
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final control = _controlPoint();
+    final arc = Path()
+      ..moveTo(source.dx, source.dy)
+      ..quadraticBezierTo(control.dx, control.dy, target.dx, target.dy);
+    final metric = arc.computeMetrics().first;
+    final visibleArc = metric.extractPath(0, metric.length * progress);
+    final fade = 1 - ((progress - 0.82) / 0.18).clamp(0.0, 1.0);
+
+    canvas.drawPath(
+      visibleArc,
+      Paint()
+        ..color = const Color(0xFF79F2AE).withValues(alpha: 0.30 * fade)
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = tileSize * 0.10
+        ..strokeCap = StrokeCap.round,
+    );
+    canvas.drawPath(
+      visibleArc,
+      Paint()
+        ..color = const Color(0xFFFFE681).withValues(alpha: 0.72 * fade)
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = tileSize * 0.025
+        ..strokeCap = StrokeCap.round,
+    );
+
+    final sourcePulse = (progress / 0.42).clamp(0.0, 1.0);
+    final sourceFade = 1 - sourcePulse;
+    canvas.drawCircle(
+      source,
+      tileSize * (0.16 + sourcePulse * 0.28),
+      Paint()
+        ..color = const Color(0xFF74F2A7).withValues(alpha: 0.85 * sourceFade)
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 3.0,
+    );
+
+    for (var i = 0; i < 3; i++) {
+      final moteProgress = (progress * 1.18 - i * 0.11).clamp(0.0, 1.0);
+      if (moteProgress <= 0) continue;
+      final position = _pointAt(moteProgress);
+      final radius = tileSize * (0.055 - i * 0.009);
+      canvas.drawCircle(
+        position,
+        radius * 1.9,
+        Paint()..color = const Color(0xFF62EFA2).withValues(alpha: 0.20 * fade),
+      );
+      canvas.drawCircle(
+        position,
+        radius,
+        Paint()
+          ..color =
+              (i.isEven ? const Color(0xFFFFFFFF) : const Color(0xFFFFDF63))
+                  .withValues(alpha: 0.95 * fade),
+      );
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant _HealTransferPainter oldDelegate) =>
+      oldDelegate.source != source ||
+      oldDelegate.target != target ||
+      oldDelegate.tileSize != tileSize ||
+      oldDelegate.progress != progress;
 }
