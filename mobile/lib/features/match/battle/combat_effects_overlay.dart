@@ -245,14 +245,17 @@ class CombatEffectsOverlay extends StatelessWidget {
 
     // Sized against the measured tile rather than a fixed pixel count, so
     // the projectile keeps the same visual weight on a phone and a tablet.
-    final projectileSize =
-        (_tileSize(attackerSide == mySide ? myBoardKey : opponentBoardKey) ??
-                60) *
-            0.82;
     final effectKind = combatEffectForEvent(event);
     if (effectKind == null || effectKind == CombatEffectKind.healerHeal) {
       return null;
     }
+    final tileSize =
+        _tileSize(attackerSide == mySide ? myBoardKey : opponentBoardKey) ?? 60;
+    // The ranger asset is an elongated arrow, so it needs a smaller square
+    // than the healer's compact orb. Giving both the same 82% tile box made
+    // the arrow read as a slow spear that covered most of a unit.
+    final projectileSize = tileSize *
+        (effectKind == CombatEffectKind.rangerProjectile ? 0.72 : 0.82);
     final direction = targetLocal - attackerLocal;
     final angle = math.atan2(direction.dy, direction.dx);
 
