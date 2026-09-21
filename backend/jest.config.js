@@ -14,7 +14,7 @@ module.exports = {
     '!src/game/index.ts',
   ],
 
-  coverageDirectory: 'coverage',
+  coverageDirectory: '<rootDir>/coverage',
 
   coverageReporters: [
     'text',
