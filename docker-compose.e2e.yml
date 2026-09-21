@@ -1,0 +1,24 @@
+services:
+  nest-1:
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:3000/health/live >/dev/null 2>&1 || exit 1"]
+      interval: 3s
+      timeout: 3s
+      retries: 60
+      start_period: 30s
+
+  playwright:
+    build:
+      context: ./e2e
+      dockerfile: Dockerfile
+    container_name: ac-playwright
+    environment:
+      BASE_URL: http://nest-1:3000
+    depends_on:
+      nest-1:
+        condition: service_healthy
+    volumes:
+      - ./e2e/reports:/e2e/reports
+      - ./e2e/playwright-report:/e2e/playwright-report
+      - ./e2e/test-results:/e2e/test-results
+    command: ["npx", "playwright", "test"]
