@@ -1099,7 +1099,9 @@ class _BattleHitPainter extends CustomPainter {
   }
 
   void _paintSlash(Canvas canvas, Size size) {
-    final reveal = (progress / 0.42).clamp(0.0, 1.0);
+    final reveal = Curves.easeOutCubic.transform(
+      (progress / 0.46).clamp(0.0, 1.0),
+    );
     final fade = (1 - ((progress - 0.68) / 0.32).clamp(0.0, 1.0));
     final flash = (1 - (progress / 0.32).clamp(0.0, 1.0));
     canvas.drawCircle(
@@ -1107,54 +1109,62 @@ class _BattleHitPainter extends CustomPainter {
       size.shortestSide * (0.20 + progress * 0.22),
       Paint()..color = const Color(0xFFFF8A3D).withValues(alpha: 0.18 * flash),
     );
-    // Mirrored, equal-length strokes make a deliberate sword-cut X. The old
-    // unequal curves looked skewed as they crossed the character artwork.
-    final paths = [
-      Path()
-        ..moveTo(size.width * 0.18, size.height * 0.18)
-        ..lineTo(size.width * 0.82, size.height * 0.82),
-      Path()
-        ..moveTo(size.width * 0.82, size.height * 0.18)
-        ..lineTo(size.width * 0.18, size.height * 0.82),
-    ];
-    for (var i = 0; i < paths.length; i++) {
-      final metric = paths[i].computeMetrics().first;
-      final visible = metric.extractPath(0, metric.length * reveal);
-      canvas.drawPath(
-        visible,
-        Paint()
-          ..color = const Color(0xFFFF6B35).withValues(alpha: 0.50 * fade)
-          ..style = PaintingStyle.stroke
-          ..strokeWidth = i == 0 ? 14 : 10
-          ..strokeCap = StrokeCap.round,
+    // One clean rising sword cut. Keeping a single path makes it read as a
+    // blade trail rather than an X icon or a pair of unrelated bent lines.
+    final slash = Path()
+      ..moveTo(size.width * 0.12, size.height * 0.84)
+      ..quadraticBezierTo(
+        size.width * 0.47,
+        size.height * 0.48,
+        size.width * 0.88,
+        size.height * 0.16,
       );
-      canvas.drawPath(
-        visible,
-        Paint()
-          ..color = const Color(0xFFFFF6D6).withValues(alpha: fade)
-          ..style = PaintingStyle.stroke
-          ..strokeWidth = i == 0 ? 4.2 : 3.0
-          ..strokeCap = StrokeCap.round,
-      );
-    }
+    final metric = slash.computeMetrics().first;
+    final visible = metric.extractPath(0, metric.length * reveal);
+    canvas.drawPath(
+      visible,
+      Paint()
+        ..color = const Color(0xFFFF5B2E).withValues(alpha: 0.46 * fade)
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 18
+        ..strokeCap = StrokeCap.round,
+    );
+    canvas.drawPath(
+      visible,
+      Paint()
+        ..color = const Color(0xFFFFC94A).withValues(alpha: 0.92 * fade)
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 8
+        ..strokeCap = StrokeCap.round,
+    );
+    canvas.drawPath(
+      visible,
+      Paint()
+        ..color = const Color(0xFFFFFFFF).withValues(alpha: fade)
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 3.2
+        ..strokeCap = StrokeCap.round,
+    );
+
     final sparkPaint = Paint()
-      ..color = const Color(0xFFFFD85A).withValues(alpha: fade);
+      ..color = const Color(0xFFFFE38A).withValues(alpha: fade)
+      ..strokeWidth = 2.2
+      ..strokeCap = StrokeCap.round;
     for (final point in const [
-      Offset(0.18, 0.18),
-      Offset(0.82, 0.18),
-      Offset(0.18, 0.82),
-      Offset(0.82, 0.82),
+      Offset(0.38, 0.54),
+      Offset(0.58, 0.39),
+      Offset(0.76, 0.25),
     ]) {
       final center = Offset(point.dx * size.width, point.dy * size.height);
-      final sparkSize = size.shortestSide * (0.035 + progress * 0.018);
+      final sparkSize = size.shortestSide * (0.028 + progress * 0.012);
       canvas.drawLine(
-        center - Offset(sparkSize, 0),
-        center + Offset(sparkSize, 0),
-        sparkPaint..strokeWidth = 2.2,
+        center - Offset(sparkSize * 0.72, sparkSize * 0.72),
+        center + Offset(sparkSize * 0.72, sparkSize * 0.72),
+        sparkPaint,
       );
       canvas.drawLine(
-        center - Offset(0, sparkSize),
-        center + Offset(0, sparkSize),
+        center - Offset(sparkSize * 0.72, -sparkSize * 0.72),
+        center + Offset(sparkSize * 0.72, -sparkSize * 0.72),
         sparkPaint,
       );
     }
