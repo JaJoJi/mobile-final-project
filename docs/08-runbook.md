@@ -129,6 +129,27 @@ against both `JWT_SECRET` and `JWT_SECRET_OLD` for a rollover window).
 (Postgres re-reads env on container recreation — the volume/data isn't
 affected, only the container's auth).
 
+**Production** ([#223](https://github.com/JaJoJi/mobile-final-project/issues/223)
+— Vault, dev server mode, not the `.env` flow above): secrets
+(`secret/auto-chess/db`, `secret/auto-chess/redis`, `secret/auto-chess/jwt`)
+live in Vault's KV v2 engine, seeded by `vault/seed.sh`.
+
+- **Reseed after any Vault container restart** — dev-mode Vault is
+  in-memory, a restart wipes it:
+  ```bash
+  docker compose -f docker-compose.prod.yml up -d vault
+  VAULT_TOKEN=<root token from vault/root_token.env> \
+  DB_PASSWORD=... REDIS_PASSWORD=... JWT_SECRET=... \
+    ./vault/seed.sh
+  ```
+- **Rotate a secret**: `vault kv put secret/auto-chess/jwt secret="$(openssl rand -base64 32)"`,
+  then roll the app containers so they pick it up. Same "every session
+  invalidated" caveat as the dev flow above until #139's
+  `JWT_SECRET`/`JWT_SECRET_OLD` dual-verify lands.
+- Vault's own KV v2 keeps prior versions automatically (`vault kv get -version=N ...`),
+  useful for a quick rollback, but doesn't by itself solve dual-serving
+  two live secrets to already-running app instances.
+
 ## 5. Incident Response
 
 No metrics/log aggregation exists yet

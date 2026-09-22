@@ -1,0 +1,30 @@
+# Production compose file. Built up incrementally across the P3-DO
+# backlog — each issue adds its own service block:
+#   #223 (this)  -- vault
+#   #224         -- nginx + ModSecurity (replaces the dev nginx service)
+#   #221         -- nest-1/2/3, redis, postgres-primary/replica (adapted
+#                   from docker-compose.yml), wires Ansible + Vault in
+#   #225         -- beyla, mtail, prometheus, grafana, loki, promtail, tempo
+# Until #221 lands this file only has what's been built so far — it is
+# not a deployable topology on its own yet.
+name: auto_chess_prod
+services:
+  vault:
+    image: hashicorp/vault:1.17
+    container_name: ac-vault
+    cap_add:
+      - IPC_LOCK
+    env_file:
+      - vault/root_token.env
+    environment:
+      VAULT_DEV_LISTEN_ADDRESS: "0.0.0.0:8200"
+    command: ["vault", "server", "-dev"]
+    ports:
+      # Bound to loopback only — Vault's HTTP API is never exposed publicly.
+      - "127.0.0.1:8200:8200"
+    healthcheck:
+      test: ["CMD", "vault", "status"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
