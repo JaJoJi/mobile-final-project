@@ -265,10 +265,38 @@ pipeline {
     }
 
     // ── Push ─────────────────────────────────────────────────────────
+    // Pushes the exact IMAGE_NAME:IMAGE_TAG built in "Backend · docker
+    // build" above — never rebuilds, so "build once, deploy anywhere":
+    // the image #221 later pulls into production is byte-identical to
+    // what ran through every test/scan stage here.
     stage('Push') {
       when { branch 'main' }
       steps {
-        echo 'TODO(#220): docker login (Docker Hub) + tag + push'
+        // Trivy image scan gates the push, hard — not softened like
+        // #219's fs scan. Verified against this exact image: today's
+        // dependency tree has real, currently-unresolved HIGH/CRITICAL
+        // transitive CVEs (lodash/multer/tar/js-yaml, reachable via
+        // @nestjs/swagger, @nestjs/platform-express, bcrypt's
+        // node-pre-gyp — `npm audit fix` confirmed unable to touch them
+        // without bumping those parent packages). As written, this gate
+        // WILL currently block every push to Docker Hub until that
+        // dependency-upgrade work happens as its own piece of work —
+        // that's the gate doing its job, not a bug to work around here.
+        sh """
+          docker run --rm -v /var/run/docker.sock:/var/run/docker.sock \
+            -v trivy-cache:/root/.cache aquasec/trivy:latest image \
+            --severity HIGH,CRITICAL --exit-code 1 --timeout 5m \
+            ${IMAGE_NAME}:${IMAGE_TAG}
+        """
+        withCredentials([usernamePassword(credentialsId: 'dockerhub-token',
+            usernameVariable: 'DOCKERHUB_USER', passwordVariable: 'DOCKERHUB_TOKEN')]) {
+          sh '''
+            echo "$DOCKERHUB_TOKEN" | docker login -u "$DOCKERHUB_USER" --password-stdin
+            docker push ${IMAGE_NAME}:${IMAGE_TAG}
+            docker tag ${IMAGE_NAME}:${IMAGE_TAG} ${IMAGE_NAME}:latest
+            docker push ${IMAGE_NAME}:latest
+          '''
+        }
       }
     }
 

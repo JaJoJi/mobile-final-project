@@ -192,8 +192,21 @@ hand on the target VM, documented here so it's repeatable.
    Jenkins auto-discovers `Jenkinsfile` per branch/PR.
 5. **Credentials** (Jenkins → Credentials) — added as each backing issue
    lands, not needed for #218 itself:
-   - `dockerhub-token` (#220 — Docker Hub push, Kind: Username+password)
+   - `dockerhub-token` (#220 — Docker Hub push, Kind: Username+password,
+     username = Docker Hub username, password = a Docker Hub access
+     token, not the account password). Image name is
+     `jajoji/auto-chess-backend`, tagged with the short commit SHA plus
+     `latest` on every push to `main` — same tag Push builds and Deploy
+     (#221) pulls, no separate rebuild.
    - SSH key for the deploy target (#221 — Ansible/CD over SSH)
 6. **Verify:** push a commit, confirm the webhook fires a build, confirm
    `Backend coverage` (HTML Publisher) and the JUnit tab both populate
    after `Backend · unit test + coverage`.
+7. **Known current blocker for #220's Push stage:** its Trivy image-gate
+   will fail on real HIGH/CRITICAL transitive CVEs already in the
+   dependency tree (lodash/multer/tar/js-yaml, verified via `npm ls
+   --omit=dev` and a real Trivy scan — `npm audit fix` cannot resolve
+   them without bumping `@nestjs/swagger`/`@nestjs/platform-express`/
+   `bcrypt`). That's the gate working as intended, not a setup mistake —
+   resolving it is a separate dependency-upgrade task before `main` can
+   actually push an image.
