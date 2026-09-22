@@ -1,10 +1,13 @@
+// P3-DO-21 — must load before anything it instruments is required (in
+// particular @nestjs/core and the http/pg/ioredis clients below), so
+// this import has to stay first.
+import './tracing';
 import 'reflect-metadata';
 import { Logger, ValidationPipe } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import helmet from 'helmet';
 import { Logger as PinoLogger } from 'nestjs-pino';
 import { AppModule } from './app.module';
-import { traceContextMiddleware } from './common/middleware/trace-context.middleware';
 import { setupSwagger } from './common/swagger';
 
 async function bootstrap() {
@@ -19,10 +22,6 @@ async function bootstrap() {
   // Security headers (X-Content-Type-Options, X-Frame-Options, HSTS, …).
   // CSP is disabled — this process serves JSON + the Swagger UI only.
   app.use(helmet({ contentSecurityPolicy: false }));
-
-  // P3-DO-21 — stamps req.traceId from Beyla's traceparent header, read
-  // by LoggerModule's customProps below.
-  app.use(traceContextMiddleware);
 
   app.useGlobalPipes(
     new ValidationPipe({

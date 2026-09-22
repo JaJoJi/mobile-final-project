@@ -133,6 +133,11 @@ services:
       JWT_ACCESS_TTL: ${JWT_ACCESS_TTL}
       JWT_REFRESH_TTL: ${JWT_REFRESH_TTL}
       COMBAT_DONE_TIMEOUT_MS: ${COMBAT_DONE_TIMEOUT_MS:-60000}
+      # P3-DO-21 (revised) — app's own OTel SDK (backend/src/tracing.ts)
+      # pushes traces here directly; Beyla no longer generates traces
+      # for nest-1/2/3 (see beyla-nest-1/2/3's OTEL_TRACES_EXPORTER=none
+      # below) — one trace producer per request, not two.
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://tempo:4318
     depends_on:
       postgres-primary:
         condition: service_healthy
@@ -153,6 +158,7 @@ services:
       JWT_ACCESS_TTL: ${JWT_ACCESS_TTL}
       JWT_REFRESH_TTL: ${JWT_REFRESH_TTL}
       COMBAT_DONE_TIMEOUT_MS: ${COMBAT_DONE_TIMEOUT_MS:-60000}
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://tempo:4318
     depends_on:
       postgres-primary:
         condition: service_healthy
@@ -173,6 +179,7 @@ services:
       JWT_ACCESS_TTL: ${JWT_ACCESS_TTL}
       JWT_REFRESH_TTL: ${JWT_REFRESH_TTL}
       COMBAT_DONE_TIMEOUT_MS: ${COMBAT_DONE_TIMEOUT_MS:-60000}
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://tempo:4318
     depends_on:
       postgres-primary:
         condition: service_healthy
@@ -197,10 +204,17 @@ services:
   # One Beyla process per instrumented target (nest-1/2/3 + nginx) -
   # each needs its own PID namespace (`pid: "service:<target>"`) and
   # `privileged: true` for eBPF (verified: SYS_ADMIN-only wasn't tried,
-  # privileged is what was confirmed working). OTEL_EXPORTER_OTLP_PROTOCOL
-  # must be explicit - verified live: Tempo silently received nothing
-  # without it (likely defaults to gRPC against Tempo's HTTP-only 4318
-  # port), traces only showed up once this was set to http/protobuf.
+  # privileged is what was confirmed working).
+  #
+  # nest-1/2/3: metrics only (OTEL_TRACES_EXPORTER=none) — the app's own
+  # OTel SDK (tracing.ts) generates traces now, not Beyla. Originally
+  # this design read a `traceparent` header Beyla was supposed to inject
+  # into inbound requests for log correlation — verified false, 3 ways,
+  # including this exact nginx->backend topology with propagation
+  # enabled on both hops. Real OTel SDK replaces it; disabling Beyla's
+  # traces here avoids double-tracing the same requests in Tempo.
+  # Verified live: OTEL_TRACES_EXPORTER=none keeps the Prometheus scrape
+  # working, zero attempt to reach an OTLP endpoint.
   beyla-nest-1:
     image: grafana/beyla:latest
     container_name: ac-beyla-nest-1
@@ -208,14 +222,11 @@ services:
     privileged: true
     depends_on:
       - nest-1
-      - tempo
     environment:
       BEYLA_OPEN_PORT: "3000"
       BEYLA_SERVICE_NAME: auto-chess-backend
       BEYLA_PROMETHEUS_PORT: "8999"
-      BEYLA_BPF_CONTEXT_PROPAGATION: all
-      OTEL_EXPORTER_OTLP_ENDPOINT: http://tempo:4318
-      OTEL_EXPORTER_OTLP_PROTOCOL: http/protobuf
+      OTEL_TRACES_EXPORTER: none
     restart: unless-stopped
 
   beyla-nest-2:
@@ -225,14 +236,11 @@ services:
     privileged: true
     depends_on:
       - nest-2
-      - tempo
     environment:
       BEYLA_OPEN_PORT: "3000"
       BEYLA_SERVICE_NAME: auto-chess-backend
       BEYLA_PROMETHEUS_PORT: "8999"
-      BEYLA_BPF_CONTEXT_PROPAGATION: all
-      OTEL_EXPORTER_OTLP_ENDPOINT: http://tempo:4318
-      OTEL_EXPORTER_OTLP_PROTOCOL: http/protobuf
+      OTEL_TRACES_EXPORTER: none
     restart: unless-stopped
 
   beyla-nest-3:
@@ -242,16 +250,18 @@ services:
     privileged: true
     depends_on:
       - nest-3
-      - tempo
     environment:
       BEYLA_OPEN_PORT: "3000"
       BEYLA_SERVICE_NAME: auto-chess-backend
       BEYLA_PROMETHEUS_PORT: "8999"
-      BEYLA_BPF_CONTEXT_PROPAGATION: all
-      OTEL_EXPORTER_OTLP_ENDPOINT: http://tempo:4318
-      OTEL_EXPORTER_OTLP_PROTOCOL: http/protobuf
+      OTEL_TRACES_EXPORTER: none
     restart: unless-stopped
 
+  # nginx: no SDK option there, so Beyla still generates its traces
+  # (metrics + traces both) — OTEL_EXPORTER_OTLP_PROTOCOL must be
+  # explicit here, verified live: Tempo silently received nothing
+  # without it (likely defaults to gRPC against Tempo's HTTP-only 4318
+  # port), traces only showed up once this was set to http/protobuf.
   beyla-nginx:
     image: grafana/beyla:latest
     container_name: ac-beyla-nginx
@@ -264,7 +274,6 @@ services:
       BEYLA_OPEN_PORT: "80"
       BEYLA_SERVICE_NAME: nginx
       BEYLA_PROMETHEUS_PORT: "8999"
-      BEYLA_BPF_CONTEXT_PROPAGATION: all
       OTEL_EXPORTER_OTLP_ENDPOINT: http://tempo:4318
       OTEL_EXPORTER_OTLP_PROTOCOL: http/protobuf
     restart: unless-stopped

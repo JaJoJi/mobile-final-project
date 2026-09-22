@@ -80,15 +80,18 @@ const lokiTransportTarget = {
           res.setHeader('x-request-id', existing);
           return existing;
         },
-        customProps: (req: IncomingMessage & { id?: string; traceId?: string }) => ({
+        // P3-DO-21 (revised) — no manual trace_id extraction here:
+        // tracing.ts's getNodeAutoInstrumentations() includes
+        // @opentelemetry/instrumentation-pino, which already injects
+        // trace_id/span_id/trace_flags into every pino line on its own.
+        // Found live: adding it here too produced literal duplicate
+        // "trace_id" keys in the JSON output (both instrumentation and
+        // this customProps writing the same field) — removed the
+        // redundant manual version, the auto-instrumentation is the
+        // single source now. Replaces the Beyla-traceparent approach,
+        // verified not to work (see git history for that writeup).
+        customProps: (req: IncomingMessage & { id?: string }) => ({
           requestId: req.id,
-          // P3-DO-21 — would be set by traceContextMiddleware from
-          // Beyla's traceparent header. Verified Beyla doesn't actually
-          // send that header today (see that file's header comment) —
-          // req.traceId is always undefined in practice right now, so
-          // this omits trace_id from every log line. Left wired in case
-          // that changes.
-          ...(req.traceId ? { trace_id: req.traceId } : {}),
         }),
 
         // 5xx -> error, 4xx -> warn, everything else -> info.
