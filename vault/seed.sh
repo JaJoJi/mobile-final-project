@@ -13,6 +13,7 @@ set -euo pipefail
 : "${VAULT_ADDR:=http://127.0.0.1:8200}"
 : "${VAULT_TOKEN:?VAULT_TOKEN must be set — see vault/root_token.env.example}"
 : "${DB_PASSWORD:?DB_PASSWORD must be set}"
+: "${DB_REPLICATION_PASSWORD:?DB_REPLICATION_PASSWORD must be set}"
 : "${REDIS_PASSWORD:?REDIS_PASSWORD must be set}"
 : "${JWT_SECRET:?JWT_SECRET must be set}"
 
@@ -33,7 +34,7 @@ vault status >/dev/null 2>&1 || {
 vault secrets list -format=json | grep -q '"secret/"' || \
   vault secrets enable -path=secret -version=2 kv
 
-vault kv put secret/auto-chess/db    password="$DB_PASSWORD"
+vault kv put secret/auto-chess/db    password="$DB_PASSWORD" replication_password="$DB_REPLICATION_PASSWORD"
 vault kv put secret/auto-chess/redis password="$REDIS_PASSWORD"
 vault kv put secret/auto-chess/jwt   secret="$JWT_SECRET"
 

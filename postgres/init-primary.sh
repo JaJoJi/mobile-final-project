@@ -12,20 +12,24 @@ set -e
 #   "no pg_hba.conf entry for replication connection from host <ip>"
 
 PGDATA="${PGDATA:-/var/lib/postgresql/data}"
+: "${POSTGRES_REPLICATION_PASSWORD:?POSTGRES_REPLICATION_PASSWORD must be set}"
 
 # ---- 1. replicator role ----
-# NOTE: heredoc delimiter is SINGLE-QUOTED ('EOSQL') to disable shell
-# variable expansion. Otherwise `$$` in the PL/pgSQL DO block gets
-# expanded by bash to the script's PID (e.g. `DO 128 ... 128`) and
-# psql rejects the syntax.
-psql -v ON_ERROR_STOP=1 --username "$POSTGRES_USER" --dbname "$POSTGRES_DB" <<-'EOSQL'
-DO $$
+# NOTE: heredoc delimiter is UNQUOTED (EOSQL) so $POSTGRES_REPLICATION_PASSWORD
+# expands — `$$` in the PL/pgSQL DO block is escaped as \$\$ so bash doesn't
+# expand it to the script's PID first (that used to be why this heredoc was
+# single-quoted, which also silently prevented the password from expanding —
+# found the hard way: this role's password was hardcoded to
+# 'replicator_secret' regardless of POSTGRES_REPLICATION_PASSWORD, so any
+# deploy where that env var held a different value broke replication).
+psql -v ON_ERROR_STOP=1 --username "$POSTGRES_USER" --dbname "$POSTGRES_DB" <<-EOSQL
+DO \$\$
 BEGIN
   IF NOT EXISTS (SELECT FROM pg_catalog.pg_roles WHERE rolname = 'replicator') THEN
-    CREATE ROLE replicator WITH REPLICATION LOGIN ENCRYPTED PASSWORD 'replicator_secret';
+    CREATE ROLE replicator WITH REPLICATION LOGIN ENCRYPTED PASSWORD '$POSTGRES_REPLICATION_PASSWORD';
   END IF;
 END
-$$;
+\$\$;
 EOSQL
 
 # ---- 2. pg_hba.conf rule for replication from any docker-network host ----

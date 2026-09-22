@@ -5,7 +5,9 @@
 > working procedure until that issue merges and this doc is updated to match.
 
 Related: [`docs/03-architecture.md`](./03-architecture.md) (topology) ·
-[`docker-compose.yml`](../docker-compose.yml) · [`.env.example`](../.env.example)
+[`docker-compose.yml`](../docker-compose.yml) ·
+[`docker-compose.prod.yml`](../docker-compose.prod.yml) ·
+[`.env.example`](../.env.example) · [`ansible/deploy.yml`](../ansible/deploy.yml)
 
 ## Contacts
 
@@ -19,8 +21,7 @@ dedicated on-call tooling — that's disproportionate for this project's size).
 
 ## 1. Deploy
 
-**Today**: there is no deployed environment. The only way to run the stack
-is local, from a clone:
+**Local / dev**, from a clone:
 
 ```bash
 cp .env.example .env      # fill in real values for anything beyond local dev
@@ -32,28 +33,47 @@ curl http://localhost/health/ready
 `docker-compose.yml`); `nest-2`/`nest-3` don't, to avoid three instances
 racing the same migration.
 
-**Not yet implemented**: a real staging/production target, `docker-compose.prod.yml`,
-and a deploy step in CI ([#193](https://github.com/JaJoJi/mobile-final-project/issues/193)).
-Once that lands, this section becomes: pull the tagged image, `docker compose
--f docker-compose.prod.yml pull && up -d`, then the post-deploy check below.
+**Production** ([#221](https://github.com/JaJoJi/mobile-final-project/issues/221)):
+Jenkins CD stage runs `ansible-playbook ansible/deploy.yml -e
+image_tag=<short SHA>` — the playbook syncs `docker-compose.prod.yml` +
+nginx/vault/postgres files to the host, brings up Vault, fetches secrets
+from it into a runtime-only `.env.runtime` (never committed, rewritten
+every deploy), then `docker compose -f docker-compose.prod.yml --env-file
+.env.runtime up -d`. pgadmin is excluded from prod (dev-only DB admin UI,
+too risky to expose — the open decision from #221 resolved this way).
 
-**Post-deploy check** (works today against local, will work against a real
-host once #193 exists):
+**Post-deploy check**, Jenkins runs this after the playbook, fails the
+stage if it doesn't pass within 30s:
 
 ```bash
 curl -f http://<host>/health/ready || echo "DEPLOY BAD — do not consider this live"
 ```
 
+**Verified for real** (not just written): brought up the entire
+`docker-compose.prod.yml` topology locally — vault, postgres-primary +
+replica, redis, nest-1/2/3 (from a locally-built image tagged like a real
+Docker Hub release), nginx+ModSecurity — and got a real `200
+{"status":"ready"}` from `/health/ready` through nginx. Along the way found
+and fixed a real bug: `postgres-primary` never actually received
+`POSTGRES_REPLICATION_PASSWORD` as an env var in either compose file (dev
+or prod), so `postgres/init-primary.sh` had silently hardcoded the
+`replicator` role's password instead — meaning any deploy where Vault held
+a different replication password than the hardcoded literal would have
+broken replication with no obvious cause. Fixed in both compose files and
+verified `postgres-replica` reaches `healthy` with a password sourced from
+the env var, not the old hardcoded fallback.
+
 ## 2. Rollback
 
-**Not yet implemented** — no deployed environment to roll back yet. Designed
-mechanism, once [#137](https://github.com/JaJoJi/mobile-final-project/issues/137)
-(GHCR publish) and #193 (deploy target) exist:
+Mechanism: same image, different tag — no separate rollback tooling, just
+rerun the deploy with an older `IMAGE_TAG`.
 
-1. Identify the last-known-good tag: `git tag --sort=-creatordate | head -5`
-   or check the GHCR package page for the previous `vX.Y.Z`.
-2. On the host: `docker compose -f docker-compose.prod.yml pull
-   ghcr.io/jajoji/auto_chess-backend:<previous-tag>` then `up -d`.
+1. Identify the last-known-good tag: `git log --oneline` for the short SHA
+   of the last good `main` build (that's the Docker Hub tag — #220 tags
+   with the short commit SHA, not semver).
+2. Rerun the Jenkins Deploy stage (or `ansible-playbook ansible/deploy.yml
+   -e image_tag=<previous-sha>` directly) — this pulls the previous image
+   and recreates the affected containers, nothing else.
 3. Re-run the post-deploy check above.
 4. If the bad deploy already ran a migration, rolling the *image* back does
    **not** roll the schema back — `npm run migration:revert` must be run
@@ -62,9 +82,14 @@ mechanism, once [#137](https://github.com/JaJoJi/mobile-final-project/issues/137
    rollback gate; treat every migrating deploy as effectively one-way until
    one exists.
 
-This has not been drilled against a real deploy yet — do a real rollback
-drill the first time #193 lands, and update this section with what actually
-happened.
+**Drilled for real, locally** (#221): deployed `IMAGE_TAG=drill1`, confirmed
+healthy; "deployed" `IMAGE_TAG=drill2` (same image, different tag —
+standing in for a new release), confirmed `ac-nest-1`'s running image
+actually changed tag and stayed healthy; rolled back to `IMAGE_TAG=drill1`
+the same way, confirmed the container recreated with the old tag again and
+`/health/ready` stayed 200 throughout. Not drilled: an actual bad release
+(this only proves the tag-switch mechanism, not failure detection) or
+anything against a real remote host — no deploy target exists yet.
 
 ## 3. Backup & Restore Drill
 

@@ -61,6 +61,12 @@
         dest: "{{ project_dir }}/vault/seed.sh"
         mode: "0750"
 
+    - name: Sync Postgres init scripts (docker-compose.prod.yml mounts these)
+      ansible.builtin.copy:
+        src: "{{ playbook_dir }}/../postgres/"
+        dest: "{{ project_dir }}/postgres/"
+        mode: "0750"
+
     - name: Bring up Vault
       ansible.builtin.command:
         cmd: docker compose -f docker-compose.prod.yml up -d vault
@@ -86,13 +92,41 @@
         VAULT_ADDR: "http://127.0.0.1:8200"
         VAULT_TOKEN: "{{ lookup('env', 'VAULT_TOKEN') }}"
         DB_PASSWORD: "{{ lookup('env', 'DB_PASSWORD') }}"
+        DB_REPLICATION_PASSWORD: "{{ lookup('env', 'DB_REPLICATION_PASSWORD') }}"
         REDIS_PASSWORD: "{{ lookup('env', 'REDIS_PASSWORD') }}"
         JWT_SECRET: "{{ lookup('env', 'JWT_SECRET') }}"
       changed_when: true # vault kv put always creates a new version, see header note
 
+    # docker-compose.prod.yml still needs plain env vars at container-start
+    # time — Compose has no native Vault integration. This file is the
+    # bridge: read from Vault, written fresh every deploy, never committed,
+    # gone the moment the next deploy overwrites it.
+    - name: Fetch secrets from Vault into a runtime env file
+      ansible.builtin.shell:
+        cmd: |
+          set -euo pipefail
+          db_password=$(vault kv get -field=password secret/auto-chess/db)
+          db_repl_password=$(vault kv get -field=replication_password secret/auto-chess/db)
+          jwt_secret=$(vault kv get -field=secret secret/auto-chess/jwt)
+          umask 077
+          cat > "{{ project_dir }}/.env.runtime" <<EOF
+          POSTGRES_USER=postgres
+          POSTGRES_PASSWORD=${db_password}
+          POSTGRES_DB=auto_chess
+          POSTGRES_REPLICATION_PASSWORD=${db_repl_password}
+          JWT_SECRET=${jwt_secret}
+          JWT_ACCESS_TTL=7d
+          JWT_REFRESH_TTL=30d
+          IMAGE_TAG={{ image_tag | default('latest') }}
+          EOF
+      environment:
+        VAULT_ADDR: "http://127.0.0.1:8200"
+        VAULT_TOKEN: "{{ lookup('env', 'VAULT_TOKEN') }}"
+      changed_when: true # always rewritten fresh, see comment above
+
     - name: Bring up the full stack
       ansible.builtin.command:
-        cmd: docker compose -f docker-compose.prod.yml up -d
+        cmd: docker compose -f docker-compose.prod.yml --env-file .env.runtime up -d
         chdir: "{{ project_dir }}"
       register: stack_up
       changed_when: "'Started' in stack_up.stdout or 'Created' in stack_up.stdout"

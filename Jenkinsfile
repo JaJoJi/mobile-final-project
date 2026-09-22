@@ -41,6 +41,10 @@ pipeline {
     NODE_VERSION = '22'
     IMAGE_NAME   = 'jajoji/auto-chess-backend' // Docker Hub (devops-toolchain.md §3), not GHCR
     IMAGE_TAG    = "${env.GIT_COMMIT ? env.GIT_COMMIT.take(7) : 'local'}"
+    // Set on the Jenkins controller (Manage Jenkins > System), not a
+    // credential — it's a hostname, not a secret. #221's post-deploy
+    // smoke check curls "${PROD_HEALTH_URL}/health/ready".
+    PROD_HEALTH_URL = "${env.PROD_HEALTH_URL ?: ''}"
   }
 
   stages {
@@ -301,10 +305,38 @@ pipeline {
     }
 
     // ── CD ───────────────────────────────────────────────────────────
+    // Ansible (#222), not raw SSH — the playbook itself fetches secrets
+    // from Vault and brings the stack up; this stage's job is just
+    // credentials + the post-deploy smoke check + failing loud on either.
     stage('Deploy') {
       when { branch 'main' }
       steps {
-        echo 'TODO(#221): ansible-playbook deploy over SSH'
+        withCredentials([
+          sshUserPrivateKey(credentialsId: 'prod-ssh-key', keyFileVariable: 'SSH_KEY', usernameVariable: 'SSH_USER'),
+          string(credentialsId: 'vault-token', variable: 'VAULT_TOKEN'),
+          string(credentialsId: 'prod-db-password', variable: 'DB_PASSWORD'),
+          string(credentialsId: 'prod-db-replication-password', variable: 'DB_REPLICATION_PASSWORD'),
+          string(credentialsId: 'prod-redis-password', variable: 'REDIS_PASSWORD'),
+          string(credentialsId: 'prod-jwt-secret', variable: 'JWT_SECRET'),
+        ]) {
+          sh """
+            ansible-playbook -i ansible/inventory ansible/deploy.yml \
+              --private-key "\$SSH_KEY" -u "\$SSH_USER" \
+              -e image_tag=${IMAGE_TAG}
+          """
+        }
+        // Fails the stage loud if /health/ready never comes back 200 —
+        // rollback (docs/08-runbook.md) is: rerun this stage with
+        // -e image_tag=<previous short SHA>, same env-var contract.
+        sh '''
+          for i in $(seq 1 15); do
+            code=$(curl -s -o /dev/null -w "%{http_code}" "${PROD_HEALTH_URL}/health/ready" || true)
+            if [ "$code" = "200" ]; then exit 0; fi
+            sleep 2
+          done
+          echo "Smoke check failed: ${PROD_HEALTH_URL}/health/ready did not return 200 within 30s" >&2
+          exit 1
+        '''
       }
     }
   }

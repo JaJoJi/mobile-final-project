@@ -1,16 +1,18 @@
 # Production compose file. Built up incrementally across the P3-DO
 # backlog:
-#   #223 (this)  -- vault service
-#   #224         -- builds nginx/Dockerfile.modsec (nginx + ModSecurity +
-#                   curated CRS) but doesn't wire it in here yet — it has
-#                   no nest-1/2/3 to depend_on until #221 exists
-#   #221         -- assembles the real topology: nest-1/2/3, redis,
-#                   postgres-primary/replica (adapted from
-#                   docker-compose.yml), the #224 nginx image, Ansible +
-#                   Vault wiring
-#   #225         -- beyla, mtail, prometheus, grafana, loki, promtail, tempo
-# Until #221 lands this file only has what's been built so far — it is
-# not a deployable topology on its own yet.
+#   #223 -- vault service
+#   #224 -- built nginx/Dockerfile.modsec (nginx + ModSecurity + curated
+#           CRS), not wired in until this file had nest-1/2/3 to depend_on
+#   #221 (this) -- assembles the real topology: nest-1/2/3 (pull the
+#           Docker Hub image from #220, never build in prod), redis,
+#           postgres-primary/replica (adapted from docker-compose.yml),
+#           the #224 nginx image. pgadmin dropped (open decision
+#           resolved: dev-only DB admin UI, security risk if exposed
+#           publicly — excluded, matches the issue's own stated default).
+#           Secrets come from a runtime .env file Ansible (#222) writes
+#           from Vault just before `docker compose up -d` — never
+#           committed, regenerated every deploy.
+#   #225 -- beyla, mtail, prometheus, grafana, loki, promtail, tempo
 name: auto_chess_prod
 services:
   vault:
@@ -32,3 +34,165 @@ services:
       timeout: 5s
       retries: 10
     restart: unless-stopped
+
+  postgres-primary:
+    image: postgres:16-alpine
+    container_name: ac-postgres-primary
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+      # Consumed by postgres/init-primary.sh to set the `replicator`
+      # role's password — was missing here entirely (found live: the
+      # role's password was hardcoded instead, see that script's header).
+      POSTGRES_REPLICATION_PASSWORD: ${POSTGRES_REPLICATION_PASSWORD}
+      PGDATA: /var/lib/postgresql/data
+    command:
+      - "postgres"
+      - "-c"
+      - "wal_level=replica"
+      - "-c"
+      - "max_wal_senders=10"
+      - "-c"
+      - "max_replication_slots=10"
+      - "-c"
+      - "hot_standby=on"
+    volumes:
+      - pg_primary_data:/var/lib/postgresql/data
+      - ./postgres/init-primary.sh:/docker-entrypoint-initdb.d/01-replication.sh:ro
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+  postgres-replica:
+    image: postgres:16-alpine
+    container_name: ac-postgres-replica
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+      PGPASSWORD: ${POSTGRES_REPLICATION_PASSWORD}
+    depends_on:
+      postgres-primary:
+        condition: service_healthy
+    command:
+      - bash
+      - -c
+      - |
+        set -e
+        until pg_isready -h postgres-primary -p 5432 -U ${POSTGRES_USER}; do
+          echo "[replica] Waiting for primary..."; sleep 2;
+        done
+        echo "[replica] Taking base backup from primary..."
+        rm -rf /var/lib/postgresql/data/*
+        pg_basebackup -h postgres-primary \
+                      -D /var/lib/postgresql/data \
+                      -U replicator \
+                      -P -Xs -R \
+                      --checkpoint=fast
+        chown -R postgres:postgres /var/lib/postgresql/data
+        echo "[replica] Base backup complete. Starting replica..."
+        exec docker-entrypoint.sh postgres
+    volumes:
+      - pg_replica_data:/var/lib/postgresql/data
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    container_name: ac-redis
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    restart: unless-stopped
+
+  nest-1:
+    image: jajoji/auto-chess-backend:${IMAGE_TAG:-latest}
+    container_name: ac-nest-1
+    environment:
+      NODE_ENV: production
+      HOSTNAME: nest-1
+      NEST_PORT: 3000
+      RUN_MIGRATIONS: "true"
+      DATABASE_URL: postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres-primary:5432/${POSTGRES_DB}
+      REDIS_URL: redis://redis:6379
+      JWT_SECRET: ${JWT_SECRET}
+      JWT_ACCESS_TTL: ${JWT_ACCESS_TTL}
+      JWT_REFRESH_TTL: ${JWT_REFRESH_TTL}
+      COMBAT_DONE_TIMEOUT_MS: ${COMBAT_DONE_TIMEOUT_MS:-60000}
+    depends_on:
+      postgres-primary:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
+  nest-2:
+    image: jajoji/auto-chess-backend:${IMAGE_TAG:-latest}
+    container_name: ac-nest-2
+    environment:
+      NODE_ENV: production
+      HOSTNAME: nest-2
+      NEST_PORT: 3000
+      DATABASE_URL: postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres-primary:5432/${POSTGRES_DB}
+      REDIS_URL: redis://redis:6379
+      JWT_SECRET: ${JWT_SECRET}
+      JWT_ACCESS_TTL: ${JWT_ACCESS_TTL}
+      JWT_REFRESH_TTL: ${JWT_REFRESH_TTL}
+      COMBAT_DONE_TIMEOUT_MS: ${COMBAT_DONE_TIMEOUT_MS:-60000}
+    depends_on:
+      postgres-primary:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
+  nest-3:
+    image: jajoji/auto-chess-backend:${IMAGE_TAG:-latest}
+    container_name: ac-nest-3
+    environment:
+      NODE_ENV: production
+      HOSTNAME: nest-3
+      NEST_PORT: 3000
+      DATABASE_URL: postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres-primary:5432/${POSTGRES_DB}
+      REDIS_URL: redis://redis:6379
+      JWT_SECRET: ${JWT_SECRET}
+      JWT_ACCESS_TTL: ${JWT_ACCESS_TTL}
+      JWT_REFRESH_TTL: ${JWT_REFRESH_TTL}
+      COMBAT_DONE_TIMEOUT_MS: ${COMBAT_DONE_TIMEOUT_MS:-60000}
+    depends_on:
+      postgres-primary:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
+  nginx:
+    build:
+      context: ./nginx
+      dockerfile: Dockerfile.modsec
+    container_name: ac-nginx
+    depends_on:
+      - nest-1
+      - nest-2
+      - nest-3
+    ports:
+      - "80:80"
+    restart: unless-stopped
+
+volumes:
+  pg_primary_data:
+  pg_replica_data:
