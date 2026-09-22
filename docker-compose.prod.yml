@@ -1,9 +1,13 @@
 # Production compose file. Built up incrementally across the P3-DO
-# backlog — each issue adds its own service block:
-#   #223 (this)  -- vault
-#   #224         -- nginx + ModSecurity (replaces the dev nginx service)
-#   #221         -- nest-1/2/3, redis, postgres-primary/replica (adapted
-#                   from docker-compose.yml), wires Ansible + Vault in
+# backlog:
+#   #223 (this)  -- vault service
+#   #224         -- builds nginx/Dockerfile.modsec (nginx + ModSecurity +
+#                   curated CRS) but doesn't wire it in here yet — it has
+#                   no nest-1/2/3 to depend_on until #221 exists
+#   #221         -- assembles the real topology: nest-1/2/3, redis,
+#                   postgres-primary/replica (adapted from
+#                   docker-compose.yml), the #224 nginx image, Ansible +
+#                   Vault wiring
 #   #225         -- beyla, mtail, prometheus, grafana, loki, promtail, tempo
 # Until #221 lands this file only has what's been built so far — it is
 # not a deployable topology on its own yet.

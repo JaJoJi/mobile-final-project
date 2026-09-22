@@ -1,0 +1,33 @@
+# P3-DO-20 — production nginx + ModSecurity + OWASP CRS.
+#
+# Base image (owasp/modsecurity-crs:nginx-alpine) ships nginx with
+# ngx_http_modsecurity_module.so already compiled in, plus the CRS
+# ruleset and an entrypoint that wires everything from env vars — that
+# beats hand-compiling libmodsecurity from source for a single-VM
+# deploy, same maintenance tradeoff already made for postgres/redis
+# images elsewhere in this repo.
+#
+# Dev's nginx/nginx.conf + nginx/Dockerfile are untouched — this is a
+# separate prod-only image so ModSecurity never affects local dev.
+FROM owasp/modsecurity-crs:nginx-alpine
+
+# Remove the base image's placeholder site (port 8080, static welcome
+# page) — our own server block replaces it.
+RUN rm -f /etc/nginx/conf.d/default.conf
+
+# Curated CRS Include list (replaces the base image's Include-everything
+# default) and our server block (least_conn upstream, WS, health, CORS —
+# same shape as the dev config).
+COPY modsec/setup.conf.template /etc/nginx/templates/modsecurity.d/setup.conf.template
+COPY conf.d/app.conf.template   /etc/nginx/templates/conf.d/app.conf.template
+
+# Explicit worker count, not auto-scale — resource budget is 4 vCPU
+# shared with nest-1/2/3 + everything else (devops-toolchain.md §9).
+# BLOCKING_PARANOIA=1 and MODSEC_AUDIT_LOG(_FORMAT)=stdout/JSON are
+# already the base image's defaults — not overridden here, just relied
+# on (verified via `docker inspect`, not re-declared to avoid drift).
+ENV NGINX_WORKER_PROCESSES=2
+
+EXPOSE 80
+HEALTHCHECK --interval=10s --timeout=3s --retries=3 \
+    CMD wget --quiet --tries=1 --spider http://localhost/health || exit 1

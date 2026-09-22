@@ -1,0 +1,53 @@
+# P3-DO-20 — curated CRS rule set, replacing the base image's
+# `Include .../owasp-crs/rules/*.conf` (all ~30 files). Only the
+# categories that match this app's actual attack surface (JSON/WS REST
+# API, NestJS backend, Postgres, JWT auth — no file uploads, no PHP, no
+# Java, no CMS) are included, to keep worker memory/CPU bounded per the
+# real-world growth reports cited in devops-toolchain.md §7/§9.
+#
+# Structure otherwise matches the base image's setup.conf.template.
+
+Include /etc/modsecurity.d/modsecurity.conf
+Include /etc/modsecurity.d/modsecurity-override.conf
+
+Include /etc/modsecurity.d/owasp-crs/crs-setup.conf
+
+# 901: mandatory CRS initialization
+Include /etc/modsecurity.d/owasp-crs/rules/REQUEST-901-INITIALIZATION.conf
+
+# Recommended baseline
+Include /etc/modsecurity.d/owasp-crs/rules/REQUEST-905-COMMON-EXCEPTIONS.conf
+Include /etc/modsecurity.d/owasp-crs/rules/REQUEST-911-METHOD-ENFORCEMENT.conf
+Include /etc/modsecurity.d/owasp-crs/rules/REQUEST-913-SCANNER-DETECTION.conf
+Include /etc/modsecurity.d/owasp-crs/rules/REQUEST-920-PROTOCOL-ENFORCEMENT.conf
+Include /etc/modsecurity.d/owasp-crs/rules/REQUEST-921-PROTOCOL-ATTACK.conf
+
+# Application attack categories relevant to this stack
+Include /etc/modsecurity.d/owasp-crs/rules/REQUEST-930-APPLICATION-ATTACK-LFI.conf
+Include /etc/modsecurity.d/owasp-crs/rules/REQUEST-931-APPLICATION-ATTACK-RFI.conf
+Include /etc/modsecurity.d/owasp-crs/rules/REQUEST-932-APPLICATION-ATTACK-RCE.conf
+Include /etc/modsecurity.d/owasp-crs/rules/REQUEST-934-APPLICATION-ATTACK-NODEJS.conf
+Include /etc/modsecurity.d/owasp-crs/rules/REQUEST-941-APPLICATION-ATTACK-XSS.conf
+Include /etc/modsecurity.d/owasp-crs/rules/REQUEST-942-APPLICATION-ATTACK-SQLI.conf
+Include /etc/modsecurity.d/owasp-crs/rules/REQUEST-943-APPLICATION-ATTACK-SESSION-FIXATION.conf
+
+# Mandatory: computes the accumulated anomaly score into a block/pass decision
+Include /etc/modsecurity.d/owasp-crs/rules/REQUEST-949-BLOCKING-EVALUATION.conf
+
+# Response-phase: catch leaked stack traces / error detail
+Include /etc/modsecurity.d/owasp-crs/rules/RESPONSE-950-DATA-LEAKAGES.conf
+Include /etc/modsecurity.d/owasp-crs/rules/RESPONSE-959-BLOCKING-EVALUATION.conf
+Include /etc/modsecurity.d/owasp-crs/rules/RESPONSE-980-CORRELATION.conf
+
+# Explicitly not included (attack surface doesn't apply, or resource cost
+# not justified yet — revisit if load-testing (#140) shows headroom):
+#   903-*  CMS exclusion rules (Drupal/WordPress/Nextcloud/Dokuwiki/cPanel/XenForo)
+#   910    IP reputation (needs an external data feed subscription)
+#   912    DoS protection (real WS traffic risks false positives; app-level
+#          rate limiting is the better fit if this is needed later)
+#   922    Multipart attack (no file upload endpoints in this app)
+#   933    PHP application attacks
+#   944    Java application attacks
+#   951-954 Response data leakage for SQL/Java/PHP/IIS specifically
+#          (951 SQL is the one to reconsider if Postgres error text ever
+#          needs closer watching — 950 already catches generic leakage)
