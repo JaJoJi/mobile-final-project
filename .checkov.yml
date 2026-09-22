@@ -1,0 +1,17 @@
+# P3-DO-15 — Checkov config for the Jenkins Scan stage.
+#
+# Framework scope: this repo has no Terraform/CloudFormation/K8s
+# manifests — its actual IaC-shaped surface is Dockerfiles, the Ansible
+# playbook (#222), and CI workflow files.
+framework:
+  - dockerfile
+  - github_actions
+  - ansible
+compact: true
+skip-check:
+  # CKV2_GHA_1 (top-level permissions not write-all): fails on all three
+  # .github/workflows/*.yml files (mobile-ci, backend-ci, release) —
+  # verified via a real `checkov` run. Not fixed: these workflows are
+  # retired per devops-toolchain.md §1 (Jenkins is the sole CI/CD engine
+  # now, #218) — not worth hardening a pipeline on its way out.
+  - CKV2_GHA_1

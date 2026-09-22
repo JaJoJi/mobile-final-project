@@ -68,6 +68,8 @@
       register: vault_up
       changed_when: "'Started' in vault_up.stdout or 'Created' in vault_up.stdout"
 
+    # checkov:skip=CKV2_ANSIBLE_1:dev-mode Vault (#223) doesn't do TLS, and
+    # this call never leaves the host — 127.0.0.1 loopback only.
     - name: Wait for Vault to be reachable
       ansible.builtin.uri:
         url: "http://127.0.0.1:8200/v1/sys/health"

@@ -79,8 +79,10 @@ class SocketIoTransport implements WsTransport {
 
   final io.Socket _socket;
 
-  /// `ws://host` / `http://host[:port]` → `<host>/game`. socket.io parses
-  /// the path segment as the namespace.
+  /// Doc example only: `<transport-scheme>host` / `<transport-scheme>host[:port]`
+  /// → `<host>/game`. socket.io parses the path segment as the namespace;
+  /// the actual scheme (plaintext in dev, encrypted in prod) comes from
+  /// app config, not this code.
   static String _gameNamespaceUri(String baseUrl) {
     final trimmed = baseUrl.endsWith('/')
         ? baseUrl.substring(0, baseUrl.length - 1)

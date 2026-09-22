@@ -1,0 +1,9 @@
+# P3-DO-15 — documented false positives, one line each. Fingerprints are
+# stable (tied to the introducing commit), verified against a real
+# `gitleaks detect` run over this repo's actual git history.
+36a6efa0568d6084e00c8afc11b64a7a0a4b9322:.github/workflows/backend-ci.yml:generic-api-key:45
+# ^ CI-only value, literally named ci_jwt_secret_not_a_real_secret_...
+
+48c80c05e086da8af268ce49026181d402386cae:backend/src/ws/ws.smoke.ts:jwt:205
+# ^ deliberately invalid JWT fixture (suffixed invalid_signature_xxx...)
+#   used to test that the server rejects bad tokens, not a live credential

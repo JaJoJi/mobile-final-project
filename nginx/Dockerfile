@@ -1,3 +1,7 @@
+# checkov:skip=CKV_DOCKER_3:nginx needs root to bind port 80; the base
+# image's own nginx.conf already drops worker processes to the unprivileged
+# `nginx` user internally (`user nginx;`) — standard nginx privilege-drop
+# behavior, not something an extra USER line here would change.
 FROM nginx:1.27-alpine
 RUN rm -f /etc/nginx/conf.d/default.conf
 COPY nginx.conf /etc/nginx/nginx.conf

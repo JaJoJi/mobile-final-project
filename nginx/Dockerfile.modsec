@@ -9,6 +9,10 @@
 #
 # Dev's nginx/nginx.conf + nginx/Dockerfile are untouched — this is a
 # separate prod-only image so ModSecurity never affects local dev.
+#
+# checkov:skip=CKV_DOCKER_3:nginx needs root to bind port 80; the base
+# image's own nginx.conf already drops worker processes to the unprivileged
+# `nginx` user internally — standard nginx privilege-drop behavior.
 FROM owasp/modsecurity-crs:nginx-alpine
 
 # Remove the base image's placeholder site (port 8080, static welcome

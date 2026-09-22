@@ -225,7 +225,9 @@ async function run(): Promise<void> {
 
   // 4. Garbage token → game:error{auth.expired} + server disconnect
   {
+    // deliberately invalid signature — a fixture for the rejection test below, not a live credential
     const garbage =
+      // nosemgrep: generic.secrets.security.detected-jwt-token.detected-jwt-token
       'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJzbW9rZSIsInR5cGUiOiJhY2Nlc3MiLCJpYXQiOjB9.invalid_signature_xxxxxxxxxxxxxxxxxxxxxxxxxx';
     const { socket, connectOk, errorPayload, disconnected, disconnectReason } =
       await connect({ token: garbage });
