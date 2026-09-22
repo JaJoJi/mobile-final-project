@@ -17,6 +17,7 @@ mobile/build/
 backend/dist/
 backend/coverage/
 backend/src/coverage/
+backend/reports/
 mobile/build/
 nginx/.cache/
 

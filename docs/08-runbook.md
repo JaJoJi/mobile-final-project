@@ -132,9 +132,9 @@ affected, only the container's auth).
 ## 5. Incident Response
 
 No metrics/log aggregation exists yet
-([#138](https://github.com/JaJoJi/mobile-final-project/issues/138) —
-Prometheus + Grafana). Until then, first three things to check when
-something's wrong:
+([#225](https://github.com/JaJoJi/mobile-final-project/issues/225) —
+Beyla + mtail + Loki + Tempo → Prometheus/Loki/Tempo → Grafana). Until
+then, first three things to check when something's wrong:
 
 1. **Is it up?** `curl http://<host>/health/ready` — checks DB + Redis
    reachability from the app's perspective (see `backend/src/common/health.controller.ts`).
@@ -148,5 +148,31 @@ something's wrong:
    — useful since `nginx` load-balances across all three and a bad node can
    hide behind two healthy ones.
 
-Once #138 lands, step 2/3 become "open the Grafana dashboard" instead of
+Once #225 lands, step 2/3 become "open the Grafana dashboard" instead of
 grepping `docker compose logs` by hand — update this section then.
+
+## 6. Jenkins CI Setup
+
+Controller install + webhook + credentials aren't repo-tracked — done by
+hand on the target VM, documented here so it's repeatable.
+
+1. **Install Jenkins** on the target VM, running on the built-in node —
+   no separate Docker agent (devops-toolchain.md §1). Standard LTS
+   package for the host OS; no Docker-in-Docker needed since `docker`
+   CLI is invoked directly on the built-in node against the host's
+   Docker daemon.
+2. **Plugins:** GitHub Integration (webhook trigger), HTML Publisher
+   (backend coverage report), JUnit (already core in modern Jenkins).
+3. **Webhook:** GitHub repo → Settings → Webhooks → add
+   `http://<jenkins-host>/github-webhook/`, content type
+   `application/json`, event: `push`. Matches the Jenkinsfile's
+   `triggers { githubPush() }`.
+4. **Job:** create a Multibranch Pipeline job pointing at this repo —
+   Jenkins auto-discovers `Jenkinsfile` per branch/PR.
+5. **Credentials** (Jenkins → Credentials) — added as each backing issue
+   lands, not needed for #218 itself:
+   - `dockerhub-token` (#220 — Docker Hub push, Kind: Username+password)
+   - SSH key for the deploy target (#221 — Ansible/CD over SSH)
+6. **Verify:** push a commit, confirm the webhook fires a build, confirm
+   `Backend coverage` (HTML Publisher) and the JUnit tab both populate
+   after `Backend · unit test + coverage`.

@@ -17,4 +17,9 @@ module.exports = {
   coverageThreshold: {
     global: { lines: 90, statements: 90, functions: 90, branches: 80 },
   },
+  // P3-DO-14: Jenkins junit report publisher reads this.
+  reporters: [
+    'default',
+    ['jest-junit', { outputDirectory: 'reports', outputName: 'junit.xml' }],
+  ],
 };

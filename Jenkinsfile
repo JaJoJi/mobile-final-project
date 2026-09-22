@@ -1,31 +1,25 @@
-// Jenkins declarative pipeline for mobile-final-project.
+// Jenkins declarative pipeline for mobile-final-project. (P3-DO-14)
 //
-// STATUS: parked. No self-hosted Jenkins runner exists yet — GitHub Actions
-// (.github/workflows/backend-ci.yml, mobile-ci.yml) remains the pipeline
-// that actually runs on every PR. This file exists so the toolchain design
-// is complete on paper and ready to activate the moment a runner exists;
-// it does not replace or disable the GitHub Actions workflows.
+// Un-parked version of #190's draft: a real Jenkins controller + GitHub
+// webhook now exist, so this is the sole CI/CD engine — GitHub Actions
+// is retired, no more ENABLE_* flags standing in for a fallback pipeline.
+// Runs on the controller's built-in node (no separate Docker agent —
+// devops-toolchain.md §1), as a Multibranch Pipeline job so this file is
+// auto-discovered per branch/PR.
 //
-// To activate:
-//   1. Stand up a Jenkins controller + at least one agent with Docker
-//      available (`docker` in PATH, socket mounted or DinD).
-//   2. Create a Multibranch Pipeline job pointing at this repo — Jenkins
-//      auto-discovers this Jenkinsfile per branch/PR.
-//   3. Add credentials (Jenkins > Credentials):
-//        - `ghcr-token`      (GHCR push, Kind: Username+password / PAT)
-//        - `discord-webhook` (build notifications, Kind: Secret text)
-//   4. Flip the `params.ENABLE_*` defaults below once the matching
-//      infra/credential exists. Everything is gated so a fresh Jenkins
-//      with none of that configured still runs green (build + unit test
-//      only), instead of failing on a missing tool.
+// Stage shape matches devops-toolchain.md: Scan -> Build -> Push -> CD.
+// Scan (#219), Push (#220) and CD (#221) are separate backlog issues —
+// each is a stub here until its issue lands the real steps.
 //
-// Stage set mirrors + extends the GitHub Actions CI (see the devops
-// toolchain review — P3-DO-08): this pipeline additionally spins up real
-// Postgres + Redis to run the backend's `*.smoke.ts` integration suite,
-// which GH Actions currently skips.
+// Controller setup (install, webhook plugin, credentials store, HTML
+// Publisher plugin) isn't repo-tracked — see docs/08-runbook.md.
 
 pipeline {
   agent any
+
+  triggers {
+    githubPush()
+  }
 
   options {
     timestamps()
@@ -35,20 +29,18 @@ pipeline {
   }
 
   parameters {
-    // Each defaults OFF until the backing infra/credential actually
-    // exists — see the activation notes above.
-    booleanParam(name: 'ENABLE_INTEGRATION_TESTS', defaultValue: false,
-      description: 'Run backend *.smoke.ts against real Postgres+Redis (needs Docker on the agent)')
-    booleanParam(name: 'ENABLE_IMAGE_PUBLISH', defaultValue: false,
-      description: 'Build + push the backend image to GHCR (needs the ghcr-token credential)')
-    booleanParam(name: 'ENABLE_NOTIFICATIONS', defaultValue: false,
-      description: 'Post build result to Discord (needs the discord-webhook credential)')
+    // *.smoke.ts integration suite needs Postgres/Redis env wiring
+    // (mapped ports -> DATABASE_URL/REDIS_URL, migrations) that isn't
+    // finished yet — separate from the ENABLE_* fallback-safety flags
+    // this file used to carry. Off by default until that wiring lands.
+    booleanParam(name: 'RUN_INTEGRATION_SMOKE', defaultValue: false,
+      description: 'Run backend *.smoke.ts against real Postgres+Redis — needs env wiring, see stage TODO')
   }
 
   environment {
-    NODE_VERSION   = '22'
-    IMAGE_NAME     = 'ghcr.io/jajoji/auto_chess-backend'
-    IMAGE_TAG      = "${env.GIT_COMMIT ? env.GIT_COMMIT.take(7) : 'local'}"
+    NODE_VERSION = '22'
+    IMAGE_NAME   = 'jajoji/auto-chess-backend' // Docker Hub (devops-toolchain.md §3), not GHCR
+    IMAGE_TAG    = "${env.GIT_COMMIT ? env.GIT_COMMIT.take(7) : 'local'}"
   }
 
   stages {
@@ -56,8 +48,14 @@ pipeline {
       steps { checkout scm }
     }
 
-    // ── Backend ──────────────────────────────────────────────────────
+    // ── Scan ─────────────────────────────────────────────────────────
+    stage('Scan') {
+      steps {
+        echo 'TODO(#219): Gitleaks + Semgrep + Trivy + Checkov + ephemeral ZAP'
+      }
+    }
 
+    // ── Build / Test — backend ──────────────────────────────────────
     stage('Backend · install') {
       steps { dir('backend') { sh 'npm ci' } }
     }
@@ -79,20 +77,24 @@ pipeline {
       }
       post {
         always {
-          // TODO on activation: add the `jest-junit` devDependency + a
-          // `reporters: ['default', 'jest-junit']` entry to jest.config.js,
-          // then switch this to `junit testResults: 'backend/junit.xml'`
-          // (no jest-junit installed yet, so there's nothing to publish).
+          junit testResults: 'backend/reports/junit.xml', allowEmptyResults: true
           archiveArtifacts artifacts: 'backend/coverage/**', allowEmptyArchive: true
+          publishHTML(target: [
+            reportDir: 'backend/coverage/lcov-report',
+            reportFiles: 'index.html',
+            reportName: 'Backend coverage',
+            keepAll: true,
+            alwaysLinkToLastBuild: true,
+          ])
         }
       }
     }
 
     // Real Postgres + Redis, not mocks — exercises the *.smoke.ts
     // integration suite (matchmaking, round-orchestrator, pubsub, ws)
-    // that GitHub Actions' backend-ci.yml deliberately skips.
+    // that GitHub Actions' backend-ci.yml used to skip.
     stage('Backend · integration smoke') {
-      when { expression { return params.ENABLE_INTEGRATION_TESTS } }
+      when { expression { return params.RUN_INTEGRATION_SMOKE } }
       steps {
         dir('backend') {
           sh '''
@@ -100,7 +102,7 @@ pipeline {
               -e POSTGRES_USER=ci -e POSTGRES_PASSWORD=ci -e POSTGRES_DB=ci \
               -p 0:5432 postgres:16-alpine
             docker run -d --rm --name jenkins-redis-$BUILD_ID -p 0:6379 redis:7-alpine
-            # TODO once enabled: resolve the mapped host ports, export
+            # TODO: resolve the mapped host ports, export
             # DATABASE_URL / REDIS_URL, run migrations, then:
             npm run smoke:matchmaking
             npm run smoke:round-orchestrator:integration
@@ -116,8 +118,7 @@ pipeline {
       }
     }
 
-    // ── Mobile ───────────────────────────────────────────────────────
-
+    // ── Build / Test — mobile ────────────────────────────────────────
     stage('Mobile · analyze + test') {
       steps {
         dir('mobile') {
@@ -129,18 +130,6 @@ pipeline {
       }
     }
 
-    // ── Security (P3-DO-07, parked pending tool choice) ───────────────
-
-    stage('Security scan') {
-      when { expression { return false } } // TODO: flip on once Trivy/CodeQL are wired
-      steps {
-        dir('backend') { sh 'npm audit --audit-level=high' }
-        sh "trivy image --exit-code 1 --severity HIGH,CRITICAL ${IMAGE_NAME}:${IMAGE_TAG}"
-      }
-    }
-
-    // ── Package / publish ────────────────────────────────────────────
-
     stage('Backend · docker build') {
       steps {
         dir('backend') {
@@ -149,20 +138,19 @@ pipeline {
       }
     }
 
-    stage('Backend · publish to GHCR') {
-      when { expression { return params.ENABLE_IMAGE_PUBLISH } }
+    // ── Push ─────────────────────────────────────────────────────────
+    stage('Push') {
+      when { branch 'main' }
       steps {
-        withCredentials([usernamePassword(credentialsId: 'ghcr-token',
-            usernameVariable: 'GHCR_USER', passwordVariable: 'GHCR_TOKEN')]) {
-          sh '''
-            echo "$GHCR_TOKEN" | docker login ghcr.io -u "$GHCR_USER" --password-stdin
-            docker push ${IMAGE_NAME}:${IMAGE_TAG}
-            if [ "$BRANCH_NAME" = "main" ]; then
-              docker tag ${IMAGE_NAME}:${IMAGE_TAG} ${IMAGE_NAME}:latest
-              docker push ${IMAGE_NAME}:latest
-            fi
-          '''
-        }
+        echo 'TODO(#220): docker login (Docker Hub) + tag + push'
+      }
+    }
+
+    // ── CD ───────────────────────────────────────────────────────────
+    stage('Deploy') {
+      when { branch 'main' }
+      steps {
+        echo 'TODO(#221): ansible-playbook deploy over SSH'
       }
     }
   }
@@ -170,21 +158,6 @@ pipeline {
   post {
     always {
       sh 'docker image prune -f || true'
-    }
-    // P3-DO-11 style notification hook — same shape as the alerting
-    // channel proposed for Grafana, so both stages land in one place.
-    unsuccessful {
-      script {
-        if (params.ENABLE_NOTIFICATIONS) {
-          withCredentials([string(credentialsId: 'discord-webhook', variable: 'WEBHOOK')]) {
-            sh """
-              curl -sf -X POST -H 'Content-Type: application/json' \
-                -d '{"content":"❌ Jenkins build failed: ${env.JOB_NAME} #${env.BUILD_NUMBER} — ${env.BUILD_URL}"}' \
-                "$WEBHOOK"
-            """
-          }
-        }
-      }
     }
   }
 }
