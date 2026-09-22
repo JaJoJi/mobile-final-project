@@ -42,6 +42,13 @@ final _meProvider = FutureProvider.autoDispose<Map<String, dynamic>>((ref) {
   return ref.read(apiClientProvider).getMe();
 });
 
+/// Statistics are deliberately independent from the account request: profile
+/// actions remain available if the optional statistics endpoint is unavailable.
+final _myStatsProvider =
+    FutureProvider.autoDispose<Map<String, dynamic>>((ref) {
+  return ref.read(apiClientProvider).getMyStats();
+});
+
 class _Content extends ConsumerWidget {
   const _Content({required this.user});
 
@@ -53,6 +60,7 @@ class _Content extends ConsumerWidget {
     final game = t.extension<GameTheme>()!;
     final settings = ref.watch(settingsProvider);
     final settingsNotifier = ref.read(settingsProvider.notifier);
+    final stats = ref.watch(_myStatsProvider);
 
     final username = user['username'] as String? ?? '—';
     final email = user['email'] as String? ?? '—';
@@ -107,6 +115,24 @@ class _Content extends ConsumerWidget {
               ),
             ],
           ),
+        ),
+        const SizedBox(height: AppSpacing.md),
+        stats.when(
+          loading: () => const SkeletonBox(height: 154, radius: AppRadius.md),
+          error: (_, __) => AppCard(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text('โหลดสถิติการแข่งขันไม่ได้'),
+                const SizedBox(height: AppSpacing.xs),
+                TextButton(
+                  onPressed: () => ref.invalidate(_myStatsProvider),
+                  child: const Text('ลองอีกครั้ง'),
+                ),
+              ],
+            ),
+          ),
+          data: (data) => _StatisticsCard(statistics: data),
         ),
         const SizedBox(height: AppSpacing.md),
         AppButton(
@@ -214,6 +240,79 @@ class _Content extends ConsumerWidget {
     final letters = parts.where((p) => p.isNotEmpty).take(2).map((p) => p[0]);
     return letters.join().toUpperCase();
   }
+}
+
+class _StatisticsCard extends StatelessWidget {
+  const _StatisticsCard({required this.statistics});
+
+  final Map<String, dynamic> statistics;
+
+  @override
+  Widget build(BuildContext context) {
+    final matches = statistics['matches'] ?? 0;
+    final wins = statistics['wins'] ?? 0;
+    final losses = statistics['losses'] ?? 0;
+    final winRate = statistics['winRate'];
+    final rank = statistics['currentRank'];
+
+    return AppCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'สถิติการแข่งขัน',
+            style: Theme.of(context).textTheme.titleLarge,
+          ),
+          const SizedBox(height: AppSpacing.md),
+          Wrap(
+            spacing: AppSpacing.xl,
+            runSpacing: AppSpacing.md,
+            children: [
+              _Statistic(value: '$matches', label: 'แข่งขัน'),
+              _Statistic(value: '$wins', label: 'ชนะ'),
+              _Statistic(value: '$losses', label: 'แพ้'),
+              _Statistic(
+                value: winRate == null ? '—' : '$winRate%',
+                label: 'อัตราชนะ',
+              ),
+            ],
+          ),
+          const SizedBox(height: AppSpacing.md),
+          Text(rank == null ? 'ยังไม่มีอันดับ' : 'อันดับ #$rank'),
+          if (matches == 0) ...[
+            const SizedBox(height: AppSpacing.xs),
+            Text(
+              'ลงสนามครั้งแรกเพื่อเริ่มบันทึกสถิติ',
+              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+class _Statistic extends StatelessWidget {
+  const _Statistic({required this.value, required this.label});
+
+  final String value;
+  final String label;
+
+  @override
+  Widget build(BuildContext context) => Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(value, style: Theme.of(context).textTheme.titleLarge),
+          Text(
+            label,
+            style: Theme.of(context).textTheme.bodySmall?.copyWith(
+              color: Theme.of(context).colorScheme.onSurfaceVariant,
+            ),
+          ),
+        ],
+      );
 }
 
 class _EditUsernameSheet extends ConsumerStatefulWidget {

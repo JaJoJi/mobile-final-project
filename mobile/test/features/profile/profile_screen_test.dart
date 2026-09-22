@@ -99,6 +99,108 @@ void main() {
     expect(find.text('เรตติ้ง 1200'), findsOneWidget);
   });
 
+  testWidgets('shows the player statistics returned by the statistics API',
+      (tester) async {
+    final meAndStats = _FakeAdapter((o) {
+      if (o.path == '/user/me') {
+        return _json(
+          {
+            'id': 'u1',
+            'username': 'alice',
+            'email': 'alice@example.com',
+            'rating': 1200,
+          },
+          200,
+        );
+      }
+      if (o.path == '/user/me/stats') {
+        return _json(
+          {
+            'matches': 42,
+            'wins': 26,
+            'losses': 16,
+            'winRate': 61.9,
+            'currentRank': 28,
+          },
+          200,
+        );
+      }
+      return _json({}, 404);
+    });
+
+    await tester.pumpWidget(await app(adapter: meAndStats));
+    await tester.pumpAndSettle();
+
+    expect(find.text('สถิติการแข่งขัน'), findsOneWidget);
+    expect(find.text('42'), findsOneWidget);
+    expect(find.text('26'), findsOneWidget);
+    expect(find.text('16'), findsOneWidget);
+    expect(find.text('61.9%'), findsOneWidget);
+    expect(find.text('อันดับ #28'), findsOneWidget);
+  });
+
+  testWidgets('guides a new player who has no completed matches',
+      (tester) async {
+    final newPlayer = _FakeAdapter((o) {
+      if (o.path == '/user/me') {
+        return _json(
+          {
+            'id': 'u2',
+            'username': 'new_player',
+            'email': 'new@example.com',
+            'rating': 1000,
+          },
+          200,
+        );
+      }
+      if (o.path == '/user/me/stats') {
+        return _json(
+          {
+            'matches': 0,
+            'wins': 0,
+            'losses': 0,
+            'winRate': null,
+            'currentRank': null,
+          },
+          200,
+        );
+      }
+      return _json({}, 404);
+    });
+
+    await tester.pumpWidget(await app(adapter: newPlayer));
+    await tester.pumpAndSettle();
+
+    expect(find.text('ลงสนามครั้งแรกเพื่อเริ่มบันทึกสถิติ'), findsOneWidget);
+    expect(find.text('ยังไม่มีอันดับ'), findsOneWidget);
+  });
+
+  testWidgets('keeps account information visible when statistics fail',
+      (tester) async {
+    final statsFail = _FakeAdapter((o) {
+      if (o.path == '/user/me') {
+        return _json(
+          {
+            'id': 'u1',
+            'username': 'alice',
+            'email': 'alice@example.com',
+            'rating': 1200,
+          },
+          200,
+        );
+      }
+      if (o.path == '/user/me/stats') return _json({'message': 'boom'}, 500);
+      return _json({}, 404);
+    });
+
+    await tester.pumpWidget(await app(adapter: statsFail));
+    await tester.pumpAndSettle();
+
+    expect(find.text('alice'), findsOneWidget);
+    expect(find.text('โหลดสถิติการแข่งขันไม่ได้'), findsOneWidget);
+    expect(find.text('แก้ไขชื่อผู้ใช้'), findsOneWidget);
+  });
+
   testWidgets('theme segmented button drives settingsProvider', (tester) async {
     late ProviderContainer container;
     await tester.pumpWidget(await app(adapter: okMe));
