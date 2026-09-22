@@ -37,3 +37,4 @@ coverage/
 
 # Misc
 Thumbs.db
+.worktrees/
