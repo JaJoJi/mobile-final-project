@@ -21,6 +21,9 @@ backend/reports/
 
 # Vault bootstrap secret (P3-DO-19) — real token, never committed
 vault/root_token.env
+
+# Real production host/IP (P3-DO-18) — never committed
+ansible/inventory
 mobile/build/
 nginx/.cache/
 

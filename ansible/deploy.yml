@@ -1,0 +1,96 @@
+---
+# P3-DO-18 — sync + bring up the production stack. Called from the
+# Jenkins CD stage (#221) instead of raw SSH commands.
+#
+# Idempotent: ansible.builtin.copy only touches files that changed,
+# `docker compose up -d` is a no-op when nothing changed. The one
+# exception is the Vault reseed step — `vault kv put` always writes a
+# new KV version even with identical values, so it always reports
+# changed (see the task below).
+#
+# ansible-core only — no community.docker / ansible.posix collections,
+# to keep the agentless "no extra tooling" story from devops-toolchain.md
+# §5. Shells out to the `docker` CLI directly instead.
+- name: Deploy auto-chess production stack
+  hosts: production
+  become: true
+  vars:
+    project_dir: "{{ project_dir | default('/opt/auto-chess') }}"
+
+  tasks:
+    - name: Ensure project directory exists
+      ansible.builtin.file:
+        path: "{{ project_dir }}"
+        state: directory
+        mode: "0750"
+
+    - name: Check for the Vault bootstrap token
+      ansible.builtin.stat:
+        path: "{{ project_dir }}/vault/root_token.env"
+      register: vault_root_token
+
+    - name: Fail fast if the Vault bootstrap token isn't already on the host
+      ansible.builtin.assert:
+        that: vault_root_token.stat.exists
+        fail_msg: >
+          {{ project_dir }}/vault/root_token.env is missing. This is the one
+          secret this playbook does not manage (see #223) — create it on
+          the host from vault/root_token.env.example before running this.
+
+    - name: Sync docker-compose.prod.yml
+      ansible.builtin.copy:
+        src: "{{ playbook_dir }}/../docker-compose.prod.yml"
+        dest: "{{ project_dir }}/docker-compose.prod.yml"
+        mode: "0640"
+
+    - name: Sync nginx prod image build context
+      ansible.builtin.copy:
+        src: "{{ playbook_dir }}/../nginx/{{ item }}"
+        dest: "{{ project_dir }}/nginx/{{ item }}"
+        mode: "0640"
+      loop:
+        - Dockerfile.modsec
+        - conf.d/
+        - modsec/
+      # Explicit per-path list, not the whole nginx/ dir: dev's
+      # Dockerfile + nginx.conf never belong on the production host.
+
+    - name: Sync vault seed script (not the bootstrap token — that stays put)
+      ansible.builtin.copy:
+        src: "{{ playbook_dir }}/../vault/seed.sh"
+        dest: "{{ project_dir }}/vault/seed.sh"
+        mode: "0750"
+
+    - name: Bring up Vault
+      ansible.builtin.command:
+        cmd: docker compose -f docker-compose.prod.yml up -d vault
+        chdir: "{{ project_dir }}"
+      register: vault_up
+      changed_when: "'Started' in vault_up.stdout or 'Created' in vault_up.stdout"
+
+    - name: Wait for Vault to be reachable
+      ansible.builtin.uri:
+        url: "http://127.0.0.1:8200/v1/sys/health"
+        status_code: [200, 429, 472, 473, 501, 503]
+      register: vault_health
+      retries: 15
+      delay: 2
+      until: vault_health.status is defined
+
+    - name: Reseed Vault KV v2 secrets
+      ansible.builtin.command:
+        cmd: "{{ project_dir }}/vault/seed.sh"
+      environment:
+        VAULT_ADDR: "http://127.0.0.1:8200"
+        VAULT_TOKEN: "{{ lookup('env', 'VAULT_TOKEN') }}"
+        DB_PASSWORD: "{{ lookup('env', 'DB_PASSWORD') }}"
+        REDIS_PASSWORD: "{{ lookup('env', 'REDIS_PASSWORD') }}"
+        JWT_SECRET: "{{ lookup('env', 'JWT_SECRET') }}"
+      changed_when: true # vault kv put always creates a new version, see header note
+
+    - name: Bring up the full stack
+      ansible.builtin.command:
+        cmd: docker compose -f docker-compose.prod.yml up -d
+        chdir: "{{ project_dir }}"
+      register: stack_up
+      changed_when: "'Started' in stack_up.stdout or 'Created' in stack_up.stdout"

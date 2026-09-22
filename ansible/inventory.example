@@ -1,0 +1,7 @@
+# P3-DO-18 — copy to ansible/inventory (gitignored) and fill in the real
+# production host. Placeholder here documents the shape only.
+[production]
+auto_chess ansible_host=203.0.113.10 ansible_user=deploy
+
+[production:vars]
+project_dir=/opt/auto-chess
