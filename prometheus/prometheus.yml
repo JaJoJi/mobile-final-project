@@ -1,0 +1,20 @@
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+scrape_configs:
+  # Beyla exposes RED metrics for nest-1/2/3 + nginx on its own metrics
+  # port (default 8999) — one Beyla process per instrumented target in
+  # this compose topology (see docker-compose.prod.yml), so scrape each.
+  - job_name: beyla
+    static_configs:
+      - targets:
+          - beyla-nest-1:8999
+          - beyla-nest-2:8999
+          - beyla-nest-3:8999
+          - beyla-nginx:8999
+
+  # mtail exposes both programs' counters on one port (default 3903).
+  - job_name: mtail
+    static_configs:
+      - targets: ["mtail:3903"]

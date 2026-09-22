@@ -1,0 +1,27 @@
+counter modsec_blocked_total by rule_id, severity
+
+# Reads Docker's json-file driver output directly (bind-mounted
+# /var/lib/docker/containers — verified: no docker.sock needed, just a
+# read-only bind mount), NOT `docker logs`/`docker compose logs -f` —
+# that would need docker.sock access inside the mtail container, the
+# same socket-security trade-off #218 already avoided for Jenkins.
+#
+# That log driver wraps each line as {"log":"<original, with every
+# inner \" escaped>\n","stream":...,"time":...} — verified by writing a
+# JSON line into a throwaway container and reading its real
+# *-json.log. A regex written against ModSecurity's raw JSON (bare
+# "ruleId":"...") gets ZERO matches against that wrapped form — proved
+# it empirically, not assumed. Every quote below is `\\"` (escaped
+# backslash-quote) for exactly that reason.
+#
+# messages[].details.{ruleId,severity} — nested under transaction in
+# the real payload, but mtail matches raw text, so nesting depth is
+# irrelevant here; only that both fields land on the same audit-log
+# line. Matches the FIRST rule per line only (RE2 finds one match
+# position per pattern per line) — a request blocked by multiple CRS
+# rules at once (verified: a single XSS request tripped 4 rules here)
+# undercounts to 1, not N. Accepted: cheap approximate counter for
+# "how many", not an audit trail — Loki has the full detail.
+/\\"ruleId\\":\\"(?P<rule_id>\d+)\\".*\\"severity\\":\\"(?P<severity>\d+)\\"/ {
+  modsec_blocked_total[$rule_id][$severity]++
+}

@@ -1,0 +1,62 @@
+server:
+  http_listen_port: 9080
+  grpc_listen_port: 0
+
+positions:
+  filename: /tmp/positions.yaml
+
+clients:
+  - url: http://loki:3100/loki/api/v1/push
+
+# Scoped to the nginx container only, via Docker service discovery — not
+# a bind-mounted file glob (`/var/lib/docker/containers/*/*-json.log`
+# has no container name in the path, only an ID that changes on every
+# recreate, so a static glob can't be scoped to "nginx only" without
+# docker_sd). This needs read access to the Docker API (socket mount
+# below), a real deviation from mtail's read-only-bind-mount approach
+# (see mtail/modsecurity.mtail's header) and from #218's own
+# avoid-docker.sock stance for the Jenkins build agent — accepted here
+# because Promtail's blast radius is narrower: a single-purpose log
+# shipper that only enumerates containers and reads their logs, not an
+# arbitrary-pipeline build agent with `docker exec`. The `:ro` bind flag
+# is applied for defense-in-depth but doesn't meaningfully restrict the
+# Docker API surface reachable through the socket — noted, not
+# oversold as a real boundary.
+scrape_configs:
+  - job_name: nginx-modsec
+    docker_sd_configs:
+      - host: unix:///var/run/docker.sock
+        refresh_interval: 5s
+        filters:
+          - name: name
+            values: ["ac-nginx"]
+    relabel_configs:
+      - source_labels: [__meta_docker_container_name]
+        target_label: container
+      - target_label: job
+        replacement: nginx-modsec
+
+  # Also covers nest-1/2/3 app logs — NOT the original design (pino-loki
+  # was meant to push those directly, no agent needed for app logs).
+  # Verified live and reverted: pino-loki@3.0.0 sent Loki malformed
+  # push bodies for this app's real log content — 100% failure rate
+  # across 3 configs tried (default batching, batching disabled, and an
+  # older pinned Loki version to rule out a version-skew explanation).
+  # pino-loki stays wired in logger.module.ts (harmless when it fails —
+  # stdout keeps working, mtail unaffected) in case a future pino-loki
+  # release fixes it, but Promtail is the mechanism that actually gets
+  # app logs into Loki today. Promtail was already required for nginx,
+  # so widening its scope isn't a new agent, just a wider filter on the
+  # one already being deployed.
+  - job_name: nest-app
+    docker_sd_configs:
+      - host: unix:///var/run/docker.sock
+        refresh_interval: 5s
+        filters:
+          - name: name
+            values: ["ac-nest"]
+    relabel_configs:
+      - source_labels: [__meta_docker_container_name]
+        target_label: container
+      - target_label: job
+        replacement: nest-app

@@ -1,0 +1,16 @@
+counter app_log_total by level
+counter app_http_errors_total by status
+
+# Same docker json-file wrapping/escaping as modsecurity.mtail — see
+# that file's header. nest-1/2/3 stdout, one JSON object per line via
+# nestjs-pino (verified shape: {"level":30,...} for plain logs, and
+# pino-http's own {..."res":{"statusCode":404,...},"msg":"request
+# completed"} for every HTTP request/response).
+/\\"level\\":(?P<level>\d+)/ {
+  app_log_total[$level]++
+}
+/\\"res\\":\{\\"statusCode\\":(?P<status>\d+)/ {
+  $status >= 400 {
+    app_http_errors_total[$status]++
+  }
+}
