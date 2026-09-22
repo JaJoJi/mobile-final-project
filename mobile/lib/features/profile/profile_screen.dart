@@ -7,8 +7,9 @@ import '../../core/api/api_client.dart';
 import '../../core/auth/auth_gate.dart';
 import '../../core/auth/auth_repository.dart';
 import '../../core/theme/app_spacing.dart';
-import '../../core/theme/game_theme.dart';
+import '../../core/widgets/fantasy_page.dart';
 import '../../core/widgets/widgets.dart';
+import 'player_hub_navigation.dart';
 import 'settings_provider.dart';
 import 'settings_tile.dart';
 
@@ -23,18 +24,94 @@ class ProfileScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final me = ref.watch(_meProvider);
 
-    return AppScaffold(
-      title: 'โปรไฟล์',
-      body: me.when(
-        loading: () => const SingleChildScrollView(child: _ProfileSkeleton()),
-        error: (_, __) => ErrorView(
-          message: 'โหลดข้อมูลบัญชีไม่ได้ ลองอีกครั้ง',
-          onRetry: () => ref.invalidate(_meProvider),
+    return Theme(
+      data: fantasySurfaceTheme(context),
+      child: Scaffold(
+        backgroundColor: Colors.transparent,
+        body: FantasyBackdrop(
+          child: SafeArea(
+            child: Column(
+              children: [
+                const _ProfileHeader(),
+                Expanded(
+                  child: me.when(
+                    loading: () => const SingleChildScrollView(
+                      padding: EdgeInsets.all(AppSpacing.lg),
+                      child: _ProfileSkeleton(),
+                    ),
+                    error: (_, __) => ErrorView(
+                      message: 'โหลดข้อมูลบัญชีไม่ได้ ลองอีกครั้ง',
+                      onRetry: () => ref.invalidate(_meProvider),
+                    ),
+                    data: (u) => SingleChildScrollView(
+                      padding: const EdgeInsets.all(AppSpacing.lg),
+                      child: _Content(user: u),
+                    ),
+                  ),
+                ),
+                const PlayerHubNavigation(),
+              ],
+            ),
+          ),
         ),
-        data: (u) => SingleChildScrollView(child: _Content(user: u)),
       ),
     );
   }
+}
+
+class _ProfileHeader extends StatelessWidget {
+  const _ProfileHeader();
+
+  @override
+  Widget build(BuildContext context) => Container(
+        width: double.infinity,
+        padding: const EdgeInsets.fromLTRB(
+          AppSpacing.lg,
+          AppSpacing.md,
+          AppSpacing.lg,
+          AppSpacing.md,
+        ),
+        decoration: const BoxDecoration(
+          color: Color(0xB3071220),
+          border: Border(bottom: BorderSide(color: Color(0x4D82A9C7))),
+        ),
+        child: MediaQuery.withClampedTextScaling(
+          maxScaleFactor: 1.25,
+          child: const Row(
+            children: [
+              Expanded(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('โปรไฟล์ผู้บัญชาการ'),
+                    SizedBox(height: AppSpacing.xxs),
+                    Text('ตัวตนและผลงานในสนาม'),
+                  ],
+                ),
+              ),
+              _AccountBadge(),
+            ],
+          ),
+        ),
+      );
+}
+
+class _AccountBadge extends StatelessWidget {
+  const _AccountBadge();
+
+  @override
+  Widget build(BuildContext context) => Container(
+        padding: const EdgeInsets.symmetric(
+          horizontal: AppSpacing.sm,
+          vertical: AppSpacing.xs,
+        ),
+        decoration: BoxDecoration(
+          border: Border.all(color: const Color(0x80F2C14E)),
+          borderRadius: AppRadius.allSm,
+        ),
+        child: const Text('บัญชีของคุณ'),
+      );
 }
 
 /// `GET /user/me` → `{ id, email, username, rating }`.
@@ -56,8 +133,6 @@ class _Content extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final t = Theme.of(context);
-    final game = t.extension<GameTheme>()!;
     final settings = ref.watch(settingsProvider);
     final settingsNotifier = ref.read(settingsProvider.notifier);
     final stats = ref.watch(_myStatsProvider);
@@ -66,146 +141,42 @@ class _Content extends ConsumerWidget {
     final email = user['email'] as String? ?? '—';
     final rating = user['rating'];
 
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        AppCard(
-          child: Row(
+    final identity = _IdentityPanel(
+      username: username,
+      email: email,
+      rating: rating,
+      initials: _initials(username),
+      onEdit: () => _editUsername(context, ref, username),
+    );
+    final details = _ProfileDetails(
+      statistics: stats,
+      themeMode: settings.themeMode,
+      soundEnabled: settings.soundEnabled,
+      autoReconnect: settings.wsAutoReconnect,
+      onThemeChanged: (mode) => settingsNotifier.setThemeMode(mode),
+      onSoundChanged: settingsNotifier.setSoundEnabled,
+      onReconnectChanged: settingsNotifier.setWsAutoReconnect,
+      onRetryStats: () => ref.invalidate(_myStatsProvider),
+      onLogout: () => _logout(context, ref),
+    );
+
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        if (constraints.maxWidth >= 720) {
+          return Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              CircleAvatar(
-                radius: 28,
-                child: Text(
-                  _initials(username),
-                  style: t.textTheme.titleMedium,
-                ),
-              ),
-              const SizedBox(width: AppSpacing.md),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      username,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: t.textTheme.titleLarge,
-                    ),
-                    Text(
-                      email,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: t.textTheme.bodyMedium
-                          ?.copyWith(color: t.colorScheme.onSurfaceVariant),
-                    ),
-                    const SizedBox(height: AppSpacing.xs),
-                    Row(
-                      children: [
-                        Icon(Icons.military_tech, size: 16, color: game.gold),
-                        const SizedBox(width: AppSpacing.xs),
-                        Flexible(
-                          child: Text(
-                            'เรตติ้ง ${rating ?? '—'}',
-                            style: t.textTheme.bodyMedium,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
-              ),
+              SizedBox(width: 276, child: identity),
+              const SizedBox(width: AppSpacing.xl),
+              Expanded(child: details),
             ],
-          ),
-        ),
-        const SizedBox(height: AppSpacing.md),
-        stats.when(
-          loading: () => const SkeletonBox(height: 154, radius: AppRadius.md),
-          error: (_, __) => AppCard(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Text('โหลดสถิติการแข่งขันไม่ได้'),
-                const SizedBox(height: AppSpacing.xs),
-                TextButton(
-                  onPressed: () => ref.invalidate(_myStatsProvider),
-                  child: const Text('ลองอีกครั้ง'),
-                ),
-              ],
-            ),
-          ),
-          data: (data) => _StatisticsCard(statistics: data),
-        ),
-        const SizedBox(height: AppSpacing.md),
-        AppButton(
-          variant: AppButtonVariant.secondary,
-          fullWidth: false,
-          onPressed: () => _editUsername(context, ref, username),
-          child: const Text('แก้ไขชื่อผู้ใช้'),
-        ),
-        const SizedBox(height: AppSpacing.xl),
-        Text('ตั้งค่า', style: t.textTheme.titleLarge),
-        const Divider(),
-        SettingsTile(
-          leading: Icons.brightness_6_outlined,
-          title: 'ธีม',
-          stackTrailing: true,
-          // A 3-option segmented control can't hold doubled Thai labels on
-          // a 360 dp screen — clamp its own text scale (spec §2.2 allows
-          // clamping a dense control's subtree, never globally).
-          trailing: MediaQuery.withClampedTextScaling(
-            maxScaleFactor: 1.3,
-            child: SegmentedButton<ThemeMode>(
-              showSelectedIcon: false,
-              segments: const [
-                ButtonSegment(value: ThemeMode.system, label: Text('ระบบ')),
-                ButtonSegment(value: ThemeMode.light, label: Text('สว่าง')),
-                ButtonSegment(value: ThemeMode.dark, label: Text('มืด')),
-              ],
-              selected: {settings.themeMode},
-              onSelectionChanged: (s) => settingsNotifier.setThemeMode(s.first),
-            ),
-          ),
-        ),
-        SettingsTile(
-          leading: Icons.wifi_tethering,
-          title: 'เชื่อมต่อใหม่อัตโนมัติ',
-          subtitle: 'ต่อ WebSocket ใหม่เองเมื่อสัญญาณหลุด',
-          trailing: Switch(
-            value: settings.wsAutoReconnect,
-            onChanged: settingsNotifier.setWsAutoReconnect,
-          ),
-        ),
-        SettingsTile(
-          leading: settings.soundEnabled
-              ? Icons.volume_up_outlined
-              : Icons.volume_off_outlined,
-          title: 'เสียงเอฟเฟกต์',
-          subtitle: 'เสียงซื้อ รีเฟรช และกดพร้อม',
-          trailing: Switch(
-            value: settings.soundEnabled,
-            onChanged: settingsNotifier.setSoundEnabled,
-          ),
-        ),
-        const Divider(),
-        SettingsTile(
-          leading: Icons.info_outline,
-          title: 'เวอร์ชัน',
-          trailing: Flexible(
-            child: Text(
-              ProfileScreen._appVersion,
-              overflow: TextOverflow.ellipsis,
-              style: t.textTheme.bodyMedium
-                  ?.copyWith(color: t.colorScheme.onSurfaceVariant),
-            ),
-          ),
-        ),
-        const SizedBox(height: AppSpacing.xl),
-        AppButton(
-          variant: AppButtonVariant.danger,
-          onPressed: () => _logout(context, ref),
-          child: const Text('ออกจากระบบ'),
-        ),
-        const SizedBox(height: AppSpacing.lg),
-      ],
+          );
+        }
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [identity, const SizedBox(height: AppSpacing.lg), details],
+        );
+      },
     );
   }
 
@@ -242,6 +213,263 @@ class _Content extends ConsumerWidget {
   }
 }
 
+class _IdentityPanel extends StatelessWidget {
+  const _IdentityPanel({
+    required this.username,
+    required this.email,
+    required this.rating,
+    required this.initials,
+    required this.onEdit,
+  });
+
+  final String username;
+  final String email;
+  final Object? rating;
+  final String initials;
+  final VoidCallback onEdit;
+
+  @override
+  Widget build(BuildContext context) => FantasyPanel(
+        child: Column(
+          children: [
+            _PlayerCrest(initials: initials),
+            const SizedBox(height: AppSpacing.md),
+            Text(
+              username,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: Theme.of(context).textTheme.headlineSmall,
+            ),
+            const SizedBox(height: AppSpacing.xxs),
+            Text(
+              email,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                  ),
+            ),
+            const SizedBox(height: AppSpacing.xl),
+            Text(
+              'เรตติ้ง ${rating ?? '—'}',
+              style: Theme.of(context).textTheme.displaySmall?.copyWith(
+                    color: const Color(0xFFF2C14E),
+                    fontWeight: FontWeight.w800,
+                  ),
+            ),
+            Text(
+              'คะแนนปัจจุบัน',
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                  ),
+            ),
+            const SizedBox(height: AppSpacing.lg),
+            OutlinedButton(
+              onPressed: onEdit,
+              child: const Text('แก้ไขชื่อผู้ใช้'),
+            ),
+          ],
+        ),
+      );
+}
+
+class _PlayerCrest extends StatelessWidget {
+  const _PlayerCrest({required this.initials});
+
+  final String initials;
+
+  @override
+  Widget build(BuildContext context) => Container(
+        key: const ValueKey('player-crest'),
+        width: 108,
+        height: 118,
+        alignment: Alignment.center,
+        decoration: BoxDecoration(
+          gradient: const LinearGradient(
+            colors: [Color(0xFFFFEAB0), Color(0xFF8D7546), Color(0xFFF2C14E)],
+          ),
+          borderRadius: const BorderRadius.only(
+            topLeft: Radius.circular(16),
+            topRight: Radius.circular(16),
+            bottomLeft: Radius.circular(54),
+            bottomRight: Radius.circular(54),
+          ),
+          border: Border.all(color: const Color(0xFFFFF2C9), width: 2),
+          boxShadow: const [
+            BoxShadow(
+              color: Color(0x99000000),
+              blurRadius: 14,
+              offset: Offset(0, 8),
+            ),
+          ],
+        ),
+        child: Container(
+          width: 94,
+          height: 104,
+          alignment: Alignment.center,
+          decoration: const BoxDecoration(
+            color: Color(0xFF102B42),
+            borderRadius: BorderRadius.only(
+              topLeft: Radius.circular(13),
+              topRight: Radius.circular(13),
+              bottomLeft: Radius.circular(48),
+              bottomRight: Radius.circular(48),
+            ),
+          ),
+          child: Text(
+            initials,
+            style: Theme.of(context).textTheme.headlineMedium?.copyWith(
+                  color: const Color(0xFFFFD35A),
+                  fontWeight: FontWeight.w800,
+                ),
+          ),
+        ),
+      );
+}
+
+class _ProfileDetails extends StatelessWidget {
+  const _ProfileDetails({
+    required this.statistics,
+    required this.themeMode,
+    required this.soundEnabled,
+    required this.autoReconnect,
+    required this.onThemeChanged,
+    required this.onSoundChanged,
+    required this.onReconnectChanged,
+    required this.onRetryStats,
+    required this.onLogout,
+  });
+
+  final AsyncValue<Map<String, dynamic>> statistics;
+  final ThemeMode themeMode;
+  final bool soundEnabled;
+  final bool autoReconnect;
+  final ValueChanged<ThemeMode> onThemeChanged;
+  final ValueChanged<bool> onSoundChanged;
+  final ValueChanged<bool> onReconnectChanged;
+  final VoidCallback onRetryStats;
+  final VoidCallback onLogout;
+
+  @override
+  Widget build(BuildContext context) => Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          const _SectionHeading(
+            title: 'บันทึกการประลอง',
+            subtitle: 'สถิติการแข่งขัน · แมตช์ที่จบแล้ว',
+          ),
+          const SizedBox(height: AppSpacing.sm),
+          statistics.when(
+            loading: () => const SkeletonBox(height: 154, radius: AppRadius.md),
+            error: (_, __) => FantasyPanel(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text('โหลดสถิติการแข่งขันไม่ได้'),
+                  const SizedBox(height: AppSpacing.xs),
+                  TextButton(
+                    onPressed: onRetryStats,
+                    child: const Text('ลองอีกครั้ง'),
+                  ),
+                ],
+              ),
+            ),
+            data: (data) => _StatisticsCard(statistics: data),
+          ),
+          const SizedBox(height: AppSpacing.lg),
+          FantasyPanel(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('ตั้งค่า', style: Theme.of(context).textTheme.titleLarge),
+                const Divider(),
+                SettingsTile(
+                  leading: Icons.brightness_6_outlined,
+                  title: 'ธีม',
+                  stackTrailing: true,
+                  trailing: MediaQuery.withClampedTextScaling(
+                    maxScaleFactor: 1.3,
+                    child: SegmentedButton<ThemeMode>(
+                      showSelectedIcon: false,
+                      segments: const [
+                        ButtonSegment(
+                          value: ThemeMode.system,
+                          label: Text('ระบบ'),
+                        ),
+                        ButtonSegment(
+                          value: ThemeMode.light,
+                          label: Text('สว่าง'),
+                        ),
+                        ButtonSegment(
+                          value: ThemeMode.dark,
+                          label: Text('มืด'),
+                        ),
+                      ],
+                      selected: {themeMode},
+                      onSelectionChanged: (s) => onThemeChanged(s.first),
+                    ),
+                  ),
+                ),
+                SettingsTile(
+                  leading: Icons.wifi_tethering,
+                  title: 'เชื่อมต่อใหม่อัตโนมัติ',
+                  subtitle: 'ต่อ WebSocket ใหม่เองเมื่อสัญญาณหลุด',
+                  trailing: Switch(
+                    value: autoReconnect,
+                    onChanged: onReconnectChanged,
+                  ),
+                ),
+                SettingsTile(
+                  leading: soundEnabled
+                      ? Icons.volume_up_outlined
+                      : Icons.volume_off_outlined,
+                  title: 'เสียงเอฟเฟกต์',
+                  subtitle: 'เสียงซื้อ รีเฟรช และกดพร้อม',
+                  trailing: Switch(
+                    value: soundEnabled,
+                    onChanged: onSoundChanged,
+                  ),
+                ),
+                const Divider(),
+                const SettingsTile(
+                  leading: Icons.info_outline,
+                  title: 'เวอร์ชัน',
+                  trailing: Text(ProfileScreen._appVersion),
+                ),
+                const SizedBox(height: AppSpacing.md),
+                OutlinedButton.icon(
+                  onPressed: onLogout,
+                  icon: const Icon(Icons.logout),
+                  label: const Text('ออกจากระบบ'),
+                ),
+              ],
+            ),
+          ),
+        ],
+      );
+}
+
+class _SectionHeading extends StatelessWidget {
+  const _SectionHeading({required this.title, required this.subtitle});
+
+  final String title;
+  final String subtitle;
+
+  @override
+  Widget build(BuildContext context) => Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(title, style: Theme.of(context).textTheme.titleLarge),
+          Text(
+            subtitle,
+            style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                ),
+          ),
+        ],
+      );
+}
+
 class _StatisticsCard extends StatelessWidget {
   const _StatisticsCard({required this.statistics});
 
@@ -255,17 +483,21 @@ class _StatisticsCard extends StatelessWidget {
     final winRate = statistics['winRate'];
     final rank = statistics['currentRank'];
 
-    return AppCard(
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            'สถิติการแข่งขัน',
-            style: Theme.of(context).textTheme.titleLarge,
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Container(
+          padding: const EdgeInsets.symmetric(vertical: AppSpacing.md),
+          decoration: const BoxDecoration(
+            color: Color(0xE60E2438),
+            border: Border(
+              top: BorderSide(color: Color(0xFF739ABD), width: 2),
+              bottom: BorderSide(color: Color(0x6682A9C7)),
+            ),
           ),
-          const SizedBox(height: AppSpacing.md),
-          Wrap(
-            spacing: AppSpacing.xl,
+          child: Wrap(
+            alignment: WrapAlignment.spaceEvenly,
+            spacing: AppSpacing.lg,
             runSpacing: AppSpacing.md,
             children: [
               _Statistic(value: '$matches', label: 'แข่งขัน'),
@@ -277,19 +509,42 @@ class _StatisticsCard extends StatelessWidget {
               ),
             ],
           ),
-          const SizedBox(height: AppSpacing.md),
-          Text(rank == null ? 'ยังไม่มีอันดับ' : 'อันดับ #$rank'),
-          if (matches == 0) ...[
-            const SizedBox(height: AppSpacing.xs),
-            Text(
-              'ลงสนามครั้งแรกเพื่อเริ่มบันทึกสถิติ',
-              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                color: Theme.of(context).colorScheme.onSurfaceVariant,
-              ),
+        ),
+        const SizedBox(height: AppSpacing.lg),
+        Container(
+          padding: const EdgeInsets.all(AppSpacing.lg),
+          decoration: const BoxDecoration(
+            gradient: LinearGradient(
+              colors: [Color(0x8866532B), Color(0xDD14263A)],
             ),
-          ],
-        ],
-      ),
+            border:
+                Border(left: BorderSide(color: Color(0xFFF2C14E), width: 3)),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text('อันดับปัจจุบัน'),
+              const SizedBox(height: AppSpacing.xs),
+              Text(
+                rank == null ? 'ยังไม่มีอันดับ' : 'อันดับ #$rank',
+                style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                      color: const Color(0xFFF2C14E),
+                      fontWeight: FontWeight.w800,
+                    ),
+              ),
+              if (matches == 0) ...[
+                const SizedBox(height: AppSpacing.xs),
+                Text(
+                  'ลงสนามครั้งแรกเพื่อเริ่มบันทึกสถิติ',
+                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                        color: Theme.of(context).colorScheme.onSurfaceVariant,
+                      ),
+                ),
+              ],
+            ],
+          ),
+        ),
+      ],
     );
   }
 }
@@ -308,8 +563,8 @@ class _Statistic extends StatelessWidget {
           Text(
             label,
             style: Theme.of(context).textTheme.bodySmall?.copyWith(
-              color: Theme.of(context).colorScheme.onSurfaceVariant,
-            ),
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                ),
           ),
         ],
       );

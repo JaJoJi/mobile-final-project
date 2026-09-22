@@ -99,6 +99,17 @@ void main() {
     expect(find.text('เรตติ้ง 1200'), findsOneWidget);
   });
 
+  testWidgets('uses the V2 player hub chrome around the profile data',
+      (tester) async {
+    await tester.pumpWidget(await app(adapter: okMe));
+    await tester.pumpAndSettle();
+
+    expect(find.text('โปรไฟล์ผู้บัญชาการ'), findsOneWidget);
+    expect(find.byKey(const ValueKey('player-crest')), findsOneWidget);
+    expect(find.byKey(const ValueKey('player-hub-navigation')), findsOneWidget);
+    expect(find.text('บันทึกการประลอง'), findsOneWidget);
+  });
+
   testWidgets('shows the player statistics returned by the statistics API',
       (tester) async {
     final meAndStats = _FakeAdapter((o) {
@@ -131,7 +142,7 @@ void main() {
     await tester.pumpWidget(await app(adapter: meAndStats));
     await tester.pumpAndSettle();
 
-    expect(find.text('สถิติการแข่งขัน'), findsOneWidget);
+    expect(find.text('บันทึกการประลอง'), findsOneWidget);
     expect(find.text('42'), findsOneWidget);
     expect(find.text('26'), findsOneWidget);
     expect(find.text('16'), findsOneWidget);
