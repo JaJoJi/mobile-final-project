@@ -169,6 +169,8 @@ Two parallel quality gates, on purpose, until the cutover below:
 | P4-DO-04 | [#274](https://github.com/JaJoJi/mobile-final-project/issues/274) | Add mobile test coverage collection + threshold to `mobile-ci.yml` | `area:frontend` `type:test` `priority:p3` |
 | P4-DO-05 | [#275](https://github.com/JaJoJi/mobile-final-project/issues/275) | `backend-ci` lint step is `tsc` typecheck only, not ESLint — #133 checklist item unfulfilled | `area:backend` `type:chore` `priority:p3` |
 
+**#273 done** (2026-09-24): `backend/jest.config.js` now has a two-tier coverage gate. `src/game/**` keeps its 90/90/90/80 (lines/statements/functions/branches) floor, checked per file. Everything else is checked in aggregate via jest's `global` key (which excludes glob-matched files, so this is really "rest of the backend") — floored at 44/43/44/37, just under the measured 2026-09-24 baseline (44.91/43.55/44.59/37.52). `auth/`, `database/`, `match/`, `matchmaking/`, `queue/`, `user/` have no spec files at all today (0% each) and pull that average down hard; a per-directory floor isn't usable until each has at least some tests, since jest checks glob thresholds per file and any floor above 0% fails immediately on an untested file. Raise the `global` numbers in the same PR that adds tests improving them.
+
 ---
 
 ## Out of MVP scope (closed — re-open if needed)
