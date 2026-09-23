@@ -37,7 +37,27 @@ jobs:
       - name: Analyze
         run: flutter analyze
       - name: Test
-        run: flutter test
+        run: flutter test --coverage
+
+      # Floor, not a target: pinned just under the measured baseline as
+      # of 2026-09-24 (86.21% lines) so a PR can't silently regress
+      # coverage back toward zero (#274). No lcov/genhtml dependency —
+      # flutter's own lcov.info already has the LF/LH totals we need.
+      - name: Coverage threshold
+        run: |
+          LH=$(awk -F: '/^LH:/{s+=$2} END{print s+0}' coverage/lcov.info)
+          LF=$(awk -F: '/^LF:/{s+=$2} END{print s+0}' coverage/lcov.info)
+          PCT=$(awk "BEGIN{printf \"%.2f\", 100*${LH}/${LF}}")
+          echo "Line coverage: ${PCT}% (${LH}/${LF})"
+          awk "BEGIN{exit !(${PCT} >= 84)}"
+
+      - name: Upload coverage report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: mobile-coverage
+          path: mobile/coverage/
+          if-no-files-found: warn
 
   # Quality gate (P4-DO): SonarQube static analysis + coverage.
   # Skips cleanly until SONAR_HOST_URL/SONAR_TOKEN repo secrets exist —
