@@ -40,7 +40,7 @@ export class JwtAccessGuard implements CanActivate {
     let payload: { sub: string; type: 'access' | 'refresh' };
     try {
       payload = this.jwt.verify(token);
-    } catch (e) {
+    } catch {
       throw new UnauthorizedException('invalid or expired token');
     }
 

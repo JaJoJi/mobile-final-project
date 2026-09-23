@@ -43,6 +43,8 @@ jobs:
       - run: npm ci
       - name: Lint (typecheck)
         run: npm run lint
+      - name: Lint (ESLint)
+        run: npm run lint:eslint
       - name: Build
         run: npm run build
       - name: Test

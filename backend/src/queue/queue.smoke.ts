@@ -92,7 +92,6 @@ async function run() {
   });
 
   // 5. match-cleanup — scheduled at +5s
-  const cleanupAt = Date.now() + 5000;
   const cleanQ = new Queue(QUEUE_NAMES.MATCH_CLEANUP, { connection });
   const cleanJob = await cleanQ.add(
     JOB_NAMES.MATCH_CLEANUP,

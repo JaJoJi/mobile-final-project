@@ -69,6 +69,9 @@ pipeline {
         stage('lint (typecheck)') {
           steps { dir('backend') { sh 'npm run lint' } }
         }
+        stage('lint (eslint)') {
+          steps { dir('backend') { sh 'npm run lint:eslint' } }
+        }
         stage('build') {
           steps { dir('backend') { sh 'npm run build' } }
         }
