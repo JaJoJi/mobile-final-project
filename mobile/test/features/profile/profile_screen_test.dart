@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:auto_chess_mobile/core/api/api_client.dart';
 import 'package:auto_chess_mobile/core/auth/auth_gate.dart';
 import 'package:auto_chess_mobile/core/theme/app_theme.dart';
+import 'package:auto_chess_mobile/features/player_hub/player_crest.dart';
 import 'package:auto_chess_mobile/features/profile/profile_screen.dart';
 import 'package:auto_chess_mobile/features/profile/settings_provider.dart';
 import 'package:auto_chess_mobile/features/profile/settings_tile.dart';
@@ -102,13 +103,15 @@ void main() {
     return _json({}, 404);
   });
 
-  testWidgets('shows username, email and rating', (tester) async {
+  testWidgets('shows the exact V2 identity rating presentation', (tester) async {
     await tester.pumpWidget(await app(adapter: okMe));
     await tester.pumpAndSettle();
 
     expect(find.text('alice'), findsOneWidget);
     expect(find.text('alice@example.com'), findsOneWidget);
-    expect(find.text('เรตติ้ง 1200'), findsOneWidget);
+    expect(find.text('1,200'), findsOneWidget);
+    expect(find.text('เรตติ้งปัจจุบัน'), findsOneWidget);
+    expect(find.text('แมตช์ที่จบแล้ว'), findsOneWidget);
   });
 
   testWidgets('uses the V2 player hub chrome around the profile data',
@@ -204,6 +207,7 @@ void main() {
     expect(find.text('16'), findsOneWidget);
     expect(find.text('61.9%'), findsOneWidget);
     expect(find.text('อันดับ #28'), findsOneWidget);
+    expect(find.text('บนตารางอันดับ'), findsOneWidget);
   });
 
   testWidgets('guides a new player who has no completed matches',
@@ -364,7 +368,19 @@ void main() {
             'id': 'u3',
             'username': 'commander_with_an_exceptionally_long_name',
             'email': 'commander.with.a.very.long.address@example.com',
-            'rating': 1200,
+            'rating': 1240,
+          },
+          200,
+        );
+      }
+      if (o.path == '/user/me/stats') {
+        return _json(
+          {
+            'matches': 42,
+            'wins': 26,
+            'losses': 16,
+            'winRate': 61.9,
+            'currentRank': 28,
           },
           200,
         );
@@ -383,6 +399,13 @@ void main() {
       find.text('commander.with.a.very.long.address@example.com'),
       findsOneWidget,
     );
+    expect(find.text('1,240'), findsOneWidget);
+    expect(find.text('เรตติ้งปัจจุบัน'), findsOneWidget);
+    expect(find.text('แมตช์ที่จบแล้ว'), findsOneWidget);
+    expect(find.text('อันดับ #28'), findsOneWidget);
+    expect(find.text('บนตารางอันดับ'), findsOneWidget);
+    expect(find.text('ดูตารางอันดับ'), findsOneWidget);
+    expect(tester.widget<PlayerCrest>(find.byType(PlayerCrest)).compact, isTrue);
     expect(tester.takeException(), isNull);
   });
 }

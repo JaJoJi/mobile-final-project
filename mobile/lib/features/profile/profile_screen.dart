@@ -165,46 +165,109 @@ class _IdentityPanel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => FantasyPanel(
-        child: Column(
-          children: [
-            PlayerCrest(label: initials),
-            const SizedBox(height: AppSpacing.md),
-            Text(
-              username,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: Theme.of(context).textTheme.headlineSmall,
-            ),
-            const SizedBox(height: AppSpacing.xxs),
-            Text(
-              email,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                    color: Theme.of(context).colorScheme.onSurfaceVariant,
-                  ),
-            ),
-            const SizedBox(height: AppSpacing.xl),
-            Text(
-              'เรตติ้ง ${rating ?? '—'}',
-              style: Theme.of(context).textTheme.displaySmall?.copyWith(
-                    color: const Color(0xFFF2C14E),
-                    fontWeight: FontWeight.w800,
-                  ),
-            ),
-            Text(
-              'คะแนนปัจจุบัน',
-              style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                    color: Theme.of(context).colorScheme.onSurfaceVariant,
-                  ),
-            ),
-            const SizedBox(height: AppSpacing.lg),
-            OutlinedButton(
-              onPressed: onEdit,
-              child: const Text('แก้ไขชื่อผู้ใช้'),
-            ),
-          ],
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            final compact = constraints.maxWidth < 480;
+            final details = _IdentityDetails(
+              username: username,
+              email: email,
+              rating: _formatRating(rating),
+              compact: compact,
+              onEdit: onEdit,
+            );
+            if (!compact) {
+              return Column(
+                children: [
+                  PlayerCrest(label: initials),
+                  const SizedBox(height: AppSpacing.md),
+                  details,
+                ],
+              );
+            }
+            return Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                PlayerCrest(label: initials, compact: true),
+                const SizedBox(width: AppSpacing.md),
+                Expanded(child: details),
+              ],
+            );
+          },
         ),
+      );
+
+  static String _formatRating(Object? rating) {
+    final raw = rating?.toString();
+    final value = raw == null ? null : num.tryParse(raw)?.round();
+    if (value == null) return '—';
+    return value.toString().replaceAllMapped(
+          RegExp(r'(?<=\d)(?=(\d{3})+$)'),
+          (_) => ',',
+        );
+  }
+}
+
+class _IdentityDetails extends StatelessWidget {
+  const _IdentityDetails({
+    required this.username,
+    required this.email,
+    required this.rating,
+    required this.compact,
+    required this.onEdit,
+  });
+
+  final String username;
+  final String email;
+  final String rating;
+  final bool compact;
+  final VoidCallback onEdit;
+
+  @override
+  Widget build(BuildContext context) => Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment:
+            compact ? CrossAxisAlignment.start : CrossAxisAlignment.center,
+        children: [
+          Text(
+            username,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: compact
+                ? Theme.of(context).textTheme.titleMedium
+                : Theme.of(context).textTheme.headlineSmall,
+          ),
+          const SizedBox(height: AppSpacing.xxs),
+          Text(
+            email,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                ),
+          ),
+          SizedBox(height: compact ? AppSpacing.sm : AppSpacing.xl),
+          Text(
+            rating,
+            style: (compact
+                    ? Theme.of(context).textTheme.headlineSmall
+                    : Theme.of(context).textTheme.displaySmall)
+                ?.copyWith(
+              color: const Color(0xFFF2C14E),
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+          Text(
+            'เรตติ้งปัจจุบัน',
+            style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                ),
+          ),
+          SizedBox(height: compact ? AppSpacing.sm : AppSpacing.lg),
+          OutlinedButton(
+            onPressed: onEdit,
+            child: const Text('แก้ไขชื่อผู้ใช้'),
+          ),
+        ],
       );
 }
 
@@ -237,7 +300,7 @@ class _ProfileDetails extends StatelessWidget {
         children: [
           const _SectionHeading(
             title: 'บันทึกการประลอง',
-            subtitle: 'สถิติการแข่งขัน · แมตช์ที่จบแล้ว',
+            subtitle: 'แมตช์ที่จบแล้ว',
           ),
           const SizedBox(height: AppSpacing.sm),
           statistics.when(
@@ -385,6 +448,7 @@ class _RankBanner extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final rank = statistics.valueOrNull?['currentRank'];
+    final matches = statistics.valueOrNull?['matches'] ?? 0;
     return Container(
       key: const ValueKey('profile-rank-banner'),
       padding: const EdgeInsets.all(AppSpacing.lg),
@@ -412,12 +476,29 @@ class _RankBanner extends StatelessWidget {
                 ),
                 const SizedBox(height: AppSpacing.xxs),
                 Text(
-                  rank == null ? '—' : '#$rank',
+                  rank == null ? 'ยังไม่มีอันดับ' : 'อันดับ #$rank',
                   style: Theme.of(context).textTheme.headlineSmall?.copyWith(
                         color: const Color(0xFFF2C14E),
                         fontWeight: FontWeight.w800,
                       ),
                 ),
+                const SizedBox(height: AppSpacing.xxs),
+                Text(
+                  'บนตารางอันดับ',
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                        color: Theme.of(context).colorScheme.onSurfaceVariant,
+                      ),
+                ),
+                if (matches == 0) ...[
+                  const SizedBox(height: AppSpacing.xs),
+                  Text(
+                    'ลงสนามครั้งแรกเพื่อเริ่มบันทึกสถิติ',
+                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                          color:
+                              Theme.of(context).colorScheme.onSurfaceVariant,
+                        ),
+                  ),
+                ],
               ],
             ),
             FilledButton(
@@ -463,8 +544,6 @@ class _StatisticsCard extends StatelessWidget {
     final wins = statistics['wins'] ?? 0;
     final losses = statistics['losses'] ?? 0;
     final winRate = statistics['winRate'];
-    final rank = statistics['currentRank'];
-
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -489,40 +568,6 @@ class _StatisticsCard extends StatelessWidget {
                 value: winRate == null ? '—' : '$winRate%',
                 label: 'อัตราชนะ',
               ),
-            ],
-          ),
-        ),
-        const SizedBox(height: AppSpacing.lg),
-        Container(
-          padding: const EdgeInsets.all(AppSpacing.lg),
-          decoration: const BoxDecoration(
-            gradient: LinearGradient(
-              colors: [Color(0x8866532B), Color(0xDD14263A)],
-            ),
-            border:
-                Border(left: BorderSide(color: Color(0xFFF2C14E), width: 3)),
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Text('อันดับปัจจุบัน'),
-              const SizedBox(height: AppSpacing.xs),
-              Text(
-                rank == null ? 'ยังไม่มีอันดับ' : 'อันดับ #$rank',
-                style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                      color: const Color(0xFFF2C14E),
-                      fontWeight: FontWeight.w800,
-                    ),
-              ),
-              if (matches == 0) ...[
-                const SizedBox(height: AppSpacing.xs),
-                Text(
-                  'ลงสนามครั้งแรกเพื่อเริ่มบันทึกสถิติ',
-                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                        color: Theme.of(context).colorScheme.onSurfaceVariant,
-                      ),
-                ),
-              ],
             ],
           ),
         ),

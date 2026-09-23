@@ -61,3 +61,41 @@ backend or WebSocket code was changed. The implementation commit is
   left untouched to preserve the task boundary.
 - The Profile CTAs deliberately target string routes only. Their destination
   screens/routes are reserved for later tasks, as required.
+
+## Fix round 1/5 — exact HTML V2 Profile review findings
+
+### Status
+
+Resolved all Task 2 reviewer findings without changing backend, router, Room,
+or Leaderboard files.
+
+### Changes
+
+- The identity rating now renders a grouped numeric value (for example
+  `1,240`) with the exact label `เรตติ้งปัจจุบัน`.
+- The match-record subtitle is now exactly `แมตช์ที่จบแล้ว`.
+- Removed the duplicate rank block from the HUD statistics card. The rank is
+  now displayed only in the rank banner, which includes `บนตารางอันดับ` and
+  the existing `ดูตารางอันดับ` CTA.
+- At narrow widths, the identity panel now uses a horizontal rail with
+  `PlayerCrest(compact: true)` and an expanded, ellipsized identity/details
+  column.
+- Added regression assertions for exact V2 copy, formatted ratings, the single
+  rank presentation, rank-banner copy/CTA, and compact-crest usage at
+  360×640 with text scale 2.0.
+
+### TDD record
+
+1. Updated Profile tests first; focused tests failed as expected because the
+   old UI exposed `เรตติ้ง 1200`, lacked the formatted rating and
+   `บนตารางอันดับ`, and did not use the compact crest.
+2. Implemented the minimal Profile-only hierarchy and formatting changes.
+3. Re-ran focused Profile tests successfully.
+
+### Verification
+
+- `rtk flutter test test/features/profile/profile_screen_test.dart --no-pub --reporter compact`
+  - Passed: 14 tests.
+- `rtk flutter analyze`
+  - No Task 2 diagnostics. Eight existing `prefer_const_constructors` info
+    diagnostics remain in Task 1's `player_hub_fixture_provider.dart`.
