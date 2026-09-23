@@ -1,0 +1,67 @@
+name: security
+
+# DevSecOps quality gate (P4-DO): secret scanning + dependency (SCA)
+# scanning, independent of the SonarQube SAST gate in backend-ci.yml /
+# mobile-ci.yml. Blocking: a failed job here fails the check on the PR.
+
+on:
+  pull_request:
+  push:
+    branches: [dev, main]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  secret-scan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Gitleaks
+        run: |
+          docker run --rm -v "$PWD:/repo" zricethezav/gitleaks:latest \
+            detect --source=/repo --config=/repo/.gitleaks.toml --redact --exit-code 1
+
+  backend-sca:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: backend/package-lock.json
+      - run: npm ci
+      # Blocking on critical only for now: fixing every pre-existing
+      # high-severity finding here needs a NestJS major-version upgrade
+      # (breaking change) tracked separately. New critical vulns still
+      # fail the PR; high/moderate are surfaced but non-blocking.
+      - name: npm audit (block on critical)
+        run: npm audit --audit-level=critical
+      - name: npm audit (high, informational)
+        if: always()
+        run: npm audit --audit-level=high || true
+
+  mobile-sca:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: mobile
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+      - run: flutter pub get
+      # dart pub audit needs a recent Dart SDK; kept non-blocking until
+      # it's confirmed stable on the pinned Flutter channel.
+      - name: dart pub audit
+        run: dart pub audit
+        continue-on-error: true

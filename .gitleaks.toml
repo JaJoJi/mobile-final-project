@@ -1,0 +1,8 @@
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Known non-secret placeholder values used only in CI"
+regexes = [
+  '''ci_jwt_secret_not_a_real_secret_0123456789abcdef''',
+]

@@ -151,6 +151,24 @@ Full detail lives in the GitHub issues linked below.
 | P3-DO-05 | [#140](https://github.com/JaJoJi/mobile-final-project/issues/140) | k6 load test to prove NFRs | `area:devops` `type:test` `priority:p3` |
 | P3-DO-06 | [#141](https://github.com/JaJoJi/mobile-final-project/issues/141) | Templates, CODEOWNERS, Dependabot, pre-commit, badges | `area:devops` `type:chore` `priority:p3` |
 
+## P4 — DevOps (6)
+
+Two parallel quality gates, on purpose, until the cutover below:
+
+- **Interim (live today):** `.github/workflows/security.yml` (gitleaks + `npm audit`, blocking) and the `sonar` job in `backend-ci.yml`/`mobile-ci.yml` (gated on `SONAR_TOKEN`/`SONAR_HOST_URL` secrets — no-ops until the server exists). Runs on GitHub Actions because Jenkins (#218) isn't live yet.
+- **Finalized target (per `devops-toolchain.md` §2, not live yet):** Jenkins-only, no GitHub Actions, no SonarQube. `Jenkinsfile`'s `ENABLE_SECURITY_SCAN` param (default off) gates Gitleaks → Semgrep → Trivy → Checkov → ephemeral ZAP baseline, superseding #191's GH-Actions-based plan (#219).
+
+`npm audit --audit-level=critical` blocks the interim gate today; the pre-existing high-severity NestJS-ecosystem findings are tracked separately since fixing them is a breaking major-version bump.
+
+| ID | Issue (GitHub) | One-liner | Labels |
+|---|---|---|---|
+| P4-DO-00 | [#271](https://github.com/JaJoJi/mobile-final-project/issues/271) | DevSecOps quality gate rollout: SAST + SCA + secret scan on every PR (interim, GH Actions) | `area:devops` `type:infra` `priority:p3` |
+| P4-DO-01 | [#270](https://github.com/JaJoJi/mobile-final-project/issues/270) | Upgrade NestJS 10 → 11/12 to clear pre-existing high-severity SCA findings | `area:backend` `area:devops` `type:chore` `priority:p3` |
+| P4-DO-02 | [#272](https://github.com/JaJoJi/mobile-final-project/issues/272) | Cutover: remove GitHub Actions security gate once Jenkins security scan (#219) is live | `area:devops` `type:chore` `priority:p3` |
+| P4-DO-03 | [#273](https://github.com/JaJoJi/mobile-final-project/issues/273) | Widen backend coverage gate beyond `src/game/**` | `area:backend` `type:test` `priority:p3` |
+| P4-DO-04 | [#274](https://github.com/JaJoJi/mobile-final-project/issues/274) | Add mobile test coverage collection + threshold to `mobile-ci.yml` | `area:frontend` `type:test` `priority:p3` |
+| P4-DO-05 | [#275](https://github.com/JaJoJi/mobile-final-project/issues/275) | `backend-ci` lint step is `tsc` typecheck only, not ESLint — #133 checklist item unfulfilled | `area:backend` `type:chore` `priority:p3` |
+
 ---
 
 ## Out of MVP scope (closed — re-open if needed)
