@@ -13,11 +13,12 @@ class LeaderboardEntry {
 
 /// The leaderboard rows and the independently displayed current player.
 class LeaderboardViewData {
-  const LeaderboardViewData({
-    required this.entries,
+  LeaderboardViewData({
+    required List<LeaderboardEntry> entries,
     required this.currentPlayer,
-  });
+  }) : entries = List.unmodifiable(entries);
 
+  /// Immutable snapshot of leaderboard rows supplied to UI consumers.
   final List<LeaderboardEntry> entries;
   final LeaderboardEntry currentPlayer;
 }

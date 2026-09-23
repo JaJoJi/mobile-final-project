@@ -3,7 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 /// Temporary display data for Player Hub screens until their API contracts exist.
 abstract final class PlayerHubFixtures {
-  static const leaderboard = LeaderboardViewData(
+  static final leaderboard = LeaderboardViewData(
     entries: [
       LeaderboardEntry(rank: 1, username: 'MoonKnight', rating: 1840),
       LeaderboardEntry(rank: 2, username: 'BlueRanger', rating: 1795),
