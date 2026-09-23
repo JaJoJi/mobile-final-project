@@ -11,6 +11,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:go_router/go_router.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 class _FakeAdapter implements HttpClientAdapter {
@@ -50,6 +51,7 @@ void main() {
   Future<Widget> app({
     required _FakeAdapter adapter,
     double textScale = 1.0,
+    GoRouter? router,
   }) async {
     SharedPreferences.setMockInitialValues({});
     _installFakeSecureStorage();
@@ -63,15 +65,25 @@ void main() {
         sharedPreferencesProvider.overrideWithValue(prefs),
         apiClientProvider.overrideWithValue(ApiClient(dio: dio)),
       ],
-      child: MaterialApp(
-        theme: buildTheme(Brightness.light),
-        builder: (context, child) => MediaQuery(
-          data: MediaQuery.of(context)
-              .copyWith(textScaler: TextScaler.linear(textScale)),
-          child: child!,
-        ),
-        home: const ProfileScreen(),
-      ),
+      child: router == null
+          ? MaterialApp(
+              theme: buildTheme(Brightness.light),
+              builder: (context, child) => MediaQuery(
+                data: MediaQuery.of(context)
+                    .copyWith(textScaler: TextScaler.linear(textScale)),
+                child: child!,
+              ),
+              home: const ProfileScreen(),
+            )
+          : MaterialApp.router(
+              theme: buildTheme(Brightness.light),
+              routerConfig: router,
+              builder: (context, child) => MediaQuery(
+                data: MediaQuery.of(context)
+                    .copyWith(textScaler: TextScaler.linear(textScale)),
+                child: child!,
+              ),
+            ),
     );
   }
 
@@ -108,6 +120,50 @@ void main() {
     expect(find.byKey(const ValueKey('player-crest')), findsOneWidget);
     expect(find.byKey(const ValueKey('player-hub-navigation')), findsOneWidget);
     expect(find.text('บันทึกการประลอง'), findsOneWidget);
+  });
+
+  testWidgets('shows the V2 rank, history, and private-account hierarchy',
+      (tester) async {
+    await tester.pumpWidget(await app(adapter: okMe));
+    await tester.pumpAndSettle();
+
+    expect(find.text('ดูตารางอันดับ'), findsOneWidget);
+    expect(find.text('ทุกแมตช์คือประสบการณ์'), findsOneWidget);
+    expect(find.text('ดูประวัติการแข่งขัน'), findsOneWidget);
+    expect(find.text('ข้อมูลบัญชีเป็นส่วนตัว'), findsOneWidget);
+  });
+
+  testWidgets('opens the Player Hub rank and history destinations',
+      (tester) async {
+    final router = GoRouter(
+      initialLocation: '/',
+      routes: [
+        GoRoute(path: '/', builder: (_, __) => const ProfileScreen()),
+        GoRoute(
+          path: '/leaderboard',
+          builder: (_, __) => const Scaffold(body: Text('leaderboard route')),
+        ),
+        GoRoute(
+          path: '/history',
+          builder: (_, __) => const Scaffold(body: Text('history route')),
+        ),
+      ],
+    );
+    addTearDown(router.dispose);
+
+    await tester.pumpWidget(await app(adapter: okMe, router: router));
+    await tester.pumpAndSettle();
+    await tester.ensureVisible(find.text('ดูตารางอันดับ'));
+    await tester.tap(find.text('ดูตารางอันดับ'));
+    await tester.pumpAndSettle();
+    expect(find.text('leaderboard route'), findsOneWidget);
+
+    router.go('/');
+    await tester.pumpAndSettle();
+    await tester.ensureVisible(find.text('ดูประวัติการแข่งขัน'));
+    await tester.tap(find.text('ดูประวัติการแข่งขัน'));
+    await tester.pumpAndSettle();
+    expect(find.text('history route'), findsOneWidget);
   });
 
   testWidgets('shows the player statistics returned by the statistics API',
@@ -222,6 +278,8 @@ void main() {
     );
     expect(container.read(settingsProvider).themeMode, ThemeMode.system);
 
+    await tester.ensureVisible(find.text('มืด'));
+    await tester.pumpAndSettle();
     await tester.tap(find.text('มืด'));
     await tester.pumpAndSettle();
 
@@ -291,6 +349,40 @@ void main() {
 
     await tester.pumpWidget(await app(adapter: okMe, textScale: 2.0));
     await tester.pumpAndSettle();
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('keeps long identity details usable on a narrow V2 profile',
+      (tester) async {
+    tester.view.physicalSize = const Size(360, 640);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.reset);
+    final longIdentity = _FakeAdapter((o) {
+      if (o.path == '/user/me') {
+        return _json(
+          {
+            'id': 'u3',
+            'username': 'commander_with_an_exceptionally_long_name',
+            'email': 'commander.with.a.very.long.address@example.com',
+            'rating': 1200,
+          },
+          200,
+        );
+      }
+      return _json({}, 404);
+    });
+
+    await tester.pumpWidget(await app(adapter: longIdentity, textScale: 2.0));
+    await tester.pumpAndSettle();
+
+    expect(
+      find.text('commander_with_an_exceptionally_long_name'),
+      findsOneWidget,
+    );
+    expect(
+      find.text('commander.with.a.very.long.address@example.com'),
+      findsOneWidget,
+    );
     expect(tester.takeException(), isNull);
   });
 }

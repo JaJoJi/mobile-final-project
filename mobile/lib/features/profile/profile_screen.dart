@@ -9,6 +9,8 @@ import '../../core/auth/auth_repository.dart';
 import '../../core/theme/app_spacing.dart';
 import '../../core/widgets/fantasy_page.dart';
 import '../../core/widgets/widgets.dart';
+import '../player_hub/player_crest.dart';
+import '../player_hub/player_hub_shell.dart';
 import 'player_hub_navigation.dart';
 import 'settings_provider.dart';
 import 'settings_tile.dart';
@@ -24,94 +26,27 @@ class ProfileScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final me = ref.watch(_meProvider);
 
-    return Theme(
-      data: fantasySurfaceTheme(context),
-      child: Scaffold(
-        backgroundColor: Colors.transparent,
-        body: FantasyBackdrop(
-          child: SafeArea(
-            child: Column(
-              children: [
-                const _ProfileHeader(),
-                Expanded(
-                  child: me.when(
-                    loading: () => const SingleChildScrollView(
-                      padding: EdgeInsets.all(AppSpacing.lg),
-                      child: _ProfileSkeleton(),
-                    ),
-                    error: (_, __) => ErrorView(
-                      message: 'โหลดข้อมูลบัญชีไม่ได้ ลองอีกครั้ง',
-                      onRetry: () => ref.invalidate(_meProvider),
-                    ),
-                    data: (u) => SingleChildScrollView(
-                      padding: const EdgeInsets.all(AppSpacing.lg),
-                      child: _Content(user: u),
-                    ),
-                  ),
-                ),
-                const PlayerHubNavigation(),
-              ],
-            ),
-          ),
+    return PlayerHubShell(
+      title: 'โปรไฟล์ผู้บัญชาการ',
+      subtitle: 'ตัวตนและผลงานในสนาม',
+      badge: 'บัญชีของคุณ',
+      body: me.when(
+        loading: () => const SingleChildScrollView(
+          padding: EdgeInsets.all(AppSpacing.lg),
+          child: _ProfileSkeleton(),
+        ),
+        error: (_, __) => ErrorView(
+          message: 'โหลดข้อมูลบัญชีไม่ได้ ลองอีกครั้ง',
+          onRetry: () => ref.invalidate(_meProvider),
+        ),
+        data: (u) => SingleChildScrollView(
+          padding: const EdgeInsets.all(AppSpacing.lg),
+          child: _Content(user: u),
         ),
       ),
+      navigation: const PlayerHubNavigation(),
     );
   }
-}
-
-class _ProfileHeader extends StatelessWidget {
-  const _ProfileHeader();
-
-  @override
-  Widget build(BuildContext context) => Container(
-        width: double.infinity,
-        padding: const EdgeInsets.fromLTRB(
-          AppSpacing.lg,
-          AppSpacing.md,
-          AppSpacing.lg,
-          AppSpacing.md,
-        ),
-        decoration: const BoxDecoration(
-          color: Color(0xB3071220),
-          border: Border(bottom: BorderSide(color: Color(0x4D82A9C7))),
-        ),
-        child: MediaQuery.withClampedTextScaling(
-          maxScaleFactor: 1.25,
-          child: const Row(
-            children: [
-              Expanded(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text('โปรไฟล์ผู้บัญชาการ'),
-                    SizedBox(height: AppSpacing.xxs),
-                    Text('ตัวตนและผลงานในสนาม'),
-                  ],
-                ),
-              ),
-              _AccountBadge(),
-            ],
-          ),
-        ),
-      );
-}
-
-class _AccountBadge extends StatelessWidget {
-  const _AccountBadge();
-
-  @override
-  Widget build(BuildContext context) => Container(
-        padding: const EdgeInsets.symmetric(
-          horizontal: AppSpacing.sm,
-          vertical: AppSpacing.xs,
-        ),
-        decoration: BoxDecoration(
-          border: Border.all(color: const Color(0x80F2C14E)),
-          borderRadius: AppRadius.allSm,
-        ),
-        child: const Text('บัญชีของคุณ'),
-      );
 }
 
 /// `GET /user/me` → `{ id, email, username, rating }`.
@@ -232,7 +167,7 @@ class _IdentityPanel extends StatelessWidget {
   Widget build(BuildContext context) => FantasyPanel(
         child: Column(
           children: [
-            _PlayerCrest(initials: initials),
+            PlayerCrest(label: initials),
             const SizedBox(height: AppSpacing.md),
             Text(
               username,
@@ -269,60 +204,6 @@ class _IdentityPanel extends StatelessWidget {
               child: const Text('แก้ไขชื่อผู้ใช้'),
             ),
           ],
-        ),
-      );
-}
-
-class _PlayerCrest extends StatelessWidget {
-  const _PlayerCrest({required this.initials});
-
-  final String initials;
-
-  @override
-  Widget build(BuildContext context) => Container(
-        key: const ValueKey('player-crest'),
-        width: 108,
-        height: 118,
-        alignment: Alignment.center,
-        decoration: BoxDecoration(
-          gradient: const LinearGradient(
-            colors: [Color(0xFFFFEAB0), Color(0xFF8D7546), Color(0xFFF2C14E)],
-          ),
-          borderRadius: const BorderRadius.only(
-            topLeft: Radius.circular(16),
-            topRight: Radius.circular(16),
-            bottomLeft: Radius.circular(54),
-            bottomRight: Radius.circular(54),
-          ),
-          border: Border.all(color: const Color(0xFFFFF2C9), width: 2),
-          boxShadow: const [
-            BoxShadow(
-              color: Color(0x99000000),
-              blurRadius: 14,
-              offset: Offset(0, 8),
-            ),
-          ],
-        ),
-        child: Container(
-          width: 94,
-          height: 104,
-          alignment: Alignment.center,
-          decoration: const BoxDecoration(
-            color: Color(0xFF102B42),
-            borderRadius: BorderRadius.only(
-              topLeft: Radius.circular(13),
-              topRight: Radius.circular(13),
-              bottomLeft: Radius.circular(48),
-              bottomRight: Radius.circular(48),
-            ),
-          ),
-          child: Text(
-            initials,
-            style: Theme.of(context).textTheme.headlineMedium?.copyWith(
-                  color: const Color(0xFFFFD35A),
-                  fontWeight: FontWeight.w800,
-                ),
-          ),
         ),
       );
 }
@@ -375,6 +256,59 @@ class _ProfileDetails extends StatelessWidget {
               ),
             ),
             data: (data) => _StatisticsCard(statistics: data),
+          ),
+          const SizedBox(height: AppSpacing.lg),
+          _RankBanner(statistics: statistics),
+          const SizedBox(height: AppSpacing.lg),
+          FantasyPanel(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'ทุกแมตช์คือประสบการณ์',
+                  style: Theme.of(context).textTheme.titleLarge,
+                ),
+                const SizedBox(height: AppSpacing.xs),
+                Text(
+                  'ย้อนดูผลการแข่งขันและรอบที่จบในแต่ละเกม',
+                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                        color: Theme.of(context).colorScheme.onSurfaceVariant,
+                      ),
+                ),
+                const SizedBox(height: AppSpacing.md),
+                OutlinedButton(
+                  onPressed: () => context.go('/history'),
+                  child: const Text('ดูประวัติการแข่งขัน'),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: AppSpacing.lg),
+          Container(
+            key: const ValueKey('private-account-row'),
+            padding: const EdgeInsets.only(top: AppSpacing.md),
+            decoration: const BoxDecoration(
+              border: Border(top: BorderSide(color: Color(0x4D82A9C7))),
+            ),
+            child: Wrap(
+              alignment: WrapAlignment.spaceBetween,
+              crossAxisAlignment: WrapCrossAlignment.center,
+              spacing: AppSpacing.md,
+              runSpacing: AppSpacing.xs,
+              children: [
+                Text(
+                  'ข้อมูลบัญชีเป็นส่วนตัว',
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                        color: Theme.of(context).colorScheme.onSurfaceVariant,
+                      ),
+                ),
+                OutlinedButton.icon(
+                  onPressed: onLogout,
+                  icon: const Icon(Icons.logout),
+                  label: const Text('ออกจากระบบ'),
+                ),
+              ],
+            ),
           ),
           const SizedBox(height: AppSpacing.lg),
           FantasyPanel(
@@ -436,17 +370,65 @@ class _ProfileDetails extends StatelessWidget {
                   title: 'เวอร์ชัน',
                   trailing: Text(ProfileScreen._appVersion),
                 ),
-                const SizedBox(height: AppSpacing.md),
-                OutlinedButton.icon(
-                  onPressed: onLogout,
-                  icon: const Icon(Icons.logout),
-                  label: const Text('ออกจากระบบ'),
-                ),
               ],
             ),
           ),
         ],
       );
+}
+
+class _RankBanner extends StatelessWidget {
+  const _RankBanner({required this.statistics});
+
+  final AsyncValue<Map<String, dynamic>> statistics;
+
+  @override
+  Widget build(BuildContext context) {
+    final rank = statistics.valueOrNull?['currentRank'];
+    return Container(
+      key: const ValueKey('profile-rank-banner'),
+      padding: const EdgeInsets.all(AppSpacing.lg),
+      decoration: const BoxDecoration(
+        gradient: LinearGradient(
+          colors: [Color(0x8866532B), Color(0xDD14263A)],
+        ),
+        border: Border(left: BorderSide(color: Color(0xFFF2C14E), width: 3)),
+      ),
+      child: LayoutBuilder(
+        builder: (context, constraints) => Wrap(
+          alignment: WrapAlignment.spaceBetween,
+          crossAxisAlignment: WrapCrossAlignment.center,
+          spacing: AppSpacing.md,
+          runSpacing: AppSpacing.md,
+          children: [
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'อันดับปัจจุบัน',
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                        color: Theme.of(context).colorScheme.onSurfaceVariant,
+                      ),
+                ),
+                const SizedBox(height: AppSpacing.xxs),
+                Text(
+                  rank == null ? '—' : '#$rank',
+                  style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                        color: const Color(0xFFF2C14E),
+                        fontWeight: FontWeight.w800,
+                      ),
+                ),
+              ],
+            ),
+            FilledButton(
+              onPressed: () => context.go('/leaderboard'),
+              child: const Text('ดูตารางอันดับ'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
 }
 
 class _SectionHeading extends StatelessWidget {
