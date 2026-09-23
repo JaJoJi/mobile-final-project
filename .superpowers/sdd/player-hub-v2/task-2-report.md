@@ -99,3 +99,28 @@ or Leaderboard files.
 - `rtk flutter analyze`
   - No Task 2 diagnostics. Eight existing `prefer_const_constructors` info
     diagnostics remain in Task 1's `player_hub_fixture_provider.dart`.
+
+
+## Fix round 2  testing proof for rank banner and compact identity rail
+
+### Status
+
+Added focused regression assertions only. The sole production change is a stable key on the existing narrow identity `Row`; it does not alter layout or visual behavior.
+
+### Assertions added
+
+- The statistics response with `currentRank: 28` renders exactly one `profile-rank-banner`, alongside exactly one current-rank text rendering.
+- At 360x640 with text scale 2.0, the narrow identity rail is exactly one horizontal `Row` and contains exactly one `PlayerCrest(compact: true)`.
+
+### TDD record
+
+1. Added the assertions first.
+2. Verified RED: focused Profile tests failed only because `profile-identity-compact-row` was not yet available.
+3. Added that stable key to the pre-existing compact `Row` and re-ran GREEN.
+
+### Verification
+
+- `rtk flutter test --no-pub test/features/profile/profile_screen_test.dart`
+  - Passed: 14 Profile tests.
+- `rtk flutter analyze`
+  - Reports the same 8 pre-existing `prefer_const_constructors` info diagnostics in Task 1's `player_hub_fixture_provider.dart`; this round introduced no analyzer diagnostics.

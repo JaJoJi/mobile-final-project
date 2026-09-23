@@ -185,6 +185,7 @@ class _IdentityPanel extends StatelessWidget {
               );
             }
             return Row(
+              key: const ValueKey('profile-identity-compact-row'),
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 PlayerCrest(label: initials, compact: true),

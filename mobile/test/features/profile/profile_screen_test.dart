@@ -206,6 +206,10 @@ void main() {
     expect(find.text('26'), findsOneWidget);
     expect(find.text('16'), findsOneWidget);
     expect(find.text('61.9%'), findsOneWidget);
+    expect(
+      find.byKey(const ValueKey('profile-rank-banner')),
+      findsOneWidget,
+    );
     expect(find.text('อันดับ #28'), findsOneWidget);
     expect(find.text('บนตารางอันดับ'), findsOneWidget);
   });
@@ -405,7 +409,20 @@ void main() {
     expect(find.text('อันดับ #28'), findsOneWidget);
     expect(find.text('บนตารางอันดับ'), findsOneWidget);
     expect(find.text('ดูตารางอันดับ'), findsOneWidget);
-    expect(tester.widget<PlayerCrest>(find.byType(PlayerCrest)).compact, isTrue);
+    final compactIdentity = find.byKey(
+      const ValueKey('profile-identity-compact-row'),
+    );
+    expect(compactIdentity, findsOneWidget);
+    expect(tester.widget<Row>(compactIdentity).direction, Axis.horizontal);
+    expect(
+      find.descendant(
+        of: compactIdentity,
+        matching: find.byWidgetPredicate(
+          (widget) => widget is PlayerCrest && widget.compact,
+        ),
+      ),
+      findsOneWidget,
+    );
     expect(tester.takeException(), isNull);
   });
 }
