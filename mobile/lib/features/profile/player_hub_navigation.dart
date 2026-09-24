@@ -5,9 +5,13 @@ import 'package:go_router/go_router.dart';
 
 import '../../core/theme/app_spacing.dart';
 
+enum PlayerHubTab { home, units, history, profile, leaderboard }
+
 /// Persistent V2 navigation for player hub screens.
 class PlayerHubNavigation extends StatelessWidget {
-  const PlayerHubNavigation({super.key});
+  const PlayerHubNavigation({super.key, this.selected = PlayerHubTab.profile});
+
+  final PlayerHubTab selected;
 
   @override
   Widget build(BuildContext context) {
@@ -49,10 +53,11 @@ class PlayerHubNavigation extends StatelessWidget {
                   icon: Icons.history_outlined,
                   onTap: () => context.go('/history'),
                 ),
-                const _NavItem(
+                _NavItem(
                   label: 'โปรไฟล์',
                   icon: Icons.person_rounded,
-                  selected: true,
+                  selected: selected == PlayerHubTab.profile,
+                  onTap: () => context.go('/profile'),
                 ),
               ].map((item) => Expanded(child: item)).toList(),
             ),

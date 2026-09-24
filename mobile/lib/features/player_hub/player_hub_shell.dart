@@ -12,11 +12,13 @@ class PlayerHubShell extends StatelessWidget {
     required this.body,
     required this.navigation,
     this.badge,
+    this.headerAction,
   });
 
   final String title;
   final String subtitle;
   final String? badge;
+  final Widget? headerAction;
   final Widget body;
   final Widget navigation;
 
@@ -33,6 +35,7 @@ class PlayerHubShell extends StatelessWidget {
                     title: title,
                     subtitle: subtitle,
                     badge: badge,
+                    action: headerAction,
                   ),
                   Expanded(child: body),
                   navigation,
@@ -49,11 +52,13 @@ class _PlayerHubHeader extends StatelessWidget {
     required this.title,
     required this.subtitle,
     required this.badge,
+    required this.action,
   });
 
   final String title;
   final String subtitle;
   final String? badge;
+  final Widget? action;
 
   @override
   Widget build(BuildContext context) => Container(
@@ -89,6 +94,10 @@ class _PlayerHubHeader extends StatelessWidget {
                   ],
                 ),
               ),
+              if (action != null) ...[
+                const SizedBox(width: AppSpacing.sm),
+                action!,
+              ],
               if (badge != null) ...[
                 const SizedBox(width: AppSpacing.sm),
                 Container(

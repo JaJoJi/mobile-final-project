@@ -6,6 +6,7 @@ import '../features/auth/register_screen.dart';
 import '../features/dev/widget_gallery_screen.dart';
 import '../features/history/history_list_screen.dart';
 import '../features/history/match_detail_screen.dart';
+import '../features/leaderboard/leaderboard_screen.dart';
 import '../features/lobby/lobby_screen.dart';
 import '../features/match/match_screen.dart';
 import '../features/profile/profile_screen.dart';
@@ -80,6 +81,10 @@ GoRouter buildRouter() {
       GoRoute(
         path: ProfileScreen.path,
         builder: (_, __) => const ProfileScreen(),
+      ),
+      GoRoute(
+        path: LeaderboardScreen.path,
+        builder: (_, __) => const LeaderboardScreen(),
       ),
       // Dev tool: the P0-FE-06 widget catalogue. Not part of any user flow.
       GoRoute(
