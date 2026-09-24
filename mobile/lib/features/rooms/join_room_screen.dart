@@ -223,7 +223,7 @@ class _JoinForm extends StatelessWidget {
             ),
             const SizedBox(height: AppSpacing.sm),
             const Text(
-              'เมื่อครบสองคน เกมจะเริ่มอัตโนมัติ',
+              'ตัวอย่างนี้ไม่เชื่อมต่อ backend และไม่เริ่มเกมจริง',
               textAlign: TextAlign.center,
             ),
           ],

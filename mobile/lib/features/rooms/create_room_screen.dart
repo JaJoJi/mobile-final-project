@@ -21,7 +21,7 @@ class CreateRoomScreen extends ConsumerWidget {
     return PlayerHubShell(
       title: 'ห้องส่วนตัว',
       subtitle: 'ออโต้เชส / ประลองกับเพื่อน',
-      headerAction: _ConnectionLabel(status: room.status),
+      badge: 'ตัวอย่าง',
       navigation: const PlayerHubNavigation(),
       body: RoomArenaContent(room: room),
     );
@@ -187,7 +187,7 @@ class _InviteBar extends StatelessWidget {
                 ),
               ],
             ),
-            const Text('2 ผู้เล่น · เริ่มอัตโนมัติ'),
+            const Text('ห้องตัวอย่าง · 1 vs 1'),
           ],
         ),
       );
@@ -339,15 +339,16 @@ class _RoomStatus extends StatelessWidget {
   Widget build(BuildContext context) {
     final title = switch (room.status) {
       RoomFixtureStatus.waiting => 'กำลังรอผู้ท้าชิง',
-      RoomFixtureStatus.joined => 'กำลังเข้าสู่สนาม',
-      RoomFixtureStatus.reconnecting => 'กำลังเชื่อมต่อใหม่',
+      RoomFixtureStatus.joined => 'ผู้ท้าชิงเข้าร่วมแล้ว',
+      RoomFixtureStatus.reconnecting => 'จำลองการเชื่อมต่อใหม่',
     };
     final description = switch (room.status) {
       RoomFixtureStatus.waiting =>
-        'เมื่อเพื่อนเข้าร่วม ทั้งสองคนจะเข้าสู่เกมอัตโนมัติ',
-      RoomFixtureStatus.joined => 'พบคู่แข่งแล้ว รอระบบพาทั้งสองคนเข้าเกม',
+        'หน้าตัวอย่างนี้ไม่สร้างห้องจริงหรือเริ่มเกม',
+      RoomFixtureStatus.joined =>
+        'สถานะผู้เล่นนี้เป็นข้อมูลตัวอย่าง ไม่มีการเริ่มเกมจริง',
       RoomFixtureStatus.reconnecting =>
-        'ห้องยังแสดงข้อมูลล่าสุด รอยืนยันสถานะจากระบบ',
+        'สถานะนี้จำลองการเชื่อมต่อใหม่ ไม่มี backend ทำงาน',
     };
     return Padding(
       padding: const EdgeInsets.symmetric(
@@ -372,6 +373,14 @@ class _RoomStatus extends StatelessWidget {
                         ),
                   ),
                   Text(description, textAlign: TextAlign.center),
+                  const SizedBox(height: AppSpacing.xs),
+                  Text(
+                    'ไม่มีห้องจริงหรือการเริ่มเกม',
+                    textAlign: TextAlign.center,
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          color: Theme.of(context).colorScheme.onSurfaceVariant,
+                        ),
+                  ),
                 ],
               ),
             ),
@@ -408,27 +417,4 @@ class _RoomFooter extends StatelessWidget {
           ],
         ),
       );
-}
-
-class _ConnectionLabel extends StatelessWidget {
-  const _ConnectionLabel({required this.status});
-  final RoomFixtureStatus status;
-
-  @override
-  Widget build(BuildContext context) {
-    final reconnecting = status == RoomFixtureStatus.reconnecting;
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Icon(
-          Icons.circle,
-          size: 9,
-          color:
-              reconnecting ? const Color(0xFFF2C14E) : const Color(0xFFA1E5C1),
-        ),
-        const SizedBox(width: AppSpacing.xs),
-        Text(reconnecting ? 'กำลังเชื่อมต่อใหม่' : 'เชื่อมต่อแล้ว'),
-      ],
-    );
-  }
 }

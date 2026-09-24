@@ -35,6 +35,8 @@ void main() {
     expect(find.text('VS'), findsOneWidget);
     expect(find.text('รอคู่แข่ง'), findsOneWidget);
     expect(find.text('กำลังรอผู้ท้าชิง'), findsOneWidget);
+    expect(find.text('ไม่มีห้องจริงหรือการเริ่มเกม'), findsOneWidget);
+    expect(find.text('เชื่อมต่อแล้ว'), findsNothing);
   });
 
   testWidgets('renders joined and reconnecting fixture states', (tester) async {
@@ -42,11 +44,11 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('ผู้เล่น 2 / 2'), findsOneWidget);
     expect(find.text('Astra'), findsOneWidget);
-    expect(find.text('กำลังเข้าสู่สนาม'), findsOneWidget);
+    expect(find.text('ผู้ท้าชิงเข้าร่วมแล้ว'), findsOneWidget);
 
     await tester.pumpWidget(app(room: PlayerHubFixtures.reconnecting));
     await tester.pumpAndSettle();
-    expect(find.text('กำลังเชื่อมต่อใหม่'), findsWidgets);
+    expect(find.text('จำลองการเชื่อมต่อใหม่'), findsOneWidget);
   });
 
   testWidgets('does not overflow at 360x640 with text scale 2', (tester) async {

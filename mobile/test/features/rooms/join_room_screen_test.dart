@@ -25,6 +25,10 @@ void main() {
     expect(find.text('รหัสห้อง'), findsOneWidget);
     expect(find.text('K7M2Q9'), findsOneWidget);
     expect(
+      find.text('ตัวอย่างนี้ไม่เชื่อมต่อ backend และไม่เริ่มเกมจริง'),
+      findsOneWidget,
+    );
+    expect(
       tester.widget<FilledButton>(find.byType(FilledButton)).onPressed,
       isNull,
     );
