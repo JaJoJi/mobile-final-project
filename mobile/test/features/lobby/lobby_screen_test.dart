@@ -1,10 +1,13 @@
 import 'package:auto_chess_mobile/core/widgets/app_button.dart';
 import 'package:auto_chess_mobile/core/ws/ws_client.dart';
 import 'package:auto_chess_mobile/core/ws/ws_providers.dart';
+import 'package:auto_chess_mobile/features/leaderboard/leaderboard_screen.dart';
 import 'package:auto_chess_mobile/features/lobby/find_match_button.dart';
 import 'package:auto_chess_mobile/features/lobby/lobby_screen.dart';
 import 'package:auto_chess_mobile/features/lobby/logout_button.dart';
 import 'package:auto_chess_mobile/features/lobby/profile_card.dart';
+import 'package:auto_chess_mobile/features/rooms/create_room_screen.dart';
+import 'package:auto_chess_mobile/features/rooms/join_room_screen.dart';
 import 'package:auto_chess_mobile/shared/models/game_events.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -57,6 +60,18 @@ void main() {
       routes: [
         GoRoute(path: '/lobby', builder: (_, __) => const LobbyScreen()),
         GoRoute(
+          path: CreateRoomScreen.path,
+          builder: (_, __) => const CreateRoomScreen(),
+        ),
+        GoRoute(
+          path: JoinRoomScreen.path,
+          builder: (_, __) => const JoinRoomScreen(),
+        ),
+        GoRoute(
+          path: LeaderboardScreen.path,
+          builder: (_, __) => const LeaderboardScreen(),
+        ),
+        GoRoute(
           path: '/match/:id',
           builder: (_, GoRouterState state) => Scaffold(
             body: Center(child: Text('match:${state.pathParameters['id']}')),
@@ -96,6 +111,37 @@ void main() {
     expect(find.text('Searching\u2026'), findsNothing);
     expect(find.byType(LogoutButton), findsOneWidget);
     expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('exposes the V2 room and leaderboard actions', (tester) async {
+    await pumpLobby(tester);
+
+    expect(find.text('สร้างห้องส่วนตัว'), findsOneWidget);
+    expect(find.text('เข้าร่วมห้อง'), findsOneWidget);
+    expect(find.text('ตารางอันดับ'), findsOneWidget);
+    expect(find.byType(FindMatchButton), findsOneWidget);
+  });
+
+  testWidgets('room and leaderboard actions open their destinations', (
+    tester,
+  ) async {
+    final router = await pumpLobby(tester);
+
+    await tester.tap(find.text('สร้างห้องส่วนตัว'));
+    await tester.pumpAndSettle();
+    expect(find.text('ห้องส่วนตัว'), findsOneWidget);
+
+    router.go('/lobby');
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('เข้าร่วมห้อง'));
+    await tester.pumpAndSettle();
+    expect(find.text('พบเพื่อนในสนามส่วนตัว'), findsOneWidget);
+
+    router.go('/lobby');
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('ตารางอันดับ'));
+    await tester.pumpAndSettle();
+    expect(find.text('ผู้บัญชาการแห่งสนาม · เรียงตามเรตติ้ง'), findsOneWidget);
   });
 
   testWidgets('tap Find match → state searching + button shows Cancel',

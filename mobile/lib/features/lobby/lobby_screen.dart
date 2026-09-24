@@ -9,6 +9,9 @@ import '../../core/widgets/state_views.dart';
 import '../../core/ws/ws_client.dart';
 import '../../core/ws/ws_providers.dart';
 import '../../shared/models/game_events.dart';
+import '../leaderboard/leaderboard_screen.dart';
+import '../rooms/create_room_screen.dart';
+import '../rooms/join_room_screen.dart';
 import 'find_match_button.dart';
 import 'logout_button.dart';
 import 'matchmaking_state.dart';
@@ -103,6 +106,26 @@ class _LobbyScreenState extends ConsumerState<LobbyScreen> {
           ),
           const SizedBox(height: AppSpacing.md),
           Center(child: _StatusText(state: state)),
+          const SizedBox(height: AppSpacing.sm),
+          Wrap(
+            alignment: WrapAlignment.center,
+            spacing: AppSpacing.sm,
+            runSpacing: AppSpacing.xs,
+            children: [
+              OutlinedButton(
+                onPressed: () => context.go(CreateRoomScreen.path),
+                child: const Text('สร้างห้องส่วนตัว'),
+              ),
+              OutlinedButton(
+                onPressed: () => context.go(JoinRoomScreen.path),
+                child: const Text('เข้าร่วมห้อง'),
+              ),
+              TextButton(
+                onPressed: () => context.go(LeaderboardScreen.path),
+                child: const Text('ตารางอันดับ'),
+              ),
+            ],
+          ),
           const Spacer(),
         ],
       ),
