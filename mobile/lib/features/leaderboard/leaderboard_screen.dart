@@ -51,17 +51,17 @@ class _LeaderboardScreenState extends ConsumerState<LeaderboardScreen> {
   }
 
   Widget _buildContent(LeaderboardViewData data) {
-    if (data.entries.isEmpty) {
-      return const Center(child: Text('ยังไม่มีข้อมูลอันดับ'));
-    }
     final rows = data.entries.take(_showAll ? data.entries.length : 5).toList();
-    final champion = data.entries.first;
+    final champion = data.entries.isEmpty ? null : data.entries.first;
     return LayoutBuilder(
       builder: (context, constraints) {
         final wide = constraints.maxWidth >= 800;
-        final championCard = _ChampionCard(entry: champion);
+        final championCard = champion == null
+            ? null
+            : _ChampionCard(entry: champion, compact: !wide);
         final ranking = _RankingPanel(
           entries: rows,
+          currentPlayer: data.currentPlayer,
           showMore: !_showAll && data.entries.length > 5,
           allShown: _showAll,
           onShowMore: () => setState(() => _showAll = true),
@@ -71,17 +71,22 @@ class _LeaderboardScreenState extends ConsumerState<LeaderboardScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              if (wide)
+              if (rows.isEmpty)
+                const Padding(
+                  padding: EdgeInsets.all(AppSpacing.xl),
+                  child: Center(child: Text('ยังไม่มีข้อมูลอันดับ')),
+                )
+              else if (wide)
                 Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    SizedBox(width: 270, child: championCard),
+                    SizedBox(width: 270, child: championCard!),
                     const SizedBox(width: AppSpacing.xl),
                     Expanded(child: ranking),
                   ],
                 )
               else ...[
-                championCard,
+                championCard!,
                 const SizedBox(height: AppSpacing.lg),
                 ranking,
               ],
@@ -104,8 +109,9 @@ class _LeaderboardScreenState extends ConsumerState<LeaderboardScreen> {
 }
 
 class _ChampionCard extends StatelessWidget {
-  const _ChampionCard({required this.entry});
+  const _ChampionCard({required this.entry, required this.compact});
   final LeaderboardEntry entry;
+  final bool compact;
 
   @override
   Widget build(BuildContext context) => Container(
@@ -118,41 +124,69 @@ class _ChampionCard extends StatelessWidget {
           ),
           border: Border.all(color: const Color(0x80F2C14E)),
         ),
-        child: Column(
-          children: [
-            const Text('อันดับหนึ่ง'),
-            const SizedBox(height: AppSpacing.md),
-            PlayerCrest(label: '${entry.rank}'),
-            const SizedBox(height: AppSpacing.md),
-            Text(entry.username, style: Theme.of(context).textTheme.titleLarge),
-            const SizedBox(height: AppSpacing.xs),
-            Text(
-              _formatRating(entry.rating),
-              style: Theme.of(context).textTheme.headlineMedium?.copyWith(
-                    color: const Color(0xFFF2C14E),
-                    fontWeight: FontWeight.w800,
+        child: compact
+            ? Row(
+                key: const ValueKey('leaderboard-champion-compact'),
+                children: [
+                  PlayerCrest(label: '${entry.rank}', compact: true),
+                  const SizedBox(width: AppSpacing.md),
+                  Expanded(
+                    child: _ChampionDetails(entry: entry, compact: true),
                   ),
-            ),
-            Text(
-              'เรตติ้ง',
-              style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                    color: Theme.of(context).colorScheme.onSurfaceVariant,
-                  ),
-            ),
-          ],
-        ),
+                ],
+              )
+            : Column(
+                children: [
+                  const Text('อันดับหนึ่ง'),
+                  const SizedBox(height: AppSpacing.md),
+                  PlayerCrest(label: '${entry.rank}'),
+                  const SizedBox(height: AppSpacing.md),
+                  _ChampionDetails(entry: entry),
+                ],
+              ),
+      );
+}
+
+class _ChampionDetails extends StatelessWidget {
+  const _ChampionDetails({required this.entry, this.compact = false});
+  final LeaderboardEntry entry;
+  final bool compact;
+
+  @override
+  Widget build(BuildContext context) => Column(
+        crossAxisAlignment:
+            compact ? CrossAxisAlignment.start : CrossAxisAlignment.center,
+        children: [
+          Text('อันดับหนึ่ง', style: Theme.of(context).textTheme.bodySmall),
+          Text(entry.username, style: Theme.of(context).textTheme.titleLarge),
+          Text(
+            _formatRating(entry.rating),
+            style: Theme.of(context).textTheme.headlineMedium?.copyWith(
+                  color: const Color(0xFFF2C14E),
+                  fontWeight: FontWeight.w800,
+                ),
+          ),
+          Text(
+            'เรตติ้ง',
+            style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                ),
+          ),
+        ],
       );
 }
 
 class _RankingPanel extends StatelessWidget {
   const _RankingPanel({
     required this.entries,
+    required this.currentPlayer,
     required this.showMore,
     required this.allShown,
     required this.onShowMore,
   });
 
   final List<LeaderboardEntry> entries;
+  final LeaderboardEntry currentPlayer;
   final bool showMore;
   final bool allShown;
   final VoidCallback onShowMore;
@@ -166,7 +200,12 @@ class _RankingPanel extends StatelessWidget {
         child: Column(
           children: [
             const _RankingHeader(),
-            for (final entry in entries) _RankingRow(entry: entry),
+            for (final entry in entries)
+              _RankingRow(
+                entry: entry,
+                isCurrentPlayer: entry.rank == currentPlayer.rank &&
+                    entry.username == currentPlayer.username,
+              ),
             if (showMore)
               Padding(
                 padding: const EdgeInsets.all(AppSpacing.sm),
@@ -208,15 +247,23 @@ class _RankingHeader extends StatelessWidget {
 }
 
 class _RankingRow extends StatelessWidget {
-  const _RankingRow({required this.entry});
+  const _RankingRow({required this.entry, required this.isCurrentPlayer});
   final LeaderboardEntry entry;
+  final bool isCurrentPlayer;
 
   @override
   Widget build(BuildContext context) => Container(
         constraints: const BoxConstraints(minHeight: 56),
         padding: const EdgeInsets.symmetric(horizontal: AppSpacing.md),
-        decoration: const BoxDecoration(
-          border: Border(top: BorderSide(color: Color(0x33829EB2))),
+        key: isCurrentPlayer ? const ValueKey('leaderboard-self-row') : null,
+        decoration: BoxDecoration(
+          color: isCurrentPlayer ? const Color(0x1FF2C14E) : null,
+          border: Border(
+            top: const BorderSide(color: Color(0x33829EB2)),
+            left: isCurrentPlayer
+                ? const BorderSide(color: Color(0xFFF2C14E), width: 3)
+                : BorderSide.none,
+          ),
         ),
         child: Row(
           children: [

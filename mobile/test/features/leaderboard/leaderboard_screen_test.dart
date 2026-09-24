@@ -86,6 +86,29 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('ยังไม่มีข้อมูลอันดับ'), findsOneWidget);
+    expect(find.text('อันดับของคุณ'), findsOneWidget);
+    expect(find.text('#28'), findsOneWidget);
+  });
+
+  testWidgets('highlights the current player when present in loaded rows', (
+    tester,
+  ) async {
+    final data = LeaderboardViewData(
+      entries: const [
+        LeaderboardEntry(rank: 1, username: 'Top', rating: 1800),
+        LeaderboardEntry(rank: 2, username: 'Second', rating: 1700),
+        LeaderboardEntry(rank: 3, username: 'JaJoJi', rating: 1600),
+      ],
+      currentPlayer: const LeaderboardEntry(
+        rank: 3,
+        username: 'JaJoJi',
+        rating: 1600,
+      ),
+    );
+    await tester.pumpWidget(app(source: (_) async => data));
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const ValueKey('leaderboard-self-row')), findsOneWidget);
   });
 
   testWidgets('retries a failed leaderboard source without leaving the page', (
@@ -121,5 +144,9 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(tester.takeException(), isNull);
+    expect(
+      find.byKey(const ValueKey('leaderboard-champion-compact')),
+      findsOneWidget,
+    );
   });
 }
