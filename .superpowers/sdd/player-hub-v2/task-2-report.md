@@ -101,7 +101,7 @@ or Leaderboard files.
     diagnostics remain in Task 1's `player_hub_fixture_provider.dart`.
 
 
-## Fix round 2  testing proof for rank banner and compact identity rail
+## Fix round 2 — testing proof for rank banner and compact identity rail
 
 ### Status
 
