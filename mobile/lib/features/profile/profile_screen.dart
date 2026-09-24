@@ -495,8 +495,7 @@ class _RankBanner extends StatelessWidget {
                   Text(
                     'ลงสนามครั้งแรกเพื่อเริ่มบันทึกสถิติ',
                     style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                          color:
-                              Theme.of(context).colorScheme.onSurfaceVariant,
+                          color: Theme.of(context).colorScheme.onSurfaceVariant,
                         ),
                   ),
                 ],

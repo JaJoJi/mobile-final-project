@@ -15,7 +15,6 @@ import '../../shared/models/game_events.dart';
 import '../history/history_format.dart';
 import '../history/history_providers.dart';
 import '../history/match_models.dart';
-import '../leaderboard/leaderboard_screen.dart';
 import '../rooms/create_room_screen.dart';
 import '../rooms/join_room_screen.dart';
 import 'find_match_button.dart';

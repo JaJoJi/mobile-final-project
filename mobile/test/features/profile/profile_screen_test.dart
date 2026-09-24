@@ -103,7 +103,8 @@ void main() {
     return _json({}, 404);
   });
 
-  testWidgets('shows the exact V2 identity rating presentation', (tester) async {
+  testWidgets('shows the exact V2 identity rating presentation',
+      (tester) async {
     await tester.pumpWidget(await app(adapter: okMe));
     await tester.pumpAndSettle();
 
