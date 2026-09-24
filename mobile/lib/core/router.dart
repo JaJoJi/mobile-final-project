@@ -10,6 +10,8 @@ import '../features/leaderboard/leaderboard_screen.dart';
 import '../features/lobby/lobby_screen.dart';
 import '../features/match/match_screen.dart';
 import '../features/profile/profile_screen.dart';
+import '../features/rooms/create_room_screen.dart';
+import '../features/rooms/join_room_screen.dart';
 import '../features/splash/splash_screen.dart';
 import 'auth/auth_gate.dart';
 
@@ -85,6 +87,14 @@ GoRouter buildRouter() {
       GoRoute(
         path: LeaderboardScreen.path,
         builder: (_, __) => const LeaderboardScreen(),
+      ),
+      GoRoute(
+        path: CreateRoomScreen.path,
+        builder: (_, __) => const CreateRoomScreen(),
+      ),
+      GoRoute(
+        path: JoinRoomScreen.path,
+        builder: (_, __) => const JoinRoomScreen(),
       ),
       // Dev tool: the P0-FE-06 widget catalogue. Not part of any user flow.
       GoRoute(
