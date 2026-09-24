@@ -21,10 +21,19 @@ export interface RuntimePlayerState extends Record<string, unknown> {
   bench: Array<RuntimeUnitState | null>;
 }
 
+export interface OpponentBoardUnit {
+  unitId: UnitId;
+  star: Star;
+}
+
+export type OpponentBoardSummary = Array<OpponentBoardUnit | null>;
+
 export interface MatchRuntimeState {
   matchId: string;
   player1Id: string;
   player2Id: string;
+  player1Name: string;
+  player2Name: string;
   matchSeed: string;
   phase: MatchPhase;
   round: number;
@@ -35,13 +44,23 @@ export interface MatchRuntimeState {
   wipeIndexP1: number;
   wipeIndexP2: number;
   combatRound: number | null;
+  /** Board snapshots captured after the most recently completed round. */
+  scoutRound: number | null;
+  scoutP1Board: OpponentBoardSummary;
+  scoutP2Board: OpponentBoardSummary;
 }
 
 export const runtimeKey = (matchId: string) => `match:${matchId}:runtime`;
 export const combatDoneKey = (matchId: string) => `match:${matchId}:combat-done`;
 export const combatLockKey = (matchId: string) => `combat-lock:${matchId}`;
 
-export function initialRuntimeHash(match: Match): Record<string, string> {
+export function initialRuntimeHash(
+  match: Match,
+  names: { player1Name: string; player2Name: string } = {
+    player1Name: '',
+    player2Name: '',
+  },
+): Record<string, string> {
   const p1State = normalizePlayerState(match.p1State);
   const p2State = normalizePlayerState(match.p2State);
   p1State.ready = false;
@@ -50,6 +69,8 @@ export function initialRuntimeHash(match: Match): Record<string, string> {
     matchId: match.id,
     player1Id: match.player1Id,
     player2Id: match.player2Id,
+    player1Name: names.player1Name,
+    player2Name: names.player2Name,
     matchSeed: match.matchSeed,
     phase: 'shop_place',
     round: '1',
@@ -60,6 +81,9 @@ export function initialRuntimeHash(match: Match): Record<string, string> {
     wipeIndexP1: String(match.wipeIndexP1 ?? 0),
     wipeIndexP2: String(match.wipeIndexP2 ?? 0),
     combatRound: '',
+    scoutRound: '',
+    scoutP1Board: JSON.stringify(emptyBoardSummary()),
+    scoutP2Board: JSON.stringify(emptyBoardSummary()),
   };
 }
 
@@ -75,6 +99,8 @@ export function parseRuntimeHash(
       matchId,
       player1Id: hash.player1Id,
       player2Id: hash.player2Id,
+      player1Name: hash.player1Name || 'ผู้เล่น 1',
+      player2Name: hash.player2Name || 'ผู้เล่น 2',
       matchSeed: hash.matchSeed,
       phase: hash.phase,
       round,
@@ -85,10 +111,59 @@ export function parseRuntimeHash(
       wipeIndexP1: nonNegativeInt(hash.wipeIndexP1),
       wipeIndexP2: nonNegativeInt(hash.wipeIndexP2),
       combatRound: positiveInt(hash.combatRound),
+      scoutRound: positiveInt(hash.scoutRound),
+      scoutP1Board: normalizeBoardSummary(hash.scoutP1Board),
+      scoutP2Board: normalizeBoardSummary(hash.scoutP2Board),
     };
   } catch {
     return null;
   }
+}
+
+export function summarizeBoard(
+  board: Array<RuntimeUnitState | null>,
+): OpponentBoardSummary {
+  return Array.from({ length: 9 }, (_, index) => {
+    const unit = board[index];
+    return unit && isUnitId(unit.unitId) && isStar(unit.star)
+      ? { unitId: unit.unitId, star: unit.star }
+      : null;
+  });
+}
+
+export function matchStatePayload(
+  runtime: MatchRuntimeState,
+  side: 'p1' | 'p2',
+  own: RuntimePlayerState,
+  opponent: RuntimePlayerState,
+  readyCount: number,
+) {
+  const scoutBoard = side === 'p1' ? runtime.scoutP2Board : runtime.scoutP1Board;
+  return {
+    matchId: runtime.matchId,
+    round: runtime.round,
+    yourSide: side,
+    roster: {
+      username: side === 'p1' ? runtime.player1Name : runtime.player2Name,
+      board: own.board,
+      bench: own.bench,
+      gold: own.gold,
+      hp: own.hp,
+    },
+    opponent: {
+      username: side === 'p1' ? runtime.player2Name : runtime.player1Name,
+      gold: opponent.gold,
+      hp: opponent.hp,
+      scoutRound: runtime.scoutRound,
+      boardSummary: scoutBoard,
+      // The live board is deliberately absent during planning. It is sent
+      // only after the server has locked both rosters for battle.
+      battleBoardSummary: runtime.phase === 'battle'
+        ? summarizeBoard(opponent.board)
+        : null,
+    },
+    readyCount,
+  };
 }
 
 export function normalizePlayerState(value: unknown): RuntimePlayerState {
@@ -135,6 +210,27 @@ function normalizeSlots(value: unknown, length: number): Array<RuntimeUnitState 
     { length },
     (_, index) => isRecord(input[index]) ? input[index] as RuntimeUnitState : null,
   );
+}
+
+function emptyBoardSummary(): OpponentBoardSummary {
+  return Array<null>(9).fill(null);
+}
+
+function normalizeBoardSummary(value: string | undefined): OpponentBoardSummary {
+  if (!value) return emptyBoardSummary();
+  try {
+    const input = JSON.parse(value) as unknown;
+    if (!Array.isArray(input)) return emptyBoardSummary();
+    return Array.from({ length: 9 }, (_, index) => {
+      const entry = input[index];
+      if (!isRecord(entry) || !isUnitId(entry.unitId) || !isStar(entry.star)) {
+        return null;
+      }
+      return { unitId: entry.unitId, star: entry.star };
+    });
+  } catch {
+    return emptyBoardSummary();
+  }
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

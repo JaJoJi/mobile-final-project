@@ -1,6 +1,7 @@
 import 'package:auto_chess_mobile/core/auth/auth_gate.dart';
 import 'package:auto_chess_mobile/core/ws/ws_client.dart';
 import 'package:auto_chess_mobile/core/ws/ws_providers.dart';
+import 'package:auto_chess_mobile/features/history/history_providers.dart';
 import 'package:auto_chess_mobile/features/lobby/profile_card.dart';
 import 'package:auto_chess_mobile/features/profile/settings_provider.dart';
 import 'package:auto_chess_mobile/main.dart';
@@ -70,6 +71,7 @@ void main() {
               'rating': 1000,
             },
           ),
+          matchHistoryProvider.overrideWith((ref) async => []),
         ],
         child: const AutoChessApp(),
       ),

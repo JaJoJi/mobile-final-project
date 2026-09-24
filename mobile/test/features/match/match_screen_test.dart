@@ -117,8 +117,8 @@ void main() {
     expect(frameAssets, isNot(contains(GameUiAssets.hudEnemyFrame)));
     expect(buttonAssets, contains(GameUiAssets.readyButtonFrame));
     expect(
-      tester.getCenter(find.text('คุณ')).dx,
-      lessThan(tester.getCenter(find.text('คู่แข่ง')).dx),
+      tester.getCenter(find.text('player1')).dx,
+      lessThan(tester.getCenter(find.text('player2')).dx),
     );
     final verticalLists = tester
         .widgetList<ListView>(find.byType(ListView))
@@ -473,11 +473,40 @@ void main() {
     emitBoardUnit(0);
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 520));
+    final boardSlot = find.byKey(const ValueKey('board-0'));
+    final sizeBeforeUpgrade = tester.getSize(boardSlot);
+    expect(
+      find.descendant(
+        of: boardSlot,
+        matching: find.byWidgetPredicate(
+          (widget) =>
+              widget is Image &&
+              widget.image is AssetImage &&
+              (widget.image as AssetImage).assetName ==
+                  'assets/images/units/fighter_1.png',
+        ),
+      ),
+      findsOneWidget,
+    );
+
     emitBoardUnit(1);
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 40));
 
-    final boardSlot = find.byKey(const ValueKey('board-0'));
+    expect(tester.getSize(boardSlot), sizeBeforeUpgrade);
+    expect(
+      find.descendant(
+        of: boardSlot,
+        matching: find.byWidgetPredicate(
+          (widget) =>
+              widget is Image &&
+              widget.image is AssetImage &&
+              (widget.image as AssetImage).assetName ==
+                  'assets/images/units/fighter_2.png',
+        ),
+      ),
+      findsOneWidget,
+    );
     final stone = tester.widget<StoneBoardTile>(
       find.descendant(of: boardSlot, matching: find.byType(StoneBoardTile)),
     );
@@ -490,7 +519,7 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('long press opens unit details and opponent scout opens board',
+  testWidgets('round one reports that scouting data is not available yet',
       (tester) async {
     final transport = FakeWsTransport();
     final client = WsClient(
@@ -502,7 +531,36 @@ void main() {
     final connected = client.connect();
     transport.serverConnect();
     await connected;
-    _seed(transport, withUnits: true);
+    _seed(transport);
+
+    await pumpScreen(
+      tester,
+      const MatchScreen(matchId: 'm1'),
+      overrides: [wsClientProvider.overrideWithValue(client)],
+      surfaceSize: const Size(360, 640),
+    );
+    await tester.pump();
+
+    final unavailable = find.text('ยังไม่มีข้อมูลการสอดแนม');
+    await tester.ensureVisible(unavailable);
+    await tester.pump(const Duration(milliseconds: 300));
+    expect(unavailable, findsOneWidget);
+    expect(find.byKey(const ValueKey('opponent-scout-grid')), findsNothing);
+  });
+
+  testWidgets('long press opens unit details and previous-round scout board',
+      (tester) async {
+    final transport = FakeWsTransport();
+    final client = WsClient(
+      url: 'ws://localhost',
+      getAccessToken: () async => 'token',
+      transport: transport,
+    );
+    addTearDown(client.dispose);
+    final connected = client.connect();
+    transport.serverConnect();
+    await connected;
+    _seed(transport, withUnits: true, scoutRound: 1);
 
     await pumpScreen(
       tester,
@@ -522,12 +580,12 @@ void main() {
     Navigator.of(tester.element(find.text('นักรบ'))).pop();
     await tester.pump(const Duration(milliseconds: 500));
 
-    final scout = find.text('สอดแนมคู่แข่ง');
+    final scout = find.text('ทีมคู่แข่งจากรอบ 1');
     await tester.ensureVisible(scout);
     await tester.pump(const Duration(milliseconds: 300));
     await tester.tap(scout);
     await tester.pump(const Duration(milliseconds: 500));
-    expect(find.text('กระดานคู่แข่ง'), findsOneWidget);
+    expect(find.text('ทีมคู่แข่งจากรอบ 1'), findsNWidgets(2));
     final scoutGrid = tester.getSize(
       find.byKey(const ValueKey('opponent-scout-grid')),
     );
@@ -543,6 +601,37 @@ void main() {
       ),
     );
     expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('legacy snapshot without scoutRound remains tappable',
+      (tester) async {
+    final transport = FakeWsTransport();
+    final client = WsClient(
+      url: 'ws://localhost',
+      getAccessToken: () async => 'token',
+      transport: transport,
+    );
+    addTearDown(client.dispose);
+    final connected = client.connect();
+    transport.serverConnect();
+    await connected;
+    _seed(transport, round: 3, legacyScoutUnit: true);
+
+    await pumpScreen(
+      tester,
+      const MatchScreen(matchId: 'm1'),
+      overrides: [wsClientProvider.overrideWithValue(client)],
+      surfaceSize: const Size(360, 640),
+    );
+    await tester.pump();
+
+    final scout = find.text('ทีมคู่แข่งจากรอบ 2');
+    await tester.ensureVisible(scout);
+    await tester.pump();
+    await tester.tap(scout);
+    await tester.pump(const Duration(milliseconds: 300));
+    expect(find.byKey(const ValueKey('opponent-scout-grid')), findsOneWidget);
+    expect(find.text('ทีมคู่แข่งจากรอบ 2'), findsNWidgets(2));
   });
 
   testWidgets('shows round damage then the complete match result',
@@ -749,11 +838,15 @@ void main() {
     final playerBoard = tester.getCenter(
       find.byKey(const ValueKey('battle-player-board')),
     );
-    final opponentLabel = tester.getCenter(find.text('คู่แข่ง').last);
-    final playerLabel = tester.getCenter(find.text('คุณ').last);
+    final opponentLabel = tester.getCenter(find.text('player2').last);
+    final playerLabel = tester.getCenter(find.text('player1').last);
     final skip = tester.getCenter(
       find.byKey(const ValueKey('skip-combat-button')),
     );
+    expect(find.text('player1'), findsAtLeastNWidgets(2));
+    expect(find.text('player2'), findsAtLeastNWidgets(2));
+    expect(find.text('คุณ'), findsNothing);
+    expect(find.text('คู่แข่ง'), findsNothing);
     expect(opponentBoard.dy, lessThan(versus.dy));
     expect(damageLane.height, AppSpacing.xxl);
     expect(versus.dy, lessThan(playerBoard.dy));
@@ -857,11 +950,14 @@ void _seed(
   FakeWsTransport transport, {
   bool withUnits = false,
   int gold = 5,
+  int? scoutRound,
+  int round = 1,
+  bool legacyScoutUnit = false,
 }) {
   transport.emitFromServer(GameEvents.matchPhase, {
     'matchId': 'm1',
     'phase': 'shop_place',
-    'round': 1,
+    'round': round,
     'timer': 40,
     'players': [
       {'id': 'p1', 'hp': 100, 'gold': gold, 'ready': false},
@@ -870,9 +966,10 @@ void _seed(
   });
   transport.emitFromServer(GameEvents.matchState, {
     'matchId': 'm1',
-    'round': 1,
+    'round': round,
     'yourSide': 'p1',
     'roster': {
+      'username': 'player1',
       'board': List<Object?>.filled(9, null),
       'bench': [
         if (withUnits)
@@ -891,15 +988,21 @@ void _seed(
       'hp': 100,
     },
     'opponent': {
+      'username': 'player2',
       'gold': 5,
       'hp': 100,
-      'boardSummary': List<Object?>.filled(9, null),
+      'scoutRound': scoutRound,
+      'boardSummary': [
+        if (legacyScoutUnit) {'unitId': 'tank', 'star': 1} else null,
+        ...List<Object?>.filled(8, null),
+      ],
+      'battleBoardSummary': null,
     },
     'readyCount': 0,
   });
   transport.emitFromServer(GameEvents.shopOffer, {
     'matchId': 'm1',
-    'round': 1,
+    'round': round,
     'offers': [
       {'offerId': '1', 'unitId': 'fighter', 'star': 0},
       {'offerId': '2', 'unitId': 'healer', 'star': 0},

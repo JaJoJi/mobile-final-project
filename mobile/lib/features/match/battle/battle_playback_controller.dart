@@ -13,37 +13,11 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../shared/models/combat_event.dart';
 import 'battle_visual_state.dart';
 
-/// Preferred duration for each combat event on the playhead. Raised from
-/// the original 600ms (locked Step 2 plan) over successive rounds of live
-/// testing — 600 → 1000 → 1600ms — because combat kept reading as too
-/// fast to follow once the melee travel animation landed (P4-FE-01).
-/// Each attack now owns ~1.6s, which the attacker spends travelling to
-/// its target and back.
+/// Fixed duration for every combat event on the playhead.
 ///
-/// This is a *preferred* rate, not a guarantee — see [kMaxCombatPlayback]
-/// and [combatPlaybackDuration]. It is also the single knob for combat
-/// pacing: nothing else hardcodes a per-event duration.
-const Duration kCombatEventDuration = Duration(milliseconds: 1600);
-
-/// Hard ceiling on one round's replay. The server abandons a round after
-/// `COMBAT_DONE_TIMEOUT_MS` (60s) if it hasn't received both clients'
-/// `combat_done` acks, so a replay longer than that hangs the match: a
-/// real 77-event round at the preferred rate would run over two minutes.
-/// Long rounds compress rather than overrun.
-///
-/// Raised from 45s to 52s post-merge: the Ranger SPD nerf (90 → 67, see
-/// `constants.ts`) means real matches now regularly run long enough —
-/// several units still alive several cycles in — to push a round well
-/// past the ~28-event point where this ceiling used to start
-/// compressing. Every round past that point was replaying compressed
-/// (each event getting less than its preferred 1.6s), which read as
-/// "combat is fast" exactly for the rounds that should showcase the
-/// slower pacing that nerf bought. Kept 8s under the server's 60s
-/// timeout — still comfortable margin for a slow client's ack (see
-/// [combatPlaybackDuration]'s caller, `+500ms` on the ack timer) —
-/// instead of raising [kCombatEventDuration] itself, which would recompress
-/// short rounds too.
-const Duration kMaxCombatPlayback = Duration(seconds: 52);
+/// The total replay is intentionally allowed to grow with the event count.
+/// This keeps attacks at the same readable speed regardless of team size.
+const Duration kCombatEventDuration = Duration(milliseconds: 800);
 
 /// Most of a replay a late client is allowed to fast-forward past so it
 /// can line up with the client that got the batch first.
@@ -63,18 +37,15 @@ const Duration kMaxCombatPlayback = Duration(seconds: 52);
 /// was drawn.
 ///
 /// The cost of the cap is that a genuine mid-replay reconnect now
-/// over-plays instead of catching up, and may miss the server's
-/// `COMBAT_DONE_TIMEOUT_MS` window — in which case the server advances
-/// the round itself. Playing combat and occasionally falling back to the
-/// server timeout is the better failure of the two.
+/// over-plays instead of catching up. The server deadline grows with the
+/// replay length, but can still advance the round if a client stalls. Playing
+/// combat and occasionally falling back to that deadline is the better
+/// failure of the two.
 const Duration kMaxPlaybackCatchUp = Duration(seconds: 3);
 
-/// Total playback time for [eventCount] events: the preferred rate, or a
-/// compressed rate when that would exceed [kMaxCombatPlayback].
-Duration combatPlaybackDuration(int eventCount) {
-  final preferred = kCombatEventDuration * eventCount;
-  return preferred > kMaxCombatPlayback ? kMaxCombatPlayback : preferred;
-}
+/// Total playback time for [eventCount] events at the fixed event rate.
+Duration combatPlaybackDuration(int eventCount) =>
+    kCombatEventDuration * eventCount;
 
 class BattlePlaybackController extends StateNotifier<BattleVisualState> {
   BattlePlaybackController() : super(BattleVisualState.empty);

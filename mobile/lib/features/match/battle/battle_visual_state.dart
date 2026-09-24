@@ -38,6 +38,11 @@ class UnitDebuff {
   final Color color;
 }
 
+/// Lightweight impact language used by [BattleTile]. The projectile itself is
+/// animated by the combat overlay; this describes only the small effect shown
+/// when it reaches the target.
+enum HitEffectKind { slash, tankImpact, projectile }
+
 /// Per-unit visual state derived from the server snapshot at the current
 /// playhead position. Consumed by [BattleTile] to render the correct
 /// sprite, HP bar, and alive/dead state.
@@ -51,7 +56,9 @@ class UnitVisualState {
     this.floatingDamage,
     this.floatingIsHeal = false,
     this.healEventIndex,
+    this.isHealerHeal = false,
     this.lastDamageEventIndex,
+    this.hitEffectKind,
     this.recoilEventIndex,
     this.recoilDx = 0,
     this.recoilDy = 0,
@@ -71,9 +78,17 @@ class UnitVisualState {
   /// [BattleTile] uses this as a trigger key for the heal bubble animation.
   final int? healEventIndex;
 
+  /// Whether [healEventIndex] came from a Healer `heal` event rather than
+  /// Fighter lifesteal. Both restore HP, but only Healer owns the ornate
+  /// green-and-gold sigil.
+  final bool isHealerHeal;
+
   /// Index of the most recent damage event targeting this unit.
   /// [BattleTile] uses this as a trigger key for the hit shake animation.
   final int? lastDamageEventIndex;
+
+  /// Visual impact associated with [lastDamageEventIndex].
+  final HitEffectKind? hitEffectKind;
 
   /// Index of the most recent melee attack event this unit was the
   /// attacker in. [BattleTile] uses this as a trigger key for a small
@@ -117,6 +132,7 @@ Map<UnitKey, UnitVisualState> deriveUnitStates({
   required List<Unit?> playerBoard,
   required List<Unit?> opponentBoard,
   required MatchSide mySide,
+  CombatBoardState? initialBoard,
   bool currentEventLanded = true,
 }) {
   if (events.isEmpty) return const {};
@@ -147,20 +163,34 @@ Map<UnitKey, UnitVisualState> deriveUnitStates({
     }
   }
 
-  if (snapshotEvent == null) return const {};
-
-  // Build the map from the server snapshot.
   final map = <UnitKey, UnitVisualState>{};
-  for (final snap in snapshotEvent.unitStates!) {
-    final key = UnitKey(side: snap.side, slot: snap.slot);
-    map[key] = UnitVisualState(
-      unitId: snap.unitId,
-      star: snap.star,
-      hp: snap.hp,
-      maxHp: snap.maxHp,
-      alive: snap.alive,
-    );
+  if (snapshotEvent != null) {
+    // Prefer the authoritative snapshot at the current playhead.
+    for (final snap in snapshotEvent.unitStates!) {
+      final key = UnitKey(side: snap.side, slot: snap.slot);
+      map[key] = UnitVisualState(
+        unitId: snap.unitId,
+        star: snap.star,
+        hp: snap.hp,
+        maxHp: snap.maxHp,
+        alive: snap.alive,
+      );
+    }
+  } else if (initialBoard != null) {
+    // A freshly mounted replay can arrive before an event snapshot, and
+    // older backend builds did not attach snapshots to every event. The
+    // batch's authoritative starting board keeps both teams visible.
+    _addCombatBoard(map, initialBoard.p1, MatchSide.p1);
+    _addCombatBoard(map, initialBoard.p2, MatchSide.p2);
+  } else {
+    // Last-resort compatibility for batches produced before `initialBoard`
+    // existed. These are viewer-relative boards from the match state.
+    final enemySide = mySide == MatchSide.p1 ? MatchSide.p2 : MatchSide.p1;
+    _addRosterBoard(map, playerBoard, mySide);
+    _addRosterBoard(map, opponentBoard, enemySide);
   }
+
+  if (map.isEmpty) return const {};
 
   // --- Precompute debuff expirations ---
   // Slow persists until the Healer attacks again (per combat spec §2.3).
@@ -193,11 +223,13 @@ Map<UnitKey, UnitVisualState> deriveUnitStates({
   // --- Precompute heal event trigger keys ---
   // healEventIndex[unitKey] = most recent heal/lifesteal event index ≤ limit.
   final healEventIndex = <UnitKey, int>{};
+  final healerHealEventIndex = <UnitKey, int>{};
   for (var i = 0; i <= landedLimit; i++) {
     final e = events[i];
     UnitKey? target;
     if (e is HealEvent && e.targetSide != null && e.targetSlot != null) {
       target = UnitKey(side: e.targetSide!, slot: e.targetSlot!);
+      healerHealEventIndex[target] = i;
     } else if (e is LifestealEvent &&
         e.unitSide != null &&
         e.unitSlot != null) {
@@ -212,18 +244,28 @@ Map<UnitKey, UnitVisualState> deriveUnitStates({
   // lastDamage[unitKey] = most recent attack/pierce event index targeting
   // this unit at or before limit.
   final lastDamage = <UnitKey, int>{};
+  final hitEffectKinds = <UnitKey, HitEffectKind>{};
   for (var i = 0; i <= landedLimit; i++) {
     final e = events[i];
     UnitKey? target;
+    HitEffectKind? hitEffectKind;
     if (e is AttackEvent && e.targetSide != null && e.targetSlot != null) {
       target = UnitKey(side: e.targetSide!, slot: e.targetSlot!);
+      hitEffectKind = switch (e.attackerUnitId) {
+        UnitId.fighter => HitEffectKind.slash,
+        UnitId.tank => HitEffectKind.tankImpact,
+        UnitId.ranger || UnitId.healer => HitEffectKind.projectile,
+        _ => null,
+      };
     } else if (e is PierceEvent &&
         e.targetSide != null &&
         e.targetSlot != null) {
       target = UnitKey(side: e.targetSide!, slot: e.targetSlot!);
+      hitEffectKind = HitEffectKind.projectile;
     }
     if (target != null) {
       lastDamage[target] = i;
+      if (hitEffectKind != null) hitEffectKinds[target] = hitEffectKind;
     }
   }
 
@@ -355,7 +397,10 @@ Map<UnitKey, UnitVisualState> deriveUnitStates({
       floatingDamage: existing.floatingDamage,
       floatingIsHeal: existing.floatingIsHeal,
       healEventIndex: healEventIndex[key],
+      isHealerHeal: healEventIndex[key] != null &&
+          healerHealEventIndex[key] == healEventIndex[key],
       lastDamageEventIndex: lastDamage[key],
+      hitEffectKind: hitEffectKinds[key],
       recoilEventIndex: r?.index,
       recoilDx: r?.dx ?? 0,
       recoilDy: r?.dy ?? 0,
@@ -370,6 +415,42 @@ Map<UnitKey, UnitVisualState> deriveUnitStates({
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
+
+void _addCombatBoard(
+  Map<UnitKey, UnitVisualState> map,
+  List<CombatUnit?> board,
+  MatchSide side,
+) {
+  for (var slot = 0; slot < board.length; slot++) {
+    final unit = board[slot];
+    if (unit == null) continue;
+    map[UnitKey(side: side, slot: slot)] = UnitVisualState(
+      unitId: unit.unitId,
+      star: unit.star,
+      hp: unit.hp,
+      maxHp: unit.maxHp,
+      alive: unit.hp > 0,
+    );
+  }
+}
+
+void _addRosterBoard(
+  Map<UnitKey, UnitVisualState> map,
+  List<Unit?> board,
+  MatchSide side,
+) {
+  for (var slot = 0; slot < board.length; slot++) {
+    final unit = board[slot];
+    if (unit == null) continue;
+    map[UnitKey(side: side, slot: slot)] = UnitVisualState(
+      unitId: unit.unitId,
+      star: unit.star,
+      hp: unit.hp,
+      maxHp: unit.maxHp,
+      alive: unit.hp > 0,
+    );
+  }
+}
 
 /// Set a floating damage/heal number on a unit.
 void _setFloating(

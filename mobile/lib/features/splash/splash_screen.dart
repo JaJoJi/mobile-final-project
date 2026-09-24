@@ -6,6 +6,8 @@ import 'package:go_router/go_router.dart';
 
 import '../../core/auth/auth_gate.dart';
 import '../../core/auth/auth_repository.dart';
+import '../../core/platform/bootstrap_overlay.dart';
+import '../../core/theme/app_spacing.dart';
 
 /// Auth gate shown on launch (design spec §4.1).
 ///
@@ -49,6 +51,10 @@ class _SplashScreenState extends ConsumerState<SplashScreen> {
         : AuthGate.instance.signalSignedOut();
     // Nudge the router in case the redirect didn't already fire.
     if (mounted) context.go(signedIn ? '/lobby' : '/login');
+    // On web, keep the HTML bootstrap above this internal auth route until
+    // the actual destination has painted. This prevents a second splash from
+    // flashing between the browser bootstrap and Login / Lobby.
+    WidgetsBinding.instance.addPostFrameCallback((_) => hideBootstrapOverlay());
   }
 
   Future<void> _resolve() async {
@@ -68,18 +74,69 @@ class _SplashScreenState extends ConsumerState<SplashScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final t = Theme.of(context);
     return Scaffold(
-      body: Center(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(Icons.castle, size: 72, color: t.colorScheme.primary),
-            const SizedBox(height: 16),
-            Text('Auto Chess', style: t.textTheme.headlineMedium),
-            const SizedBox(height: 24),
-            const CircularProgressIndicator(),
-          ],
+      backgroundColor: const Color(0xFF071624),
+      body: DecoratedBox(
+        decoration: const BoxDecoration(
+          gradient: RadialGradient(
+            center: Alignment(0, -0.25),
+            radius: 1.15,
+            colors: [Color(0xFF183E58), Color(0xFF071624)],
+          ),
+        ),
+        child: Center(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: 88,
+                height: 88,
+                decoration: BoxDecoration(
+                  color: const Color(0xE60D2639),
+                  borderRadius: AppRadius.allLg,
+                  border: Border.all(color: const Color(0xB359B7E8)),
+                  boxShadow: const [
+                    BoxShadow(
+                      color: Color(0x66000000),
+                      blurRadius: 28,
+                      offset: Offset(0, 12),
+                    ),
+                  ],
+                ),
+                child: const Icon(
+                  Icons.shield_rounded,
+                  size: 54,
+                  color: Color(0xFFFFD35A),
+                ),
+              ),
+              const SizedBox(height: 22),
+              Text(
+                'เตรียมเข้าสู่สนาม',
+                style: Theme.of(context).textTheme.labelLarge?.copyWith(
+                      color: const Color(0xFF77D8FF),
+                      fontWeight: FontWeight.w700,
+                      letterSpacing: 2.4,
+                    ),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                'ออโต้เชส',
+                style: Theme.of(context).textTheme.displaySmall?.copyWith(
+                      color: const Color(0xFFFFF5D6),
+                      fontWeight: FontWeight.w800,
+                    ),
+              ),
+              const SizedBox(height: 24),
+              const SizedBox(
+                width: 28,
+                height: 28,
+                child: CircularProgressIndicator(
+                  strokeWidth: 3,
+                  color: Color(0xFF77D8FF),
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );

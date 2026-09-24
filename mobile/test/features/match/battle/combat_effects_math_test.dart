@@ -19,6 +19,19 @@ const _attack = AttackEvent(
 );
 
 void main() {
+  test('melee travel eases both legs without moving the impact time', () {
+    expect(meleeTravel(0), 0);
+    expect(meleeTravel(0.5), 1);
+    expect(meleeTravel(1), 0);
+    expect(meleeTravel(0.001), lessThan(0.00002));
+    expect(1 - meleeTravel(0.499), lessThan(0.00002));
+    for (var i = 1; i <= 50; i++) {
+      final t = i / 100;
+      expect(meleeTravel(t), greaterThan(meleeTravel(t - 0.01)));
+      expect(meleeTravel(t), closeTo(meleeTravel(1 - t), 0.000001));
+    }
+  });
+
   group('currentEventEffect', () {
     test('returns null for an empty event list', () {
       expect(currentEventEffect(const [], 0.5), isNull);
@@ -169,6 +182,18 @@ void main() {
       amount: 10,
       targetHpAfter: 100,
     );
+    const positionedHeal = HealEvent(
+      cycle: 1,
+      tick: 1,
+      by: 'h',
+      target: 'b',
+      amount: 10,
+      targetHpAfter: 100,
+      bySide: MatchSide.p1,
+      bySlot: 0,
+      targetSide: MatchSide.p1,
+      targetSlot: 4,
+    );
 
     test('a melee attack lands at the peak of its lunge', () {
       // triangleWave peaks at 0.5, which is exactly where the attacker
@@ -200,6 +225,11 @@ void main() {
 
     test('an event with no travel lands immediately', () {
       expect(impactFraction(heal), 0.0);
+    });
+
+    test('a positioned heal lands when its source energy arrives', () {
+      expect(impactFraction(positionedHeal), kHealImpactFraction);
+      expect(healTravel(kHealImpactFraction / 2), closeTo(0.5, 0.001));
     });
   });
 

@@ -17,6 +17,7 @@ import '../../core/widgets/game_asset_button.dart';
 import '../../core/widgets/health_bar.dart';
 import '../../core/widgets/phase_timer_ring.dart';
 import '../../core/widgets/state_views.dart';
+import '../../core/widgets/unit_avatar.dart';
 import '../../core/ws/ws_client.dart';
 import '../../core/ws/ws_providers.dart';
 import '../../shared/models/game_events.dart';
@@ -42,14 +43,18 @@ class _MatchScreenState extends ConsumerState<MatchScreen> {
   DateTime? _deadline;
   String? _phaseKey;
   final DateTime _openedAt = DateTime.now();
-  bool _didPrecacheHud = false;
+  bool _didPrecacheMatchArt = false;
 
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    if (_didPrecacheHud) return;
-    _didPrecacheHud = true;
-    for (final path in [...GameUiAssets.hud, ...GameBackgroundAssets.all]) {
+    if (_didPrecacheMatchArt) return;
+    _didPrecacheMatchArt = true;
+    for (final path in [
+      ...GameUiAssets.hud,
+      ...GameBackgroundAssets.all,
+      ...allUnitArtPaths,
+    ]) {
       precacheImage(AssetImage(path), context);
     }
   }
@@ -368,10 +373,26 @@ class _MatchHud extends StatelessWidget {
   final MatchState match;
   final DateTime deadline;
 
+  String _playerName(MatchSide side, String? stateName) {
+    final current = stateName?.trim();
+    if (current != null && current.isNotEmpty) return current;
+
+    final index = side == MatchSide.p1 ? 0 : 1;
+    if (index < phase.players.length) {
+      final phaseName = phase.players[index].username?.trim();
+      if (phaseName != null && phaseName.isNotEmpty) return phaseName;
+    }
+    return side == MatchSide.p1 ? 'ผู้เล่น 1' : 'ผู้เล่น 2';
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final game = theme.extension<GameTheme>()!;
+    final opponentSide =
+        match.yourSide == MatchSide.p1 ? MatchSide.p2 : MatchSide.p1;
+    final playerName = _playerName(match.yourSide, match.roster.username);
+    final opponentName = _playerName(opponentSide, match.opponent.username);
     return Material(
       color: Colors.transparent,
       child: SafeArea(
@@ -407,7 +428,7 @@ class _MatchHud extends StatelessWidget {
                     children: [
                       Expanded(
                         child: _PlayerHp(
-                          label: 'คุณ',
+                          label: playerName,
                           hp: match.roster.hp,
                           icon: Icons.shield_outlined,
                           color: game.ally,
@@ -419,7 +440,7 @@ class _MatchHud extends StatelessWidget {
                       ),
                       Expanded(
                         child: _PlayerHp(
-                          label: 'คู่แข่ง',
+                          label: opponentName,
                           hp: match.opponent.hp,
                           icon: Icons.sports_martial_arts_outlined,
                           color: game.enemy,

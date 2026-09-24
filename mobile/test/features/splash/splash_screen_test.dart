@@ -33,7 +33,7 @@ void main() {
     await tester.pump(); // first frame, before _resolve settles
 
     expect(find.byType(SplashScreen), findsOneWidget);
-    expect(find.text('Auto Chess'), findsOneWidget);
+    expect(find.text('ออโต้เชส'), findsOneWidget);
     expect(find.byType(CircularProgressIndicator), findsOneWidget);
 
     await tester.pumpAndSettle(); // drain the resolve future + fallback timer

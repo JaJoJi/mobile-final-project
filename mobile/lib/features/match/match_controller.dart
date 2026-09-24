@@ -300,7 +300,7 @@ class MatchController extends StateNotifier<MatchViewState> {
   void ready() => toggleReady();
 
   /// Skips local playback by acknowledging the server's combat batch.
-  /// The server still waits for both players (or its 60-second fallback),
+  /// The server still waits for both players (or its replay-length fallback),
   /// so one player cannot force the other player to skip.
   void skipCombat() {
     final phase = state.phase;
@@ -389,9 +389,16 @@ class MatchController extends StateNotifier<MatchViewState> {
     });
   }
 
-  void fuse(Unit source, [Unit? target]) {
+  void fuse(Unit source, Unit target) {
     final match = state.match;
-    if (!state.canAct || match == null) return;
+    if (!state.canAct ||
+        match == null ||
+        source.instanceId == target.instanceId ||
+        source.unitId != target.unitId ||
+        source.star != target.star ||
+        source.star >= 2) {
+      return;
+    }
     final actionId = _actionId();
     _beginOptimistic();
     state = state.copyWith(
@@ -401,10 +408,8 @@ class MatchController extends StateNotifier<MatchViewState> {
     _client.emit(GameActions.shopFuse, {
       'round': match.round,
       'unitId': source.unitId.toJson(),
-      if (target != null) ...{
-        'sourceInstanceId': source.instanceId,
-        'targetInstanceId': target.instanceId,
-      },
+      'sourceInstanceId': source.instanceId,
+      'targetInstanceId': target.instanceId,
       'clientActionId': actionId,
     });
   }

@@ -37,6 +37,13 @@ double triangleWave(double subProgress) {
   return t <= 0.5 ? t * 2 : (1 - t) * 2;
 }
 
+/// Smooth acceleration and braking, with the original impact at 50%.
+/// Zero velocity at departure, impact and return avoids a sharp reversal.
+double meleeTravel(double subProgress) {
+  final t = triangleWave(subProgress);
+  return t * t * (3 - 2 * t);
+}
+
 /// Local-space center of board [slot] (0-8, row-major: depth = slot ~/ 3
 /// front..back, lane = slot % 3) inside a 3x3 grid sized [boardWidth] x
 /// [boardHeight], with [spacing] between cells (matching the `GridView`'s
@@ -92,6 +99,13 @@ Offset tileLocalCenter({
 /// connects and only then disappears. Anything without travel — heals,
 /// lifesteal, pierce, cycle bookkeeping — lands immediately.
 double impactFraction(CombatEvent event) {
+  if (event is HealEvent) {
+    final canTravel = event.bySide != null &&
+        event.bySlot != null &&
+        event.targetSide != null &&
+        event.targetSlot != null;
+    return canTravel ? kHealImpactFraction : 0.0;
+  }
   if (event is! AttackEvent) return 0.0;
   final attackerUnitId = event.attackerUnitId;
   if (attackerUnitId == null) return 0.0;
@@ -106,6 +120,10 @@ double impactFraction(CombatEvent event) {
 /// that happens as the next event starts.
 const double kProjectileImpactFraction = 0.9;
 
+/// Heals arrive earlier than damaging projectiles, leaving a readable beat
+/// for the target burst and floating +HP number in the same event window.
+const double kHealImpactFraction = 0.72;
+
 /// Flight progress of a projectile from [subProgress] of its window: 0 at
 /// the muzzle, 1 standing on the target. The shot completes its travel at
 /// [kProjectileImpactFraction] rather than being still 10% short when it
@@ -113,6 +131,9 @@ const double kProjectileImpactFraction = 0.9;
 /// disappears (#215).
 double projectileTravel(double subProgress) =>
     (subProgress.clamp(0.0, 1.0) / kProjectileImpactFraction).clamp(0.0, 1.0);
+
+double healTravel(double subProgress) =>
+    (subProgress.clamp(0.0, 1.0) / kHealImpactFraction).clamp(0.0, 1.0);
 
 /// Whether [event]'s outcome has landed by [subProgress] of its window.
 /// A `null` event has nothing in flight.
