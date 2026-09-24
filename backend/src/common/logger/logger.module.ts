@@ -28,6 +28,36 @@ const isProd = process.env.NODE_ENV === 'production';
 // emit raw JSON and never need the module resolvable.
 const usePretty = process.env.NODE_ENV === 'development';
 
+// P3-DO-21 — pino-loki pushes directly to Loki (no Promtail agent for
+// app logs — only nginx's ModSecurity log needs one, see
+// promtail/promtail.yml). `pino/file` with destination 1 keeps stdout
+// output alongside it: mtail (mtail/pino.mtail) still reads stdout via
+// Docker's json-file log driver, so replacing stdout with a single
+// Loki-only transport would silently break mtail's counters — verified
+// both targets fire from the same logger before wiring this in.
+const lokiTransportTarget = {
+  targets: [
+    { target: 'pino/file', options: { destination: 1 }, level: 'trace' },
+    {
+      target: 'pino-loki',
+      options: {
+        host: process.env.LOKI_URL ?? 'http://loki:3100',
+        labels: { app: 'auto-chess-backend' },
+        // Found live: pino-loki@3.0.0's default batching (multiple
+        // streams in one push) sent Loki a malformed body — Loki
+        // rejected every batch with "unmarshalerDecoder: Value looks
+        // like Number/Boolean/None, but can't find its end" and
+        // silently dropped all those logs. One HTTP push per line
+        // costs more requests but was the config that actually got
+        // logs into Loki when tested for real; revisit if pino-loki
+        // fixes batch serialization in a later version.
+        batching: false,
+      },
+      level: 'trace',
+    },
+  ],
+};
+
 @Module({
   imports: [
     PinoLoggerModule.forRoot({
@@ -50,6 +80,16 @@ const usePretty = process.env.NODE_ENV === 'development';
           res.setHeader('x-request-id', existing);
           return existing;
         },
+        // P3-DO-21 (revised) — no manual trace_id extraction here:
+        // tracing.ts's getNodeAutoInstrumentations() includes
+        // @opentelemetry/instrumentation-pino, which already injects
+        // trace_id/span_id/trace_flags into every pino line on its own.
+        // Found live: adding it here too produced literal duplicate
+        // "trace_id" keys in the JSON output (both instrumentation and
+        // this customProps writing the same field) — removed the
+        // redundant manual version, the auto-instrumentation is the
+        // single source now. Replaces the Beyla-traceparent approach,
+        // verified not to work (see git history for that writeup).
         customProps: (req: IncomingMessage & { id?: string }) => ({
           requestId: req.id,
         }),
@@ -76,14 +116,19 @@ const usePretty = process.env.NODE_ENV === 'development';
           censor: '[redacted]',
         },
 
-        // Human-readable only when NODE_ENV=development; raw JSON
-        // everywhere else (Promtail -> Loki, #138).
+        // Human-readable only when NODE_ENV=development; raw JSON to
+        // stdout (mtail) + pino-loki (Loki, full-text search) everywhere
+        // else — see lokiTransportTarget above (P3-DO-21; supersedes the
+        // stale "Promtail -> Loki, #138" this comment used to say —
+        // Promtail only handles nginx's ModSecurity log now, not this one).
         transport: usePretty
           ? {
               target: 'pino-pretty',
               options: { singleLine: true, translateTime: 'SYS:standard' },
             }
-          : undefined,
+          : isProd
+            ? lokiTransportTarget
+            : undefined, // test / unset NODE_ENV: plain stdout, no Loki dependency
       },
       // Health checks are noise — one per few seconds per instance.
       exclude: [

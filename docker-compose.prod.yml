@@ -3,16 +3,16 @@
 #   #223 -- vault service
 #   #224 -- built nginx/Dockerfile.modsec (nginx + ModSecurity + curated
 #           CRS), not wired in until this file had nest-1/2/3 to depend_on
-#   #221 (this) -- assembles the real topology: nest-1/2/3 (pull the
-#           Docker Hub image from #220, never build in prod), redis,
+#   #221 -- assembled the real topology: nest-1/2/3 (pull the Docker Hub
+#           image from #220, never build in prod), redis,
 #           postgres-primary/replica (adapted from docker-compose.yml),
 #           the #224 nginx image. pgadmin dropped (open decision
 #           resolved: dev-only DB admin UI, security risk if exposed
-#           publicly — excluded, matches the issue's own stated default).
+#           publicly - excluded, matches the issue's own stated default).
 #           Secrets come from a runtime .env file Ansible (#222) writes
-#           from Vault just before `docker compose up -d` — never
+#           from Vault just before `docker compose up -d` - never
 #           committed, regenerated every deploy.
-#   #225 -- beyla, mtail, prometheus, grafana, loki, promtail, tempo
+#   #225 (this) -- beyla, mtail, prometheus, grafana, loki, promtail, tempo
 name: auto_chess_prod
 services:
   vault:
@@ -133,6 +133,11 @@ services:
       JWT_ACCESS_TTL: ${JWT_ACCESS_TTL}
       JWT_REFRESH_TTL: ${JWT_REFRESH_TTL}
       COMBAT_DONE_TIMEOUT_MS: ${COMBAT_DONE_TIMEOUT_MS:-60000}
+      # P3-DO-21 (revised) — app's own OTel SDK (backend/src/tracing.ts)
+      # pushes traces here directly; Beyla no longer generates traces
+      # for nest-1/2/3 (see beyla-nest-1/2/3's OTEL_TRACES_EXPORTER=none
+      # below) — one trace producer per request, not two.
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://tempo:4318
     depends_on:
       postgres-primary:
         condition: service_healthy
@@ -153,6 +158,7 @@ services:
       JWT_ACCESS_TTL: ${JWT_ACCESS_TTL}
       JWT_REFRESH_TTL: ${JWT_REFRESH_TTL}
       COMBAT_DONE_TIMEOUT_MS: ${COMBAT_DONE_TIMEOUT_MS:-60000}
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://tempo:4318
     depends_on:
       postgres-primary:
         condition: service_healthy
@@ -173,6 +179,7 @@ services:
       JWT_ACCESS_TTL: ${JWT_ACCESS_TTL}
       JWT_REFRESH_TTL: ${JWT_REFRESH_TTL}
       COMBAT_DONE_TIMEOUT_MS: ${COMBAT_DONE_TIMEOUT_MS:-60000}
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://tempo:4318
     depends_on:
       postgres-primary:
         condition: service_healthy
@@ -193,6 +200,191 @@ services:
       - "80:80"
     restart: unless-stopped
 
+  # ── Monitor (#225) ────────────────────────────────────────────────
+  # One Beyla process per instrumented target (nest-1/2/3 + nginx) -
+  # each needs its own PID namespace (`pid: "service:<target>"`) and
+  # `privileged: true` for eBPF (verified: SYS_ADMIN-only wasn't tried,
+  # privileged is what was confirmed working).
+  #
+  # nest-1/2/3: metrics only (OTEL_TRACES_EXPORTER=none) — the app's own
+  # OTel SDK (tracing.ts) generates traces now, not Beyla. Originally
+  # this design read a `traceparent` header Beyla was supposed to inject
+  # into inbound requests for log correlation — verified false, 3 ways,
+  # including this exact nginx->backend topology with propagation
+  # enabled on both hops. Real OTel SDK replaces it; disabling Beyla's
+  # traces here avoids double-tracing the same requests in Tempo.
+  # Verified live: OTEL_TRACES_EXPORTER=none keeps the Prometheus scrape
+  # working, zero attempt to reach an OTLP endpoint.
+  beyla-nest-1:
+    image: grafana/beyla:latest
+    container_name: ac-beyla-nest-1
+    pid: "service:nest-1"
+    privileged: true
+    depends_on:
+      - nest-1
+    environment:
+      BEYLA_OPEN_PORT: "3000"
+      BEYLA_SERVICE_NAME: auto-chess-backend
+      BEYLA_PROMETHEUS_PORT: "8999"
+      OTEL_TRACES_EXPORTER: none
+    restart: unless-stopped
+
+  beyla-nest-2:
+    image: grafana/beyla:latest
+    container_name: ac-beyla-nest-2
+    pid: "service:nest-2"
+    privileged: true
+    depends_on:
+      - nest-2
+    environment:
+      BEYLA_OPEN_PORT: "3000"
+      BEYLA_SERVICE_NAME: auto-chess-backend
+      BEYLA_PROMETHEUS_PORT: "8999"
+      OTEL_TRACES_EXPORTER: none
+    restart: unless-stopped
+
+  beyla-nest-3:
+    image: grafana/beyla:latest
+    container_name: ac-beyla-nest-3
+    pid: "service:nest-3"
+    privileged: true
+    depends_on:
+      - nest-3
+    environment:
+      BEYLA_OPEN_PORT: "3000"
+      BEYLA_SERVICE_NAME: auto-chess-backend
+      BEYLA_PROMETHEUS_PORT: "8999"
+      OTEL_TRACES_EXPORTER: none
+    restart: unless-stopped
+
+  # nginx: no SDK option there, so Beyla still generates its traces
+  # (metrics + traces both) — OTEL_EXPORTER_OTLP_PROTOCOL must be
+  # explicit here, verified live: Tempo silently received nothing
+  # without it (likely defaults to gRPC against Tempo's HTTP-only 4318
+  # port), traces only showed up once this was set to http/protobuf.
+  beyla-nginx:
+    image: grafana/beyla:latest
+    container_name: ac-beyla-nginx
+    pid: "service:nginx"
+    privileged: true
+    depends_on:
+      - nginx
+      - tempo
+    environment:
+      BEYLA_OPEN_PORT: "80"
+      BEYLA_SERVICE_NAME: nginx
+      BEYLA_PROMETHEUS_PORT: "8999"
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://tempo:4318
+      OTEL_EXPORTER_OTLP_PROTOCOL: http/protobuf
+    restart: unless-stopped
+
+  # Reads Docker's json-file container logs directly (bind-mounted,
+  # read-only - no docker.sock) - see mtail/modsecurity.mtail's header
+  # for why, and for why every regex in both programs matches Docker's
+  # escaped-quote wrapping, verified against real captured logs.
+  mtail:
+    image: ghcr.io/google/mtail:latest
+    container_name: ac-mtail
+    command:
+      - -progs=/progs
+      - -logs=/var/lib/docker/containers/*/*-json.log
+    volumes:
+      - ./mtail:/progs:ro
+      - /var/lib/docker/containers:/var/lib/docker/containers:ro
+    depends_on:
+      - nginx
+      - nest-1
+      - nest-2
+      - nest-3
+    restart: unless-stopped
+
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: ac-prometheus
+    volumes:
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
+    depends_on:
+      - beyla-nest-1
+      - beyla-nest-2
+      - beyla-nest-3
+      - beyla-nginx
+      - mtail
+    restart: unless-stopped
+
+  # Dev-mode-equivalent simplicity: default single-binary config, no
+  # custom loki config file needed - verified the stock image already
+  # boots monolithic (no HA/clustering) with zero config supplied.
+  loki:
+    image: grafana/loki:3.7.8
+    container_name: ac-loki
+    restart: unless-stopped
+
+  # Only the nginx ModSecurity log needs an agent (file source, no
+  # in-process integration point) - pino app logs also route through
+  # here now (job nest-app), NOT via pino-loki direct-push as originally
+  # designed: verified live that pino-loki@3.0.0 sends Loki a malformed
+  # push body for this app's real log content (100% failure rate across
+  # 3 configs tried) - see backend/src/common/logger/logger.module.ts's
+  # header comment. pino-loki stays wired (harmless) in case a future
+  # release fixes it; Promtail is what actually works today. Needs
+  # docker.sock (read) for docker_sd_configs - see promtail.yml's header
+  # for why that's an accepted, narrower deviation than Jenkins avoiding
+  # the same socket for its build agent.
+  promtail:
+    image: grafana/promtail:3.6.8
+    container_name: ac-promtail
+    # Explicit -config.file: found live that the image's default CMD
+    # points at /etc/promtail/config.yml, not this mount path - without
+    # this override Promtail silently ran its own built-in config
+    # (tailing /var/log/*log inside its own container) instead of ours,
+    # and Loki got nothing.
+    command: ["-config.file=/etc/promtail/promtail.yml"]
+    volumes:
+      - ./promtail/promtail.yml:/etc/promtail/promtail.yml:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    depends_on:
+      - nginx
+      - nest-1
+      - nest-2
+      - nest-3
+      - loki
+    restart: unless-stopped
+
+  # Pinned to 2.6.1, NOT :latest - verified live that Tempo 3.0
+  # (:latest at the time of writing) removes the ingester/compactor
+  # config this monolithic setup uses, replacing them with a
+  # Kafka-based ingest path - completely wrong scope for this project.
+  # 2.6.1 is the last line confirmed to boot clean with the simple
+  # monolithic tempo/tempo.yaml here (verified: booted, real OTLP trace
+  # pushed and queried back successfully).
+  tempo:
+    image: grafana/tempo:2.6.1
+    container_name: ac-tempo
+    command: ["-config.file=/etc/tempo.yaml"]
+    volumes:
+      - ./tempo/tempo.yaml:/etc/tempo.yaml:ro
+      - tempo_data:/var/tempo
+    restart: unless-stopped
+
+  grafana:
+    image: grafana/grafana:latest
+    container_name: ac-grafana
+    ports:
+      - "127.0.0.1:3000:3000"
+    volumes:
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./dashboards:/var/lib/grafana/dashboards:ro
+      - grafana_data:/var/lib/grafana
+    depends_on:
+      - prometheus
+      - loki
+      - tempo
+    restart: unless-stopped
+
 volumes:
   pg_primary_data:
   pg_replica_data:
+  prometheus_data:
+  tempo_data:
+  grafana_data:

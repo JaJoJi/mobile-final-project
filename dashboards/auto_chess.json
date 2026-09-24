@@ -1,0 +1,112 @@
+{
+  "title": "Auto Chess - Ops",
+  "uid": "auto-chess-ops",
+  "schemaVersion": 39,
+  "version": 1,
+  "editable": true,
+  "time": { "from": "now-1h", "to": "now" },
+  "panels": [
+    {
+      "id": 1,
+      "title": "Request rate (RED - Beyla)",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 0 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        {
+          "expr": "sum by (http_route) (rate(http_server_request_duration_seconds_count{job=\"beyla\"}[5m]))",
+          "legendFormat": "{{http_route}}"
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "title": "Error rate (5xx - Beyla)",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 0 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        {
+          "expr": "sum(rate(http_server_request_duration_seconds_count{job=\"beyla\",http_response_status_code=~\"5..\"}[5m]))",
+          "legendFormat": "5xx/s"
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "title": "p95 request duration (Beyla)",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 8 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.95, sum by (le, http_route) (rate(http_server_request_duration_seconds_bucket{job=\"beyla\"}[5m])))",
+          "legendFormat": "{{http_route}}"
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "title": "WAF blocks by rule (mtail)",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 8 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        {
+          "expr": "sum by (rule_id, severity) (rate(modsec_blocked_total[5m]))",
+          "legendFormat": "rule {{rule_id}} (sev {{severity}})"
+        }
+      ]
+    },
+    {
+      "id": 5,
+      "title": "App log level trend (mtail)",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 16 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        {
+          "expr": "sum by (level) (rate(app_log_total[5m]))",
+          "legendFormat": "level {{level}}"
+        }
+      ]
+    },
+    {
+      "id": 6,
+      "title": "App HTTP error trend (mtail)",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 16 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        {
+          "expr": "sum by (status) (rate(app_http_errors_total[5m]))",
+          "legendFormat": "status {{status}}"
+        }
+      ]
+    },
+    {
+      "id": 7,
+      "title": "nginx ModSecurity log (Loki - full-text search)",
+      "type": "logs",
+      "gridPos": { "h": 10, "w": 12, "x": 0, "y": 24 },
+      "datasource": { "type": "loki", "uid": "loki" },
+      "targets": [{ "expr": "{job=\"nginx-modsec\"}" }]
+    },
+    {
+      "id": 8,
+      "title": "nest-1/2/3 app log (Loki - full-text search)",
+      "type": "logs",
+      "gridPos": { "h": 10, "w": 12, "x": 12, "y": 24 },
+      "datasource": { "type": "loki", "uid": "loki" },
+      "targets": [{ "expr": "{job=\"nest-app\"}" }]
+    },
+    {
+      "id": 9,
+      "title": "Traces (Tempo - search by service)",
+      "type": "traces",
+      "gridPos": { "h": 10, "w": 24, "x": 0, "y": 34 },
+      "datasource": { "type": "tempo", "uid": "tempo" },
+      "targets": [{ "queryType": "nativeSearch", "serviceName": "auto-chess-backend" }]
+    }
+  ]
+}

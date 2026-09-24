@@ -1,0 +1,22 @@
+apiVersion: 1
+
+datasources:
+  - name: Loki
+    type: loki
+    access: proxy
+    url: http://loki:3100
+    uid: loki
+    editable: false
+    jsonData:
+      # Trace->log jump-link via trace_id. Wired per the design, but
+      # verified currently inert: nest-1/2/3 never actually log a
+      # trace_id field (see backend/src/common/middleware/trace-context.middleware.ts —
+      # Beyla doesn't inject the traceparent header the app would need
+      # to read to populate it, verified against the real topology).
+      # Harmless to leave configured — starts working the moment that
+      # gap is closed, whether by a Beyla fix or a real OTel SDK.
+      derivedFields:
+        - datasourceUid: tempo
+          matcherRegex: '"trace_id":"(\w+)"'
+          name: TraceID
+          url: "$${__value.raw}"

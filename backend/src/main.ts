@@ -1,3 +1,7 @@
+// P3-DO-21 — must load before anything it instruments is required (in
+// particular @nestjs/core and the http/pg/ioredis clients below), so
+// this import has to stay first.
+import './tracing';
 import 'reflect-metadata';
 import { Logger, ValidationPipe } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
