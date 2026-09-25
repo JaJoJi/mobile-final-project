@@ -38,15 +38,14 @@ jobs:
           cache: npm
           cache-dependency-path: backend/package-lock.json
       - run: npm ci
-      # Blocking on critical only for now: fixing every pre-existing
-      # high-severity finding here needs a NestJS major-version upgrade
-      # (breaking change) tracked separately. New critical vulns still
-      # fail the PR; high/moderate are surfaced but non-blocking.
-      - name: npm audit (block on critical)
-        run: npm audit --audit-level=critical
-      - name: npm audit (high, informational)
-        if: always()
-        run: npm audit --audit-level=high || true
+      # The pre-existing high/critical findings (lodash/js-yaml/multer/
+      # tar, via @nestjs/swagger + @nestjs/platform-express + bcrypt's
+      # node-pre-gyp) are cleared via the `overrides` pins in
+      # package.json (see #220) -- verified for real: build, lint,
+      # 126/126 tests, and bcrypt's native binary all still green.
+      # #270 (the NestJS-major-bump plan) is superseded, closed.
+      - name: npm audit (block on high)
+        run: npm audit --audit-level=high
 
   mobile-sca:
     runs-on: ubuntu-latest
