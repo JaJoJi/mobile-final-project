@@ -12,7 +12,8 @@
 //   2. Create a Multibranch Pipeline job pointing at this repo — Jenkins
 //      auto-discovers this Jenkinsfile per branch/PR.
 //   3. Add credentials (Jenkins > Credentials):
-//        - `ghcr-token`      (GHCR push, Kind: Username+password / PAT)
+//        - `dockerhub-token` (Docker Hub push, Kind: Username+password / PAT
+//                             -- devops-toolchain.md §3, not GHCR)
 //        - `discord-webhook` (build notifications, Kind: Secret text)
 //   4. Flip the `params.ENABLE_*` defaults below once the matching
 //      infra/credential exists. Everything is gated so a fresh Jenkins
@@ -27,6 +28,15 @@
 pipeline {
   agent any
 
+  triggers {
+    // devops-toolchain.md §1: GitHub push webhook, no GitHub Actions
+    // involved. Combined with the Multibranch Pipeline job's own branch/
+    // PR discovery (configured at the Jenkins job level, not here) this
+    // gives the agreed scope: check every PR into dev, check again on
+    // dev -> main merges (Push stage below only fires on main).
+    githubPush()
+  }
+
   options {
     timestamps()
     disableConcurrentBuilds()
@@ -40,14 +50,16 @@ pipeline {
     booleanParam(name: 'ENABLE_INTEGRATION_TESTS', defaultValue: false,
       description: 'Run backend *.smoke.ts against real Postgres+Redis (needs Docker on the agent)')
     booleanParam(name: 'ENABLE_IMAGE_PUBLISH', defaultValue: false,
-      description: 'Build + push the backend image to GHCR (needs the ghcr-token credential)')
+      description: 'Build + push the backend image to Docker Hub (needs the dockerhub-token credential)')
     booleanParam(name: 'ENABLE_NOTIFICATIONS', defaultValue: false,
       description: 'Post build result to Discord (needs the discord-webhook credential)')
+    booleanParam(name: 'ENABLE_SECURITY_SCAN', defaultValue: false,
+      description: 'Run Gitleaks/Semgrep/Trivy/Checkov/ZAP security stages (needs docker on the Jenkins host — devops-toolchain.md §2)')
   }
 
   environment {
     NODE_VERSION   = '22'
-    IMAGE_NAME     = 'ghcr.io/jajoji/auto_chess-backend'
+    IMAGE_NAME     = 'jajoji/auto-chess-backend' // Docker Hub (devops-toolchain.md §3), not GHCR
     IMAGE_TAG      = "${env.GIT_COMMIT ? env.GIT_COMMIT.take(7) : 'local'}"
   }
 
@@ -66,6 +78,9 @@ pipeline {
       parallel {
         stage('lint (typecheck)') {
           steps { dir('backend') { sh 'npm run lint' } }
+        }
+        stage('lint (eslint)') {
+          steps { dir('backend') { sh 'npm run lint:eslint' } }
         }
         stage('build') {
           steps { dir('backend') { sh 'npm run build' } }
@@ -129,13 +144,52 @@ pipeline {
       }
     }
 
-    // ── Security (P3-DO-07, parked pending tool choice) ───────────────
+    // ── Security scan (P3-DO-15, devops-toolchain.md §2) ───────────────
+    // Gitleaks → Semgrep → Trivy (deps/IaC/secrets) → Checkov, cheapest
+    // first, all ahead of the image build. Each tool runs as a
+    // throwaway container on the built-in node — no daemon, no idle
+    // RAM cost while ENABLE_SECURITY_SCAN is off (the default until
+    // Jenkins is actually live — see the file header).
 
-    stage('Security scan') {
-      when { expression { return false } } // TODO: flip on once Trivy/CodeQL are wired
+    stage('Security · Gitleaks') {
+      when { expression { return params.ENABLE_SECURITY_SCAN } }
       steps {
-        dir('backend') { sh 'npm audit --audit-level=high' }
-        sh "trivy image --exit-code 1 --severity HIGH,CRITICAL ${IMAGE_NAME}:${IMAGE_TAG}"
+        sh '''
+          docker run --rm -v "$WORKSPACE:/repo" zricethezav/gitleaks:latest \
+            detect --source=/repo --config=/repo/.gitleaks.toml --redact --exit-code 1
+        '''
+      }
+    }
+
+    stage('Security · Semgrep') {
+      when { expression { return params.ENABLE_SECURITY_SCAN } }
+      steps {
+        // Free community engine only — Pro cross-file rules are paid,
+        // not used (devops-toolchain.md §2).
+        sh '''
+          docker run --rm -v "$WORKSPACE:/src" returntocorp/semgrep semgrep scan \
+            --config=p/ci --error --metrics=off /src
+        '''
+      }
+    }
+
+    stage('Security · Trivy (deps + IaC + secrets)') {
+      when { expression { return params.ENABLE_SECURITY_SCAN } }
+      steps {
+        sh '''
+          docker run --rm -v "$WORKSPACE:/repo" aquasec/trivy:latest fs \
+            --scanners vuln,secret,misconfig --severity HIGH,CRITICAL --exit-code 1 /repo
+        '''
+      }
+    }
+
+    stage('Security · Checkov') {
+      when { expression { return params.ENABLE_SECURITY_SCAN } }
+      steps {
+        sh '''
+          docker run --rm -v "$WORKSPACE:/repo" bridgecrew/checkov:latest \
+            -d /repo --framework dockerfile,docker_compose,github_actions --compact --quiet
+        '''
       }
     }
 
@@ -149,18 +203,81 @@ pipeline {
       }
     }
 
-    stage('Backend · publish to GHCR') {
-      when { expression { return params.ENABLE_IMAGE_PUBLISH } }
+    // Image scan needs the built image, so it runs here rather than
+    // with the other Security stages above (devops-toolchain.md §2
+    // design note) — still gates the publish step below.
+    stage('Security · Trivy (image)') {
+      when { expression { return params.ENABLE_SECURITY_SCAN } }
       steps {
-        withCredentials([usernamePassword(credentialsId: 'ghcr-token',
-            usernameVariable: 'GHCR_USER', passwordVariable: 'GHCR_TOKEN')]) {
+        sh """
+          docker run --rm -v /var/run/docker.sock:/var/run/docker.sock aquasec/trivy:latest \
+            image --severity HIGH,CRITICAL --exit-code 1 ${IMAGE_NAME}:${IMAGE_TAG}
+        """
+      }
+    }
+
+    // Ephemeral OWASP ZAP baseline: spin up the just-built image + real
+    // Postgres/Redis on a throwaway docker network, scan, tear down.
+    // No permanent staging environment (devops-toolchain.md §2).
+    stage('Security · ZAP baseline (ephemeral)') {
+      when { expression { return params.ENABLE_SECURITY_SCAN } }
+      steps {
+        sh '''
+          NET="zap-net-$BUILD_ID"
+          docker network create "$NET"
+          docker run -d --rm --network "$NET" --name zap-pg-$BUILD_ID \
+            -e POSTGRES_USER=ci -e POSTGRES_PASSWORD=ci -e POSTGRES_DB=ci \
+            postgres:16-alpine
+          docker run -d --rm --network "$NET" --name zap-redis-$BUILD_ID redis:7-alpine
+          docker run -d --rm --network "$NET" --name zap-app-$BUILD_ID \
+            -e DATABASE_URL=postgres://ci:ci@zap-pg-$BUILD_ID:5432/ci \
+            -e REDIS_URL=redis://zap-redis-$BUILD_ID:6379 \
+            -e JWT_SECRET=zap_ephemeral_not_a_real_secret \
+            -e JWT_ACCESS_TTL=7d -e JWT_REFRESH_TTL=30d \
+            -e RUN_MIGRATIONS=true -e NODE_ENV=test -e NEST_PORT=3000 \
+            ${IMAGE_NAME}:${IMAGE_TAG}
+          for i in $(seq 1 30); do
+            docker exec zap-app-$BUILD_ID wget -qO- http://localhost:3000/health/ready >/dev/null 2>&1 && break
+            sleep 1
+          done
+          # TODO on activation: tune false positives via a ZAP rules
+          # file (-c zap.conf) once a real baseline report exists to
+          # review — starting strict (no rule exceptions) on purpose.
+          docker run --rm --network "$NET" -v "$WORKSPACE/backend:/zap/wrk" \
+            ghcr.io/zaproxy/zaproxy:stable zap-baseline.py \
+            -t http://zap-app-$BUILD_ID:3000 -r zap-report.html
+        '''
+      }
+      post {
+        always {
           sh '''
-            echo "$GHCR_TOKEN" | docker login ghcr.io -u "$GHCR_USER" --password-stdin
+            docker rm -f zap-app-$BUILD_ID zap-pg-$BUILD_ID zap-redis-$BUILD_ID >/dev/null 2>&1 || true
+            docker network rm zap-net-$BUILD_ID >/dev/null 2>&1 || true
+          '''
+          archiveArtifacts artifacts: 'backend/zap-report.html', allowEmptyArchive: true
+        }
+      }
+    }
+
+    // Release only fires on dev -> main merges (agreed scope: Jenkins
+    // checks every PR into dev, checks again + releases on dev -> main).
+    // Pushes the exact IMAGE_NAME:IMAGE_TAG already built + scanned
+    // above -- never rebuilds, so "build once, deploy anywhere".
+    stage('Backend · publish to Docker Hub') {
+      when {
+        allOf {
+          expression { return params.ENABLE_IMAGE_PUBLISH }
+          branch 'main'
+        }
+      }
+      steps {
+        withCredentials([usernamePassword(credentialsId: 'dockerhub-token',
+            usernameVariable: 'DOCKERHUB_USER', passwordVariable: 'DOCKERHUB_TOKEN')]) {
+          sh '''
+            echo "$DOCKERHUB_TOKEN" | docker login -u "$DOCKERHUB_USER" --password-stdin
             docker push ${IMAGE_NAME}:${IMAGE_TAG}
-            if [ "$BRANCH_NAME" = "main" ]; then
-              docker tag ${IMAGE_NAME}:${IMAGE_TAG} ${IMAGE_NAME}:latest
-              docker push ${IMAGE_NAME}:latest
-            fi
+            docker tag ${IMAGE_NAME}:${IMAGE_TAG} ${IMAGE_NAME}:latest
+            docker push ${IMAGE_NAME}:latest
           '''
         }
       }

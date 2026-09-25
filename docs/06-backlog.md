@@ -151,6 +151,28 @@ Full detail lives in the GitHub issues linked below.
 | P3-DO-05 | [#140](https://github.com/JaJoJi/mobile-final-project/issues/140) | k6 load test to prove NFRs | `area:devops` `type:test` `priority:p3` |
 | P3-DO-06 | [#141](https://github.com/JaJoJi/mobile-final-project/issues/141) | Templates, CODEOWNERS, Dependabot, pre-commit, badges | `area:devops` `type:chore` `priority:p3` |
 
+## P4 — DevOps (6)
+
+Two parallel quality gates, on purpose, until the cutover below:
+
+- **Interim (live today):** `.github/workflows/security.yml` (gitleaks + `npm audit`, blocking) and the `sonar` job in `backend-ci.yml`/`mobile-ci.yml` (gated on `SONAR_TOKEN`/`SONAR_HOST_URL` secrets — no-ops until the server exists). Runs on GitHub Actions because Jenkins (#218) isn't live yet.
+- **Finalized target (per `devops-toolchain.md` §2):** Jenkins-only, no GitHub Actions, no SonarQube. `Jenkinsfile`'s `ENABLE_SECURITY_SCAN` param (default off) gates Gitleaks → Semgrep → Trivy → Checkov → ephemeral ZAP baseline, superseding #191's GH-Actions-based plan (#219).
+
+**Found 2026-09-25:** a full real (not just designed) build-out of the finalized Jenkins stack already exists as a stacked PR chain — #262–269, one per `devops-toolchain.md` section, each verified against real infra (booted `docker-compose.prod.yml` for real, real Trivy/Gitleaks/Semgrep/Checkov/ZAP runs, a real rollback drill). **All closed, none merged to `dev`** — tried and set aside as more than this project's scope needs (confirmed with the team 2026-09-25: keep it simple — Jenkins checks PRs into `dev`, and checks again + releases to Docker Hub on `dev`→`main`, no Vault/ModSecurity/full-LGTM). One piece from that chain was adopted directly: **#220**'s CVE fix (see P4-DO-01 below).
+
+`npm audit --audit-level=high` now blocks the interim gate (previously critical-only) — the pre-existing high-severity findings are cleared via `overrides` pins, not a NestJS major bump.
+
+| ID | Issue (GitHub) | One-liner | Labels |
+|---|---|---|---|
+| P4-DO-00 | [#271](https://github.com/JaJoJi/mobile-final-project/issues/271) | DevSecOps quality gate rollout: SAST + SCA + secret scan on every PR (interim, GH Actions) | `area:devops` `type:infra` `priority:p3` |
+| P4-DO-01 | [#270](https://github.com/JaJoJi/mobile-final-project/issues/270) | ~~Upgrade NestJS 10 → 11/12~~ — closed, superseded by #220's `overrides` pin (lodash/js-yaml/multer/tar), verified clean at `--audit-level=high` | `area:backend` `area:devops` `type:chore` `priority:p3` |
+| P4-DO-02 | [#272](https://github.com/JaJoJi/mobile-final-project/issues/272) | Cutover: remove GitHub Actions security gate once Jenkins security scan (#219) is live | `area:devops` `type:chore` `priority:p3` |
+| P4-DO-03 | [#273](https://github.com/JaJoJi/mobile-final-project/issues/273) | Widen backend coverage gate beyond `src/game/**` | `area:backend` `type:test` `priority:p3` |
+| P4-DO-04 | [#274](https://github.com/JaJoJi/mobile-final-project/issues/274) | Add mobile test coverage collection + threshold to `mobile-ci.yml` | `area:frontend` `type:test` `priority:p3` |
+| P4-DO-05 | [#275](https://github.com/JaJoJi/mobile-final-project/issues/275) | `backend-ci` lint step is `tsc` typecheck only, not ESLint — #133 checklist item unfulfilled | `area:backend` `type:chore` `priority:p3` |
+
+**#273 done** (2026-09-24): `backend/jest.config.js` now has a two-tier coverage gate. `src/game/**` keeps its 90/90/90/80 (lines/statements/functions/branches) floor, checked per file. Everything else is checked in aggregate via jest's `global` key (which excludes glob-matched files, so this is really "rest of the backend") — floored at 44/43/44/37, just under the measured 2026-09-24 baseline (44.91/43.55/44.59/37.52). `auth/`, `database/`, `match/`, `matchmaking/`, `queue/`, `user/` have no spec files at all today (0% each) and pull that average down hard; a per-directory floor isn't usable until each has at least some tests, since jest checks glob thresholds per file and any floor above 0% fails immediately on an untested file. Raise the `global` numbers in the same PR that adds tests improving them.
+
 ---
 
 ## Out of MVP scope (closed — re-open if needed)

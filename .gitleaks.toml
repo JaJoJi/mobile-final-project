@@ -1,0 +1,17 @@
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Known non-secret placeholder values, verified false positives"
+regexes = [
+  # .github/workflows/backend-ci.yml -- JWT_SECRET: ci_jwt_secret_not_a_real_secret_...,
+  # a hardcoded CI-only placeholder, never a real credential. Two literal
+  # variants exist across git history (an earlier draft used a different
+  # placeholder string before this one).
+  '''ci_jwt_secret_not_a_real_secret_0123456789abcdef''',
+  '''test_secret_at_least_32_bytes_long_padding_xx''',
+  # backend/src/ws/ws.smoke.ts (historical) -- a deliberately-named
+  # `garbage` JWT with signature "invalid_signature_xxx...", used to test
+  # that the server rejects a tampered/garbage token.
+  '''invalid_signature_xxxxxxxxxxxxxxxxxxxxxxxxxx''',
+]
