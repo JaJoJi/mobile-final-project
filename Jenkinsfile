@@ -32,10 +32,13 @@ pipeline {
 
   triggers {
     // devops-toolchain.md §1: GitHub push webhook, no GitHub Actions
-    // involved. Combined with the Multibranch Pipeline job's own branch/
-    // PR discovery (configured at the Jenkins job level, not here) this
-    // gives the agreed scope: check every PR into dev, check again on
-    // dev -> main merges (Push stage below only fires on main).
+    // involved. Combined with the Multibranch Pipeline job's own branch
+    // discovery set to ALL branches (not just dev/main -- configured at
+    // the Jenkins job level, not here), this gives the agreed scope:
+    // Gitleaks/Semgrep/Trivy-fs/Checkov run on every branch pushed,
+    // build/test/docker-image/ZAP run for PRs into dev OR main and for
+    // dev/main themselves (catches a dev->main break before it merges,
+    // not just after), and the Docker Hub push only fires on main.
     githubPush()
   }
 
@@ -73,10 +76,12 @@ pipeline {
     // ── Backend ──────────────────────────────────────────────────────
 
     stage('Backend · install') {
+      when { anyOf { branch 'dev'; branch 'main'; changeRequest target: 'dev'; changeRequest target: 'main' } }
       steps { dir('backend') { sh 'npm ci' } }
     }
 
     stage('Backend · lint + build') {
+      when { anyOf { branch 'dev'; branch 'main'; changeRequest target: 'dev'; changeRequest target: 'main' } }
       parallel {
         stage('lint (typecheck)') {
           steps { dir('backend') { sh 'npm run lint' } }
@@ -91,6 +96,7 @@ pipeline {
     }
 
     stage('Backend · unit test + coverage') {
+      when { anyOf { branch 'dev'; branch 'main'; changeRequest target: 'dev'; changeRequest target: 'main' } }
       steps {
         dir('backend') { sh 'npm run test:cov -- --ci' }
       }
@@ -116,7 +122,12 @@ pipeline {
     // integration suite (matchmaking, round-orchestrator, pubsub, ws)
     // that GitHub Actions' backend-ci.yml deliberately skips.
     stage('Backend · integration smoke') {
-      when { expression { return params.ENABLE_INTEGRATION_TESTS } }
+      when {
+        allOf {
+          expression { return params.ENABLE_INTEGRATION_TESTS }
+          anyOf { branch 'dev'; branch 'main'; changeRequest target: 'dev'; changeRequest target: 'main' }
+        }
+      }
       steps {
         dir('backend') {
           sh '''
@@ -143,6 +154,7 @@ pipeline {
     // ── Mobile ───────────────────────────────────────────────────────
 
     stage('Mobile · analyze + test') {
+      when { anyOf { branch 'dev'; branch 'main'; changeRequest target: 'dev'; changeRequest target: 'main' } }
       steps {
         dir('mobile') {
           sh 'flutter pub get'
@@ -159,6 +171,14 @@ pipeline {
     // throwaway container on the built-in node — no daemon, no idle
     // RAM cost while ENABLE_SECURITY_SCAN is off (the default until
     // Jenkins is actually live — see the file header).
+    //
+    // Deliberately NOT branch-gated like the stages above: these four
+    // need no build/test step first and are cheap/fast, so they run on
+    // every branch the Multibranch job discovers -- a secret or a bad
+    // dependency can land on a random WIP branch just as easily as on
+    // dev, and there's no reason to wait for a PR to catch it. The
+    // heavier stages below (build, test, docker image, ZAP, publish)
+    // stay scoped to PRs-into-dev + dev/main, same as before.
 
     stage('Security · Gitleaks') {
       when { expression { return params.ENABLE_SECURITY_SCAN } }
@@ -206,6 +226,7 @@ pipeline {
     // ── Package / publish ────────────────────────────────────────────
 
     stage('Backend · docker build') {
+      when { anyOf { branch 'dev'; branch 'main'; changeRequest target: 'dev'; changeRequest target: 'main' } }
       steps {
         dir('backend') {
           sh "docker build -t ${IMAGE_NAME}:${IMAGE_TAG} ."
@@ -217,7 +238,12 @@ pipeline {
     // with the other Security stages above (devops-toolchain.md §2
     // design note) — still gates the publish step below.
     stage('Security · Trivy (image)') {
-      when { expression { return params.ENABLE_SECURITY_SCAN } }
+      when {
+        allOf {
+          expression { return params.ENABLE_SECURITY_SCAN }
+          anyOf { branch 'dev'; branch 'main'; changeRequest target: 'dev'; changeRequest target: 'main' }
+        }
+      }
       steps {
         sh """
           docker run --rm -v /var/run/docker.sock:/var/run/docker.sock -v \$WORKSPACE:/repo aquasec/trivy:latest \
@@ -230,7 +256,12 @@ pipeline {
     // Postgres/Redis on a throwaway docker network, scan, tear down.
     // No permanent staging environment (devops-toolchain.md §2).
     stage('Security · ZAP baseline (ephemeral)') {
-      when { expression { return params.ENABLE_SECURITY_SCAN } }
+      when {
+        allOf {
+          expression { return params.ENABLE_SECURITY_SCAN }
+          anyOf { branch 'dev'; branch 'main'; changeRequest target: 'dev'; changeRequest target: 'main' }
+        }
+      }
       steps {
         sh '''
           NET="zap-net-$BUILD_ID"
