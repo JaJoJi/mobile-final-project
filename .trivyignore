@@ -1,0 +1,19 @@
+# Verified false positives — do not remove without re-checking first.
+#
+# Trivy reports "Installed Version: 7.5.11" for `tar` in the built
+# backend image, but that string exists NOWHERE in the image (checked:
+# grepped the entire image filesystem for "7.5.11" -- zero matches, no
+# package.json/lockfile bundled in the final runtime stage even has one).
+# The real installed version, verified directly from
+# node_modules/tar/package.json inside the actual running image, is
+# 7.5.22 (pinned via backend/package.json `overrides`, per #220) --
+# newer than every "fixed in" version these CVEs cite (7.5.18/19/21).
+# Reproduced with a fresh --no-cache build AND a freshly re-downloaded
+# Trivy vulnerability DB (2026-09-25) -- same wrong result both times.
+# Looks like a Trivy detection bug specific to npm `overrides`-remapped
+# packages, not a real vulnerability. Re-verify (rebuild --no-cache,
+# grep the image, re-scan) before assuming this is still a false
+# positive if these ever start looking different.
+CVE-2026-59873
+CVE-2026-59874
+CVE-2026-73566

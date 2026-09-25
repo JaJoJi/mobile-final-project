@@ -187,7 +187,8 @@ pipeline {
       steps {
         sh '''
           docker run --rm -v "$WORKSPACE:/repo" aquasec/trivy:latest fs \
-            --scanners vuln,secret,misconfig --severity HIGH,CRITICAL --exit-code 1 /repo
+            --scanners vuln,secret,misconfig --severity HIGH,CRITICAL --exit-code 1 \
+            --ignorefile /repo/.trivyignore /repo
         '''
       }
     }
@@ -219,8 +220,8 @@ pipeline {
       when { expression { return params.ENABLE_SECURITY_SCAN } }
       steps {
         sh """
-          docker run --rm -v /var/run/docker.sock:/var/run/docker.sock aquasec/trivy:latest \
-            image --severity HIGH,CRITICAL --exit-code 1 ${IMAGE_NAME}:${IMAGE_TAG}
+          docker run --rm -v /var/run/docker.sock:/var/run/docker.sock -v \$WORKSPACE:/repo aquasec/trivy:latest \
+            image --severity HIGH,CRITICAL --exit-code 1 --ignorefile /repo/.trivyignore ${IMAGE_NAME}:${IMAGE_TAG}
         """
       }
     }
