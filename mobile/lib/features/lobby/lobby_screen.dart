@@ -15,6 +15,8 @@ import '../../shared/models/game_events.dart';
 import '../history/history_format.dart';
 import '../history/history_providers.dart';
 import '../history/match_models.dart';
+import '../rooms/create_room_screen.dart';
+import '../rooms/join_room_screen.dart';
 import 'find_match_button.dart';
 import 'matchmaking_state.dart';
 import 'player_hub_header.dart';
@@ -256,8 +258,7 @@ class _PlayCard extends StatelessWidget {
                     children: [
                       Expanded(
                         child: OutlinedButton.icon(
-                          onPressed: () =>
-                              _comingSoon(context, 'ระบบสร้างห้อง'),
+                          onPressed: () => context.go(CreateRoomScreen.path),
                           icon: const Icon(Icons.group_add_outlined),
                           label: const Text('สร้างห้อง'),
                         ),
@@ -265,8 +266,7 @@ class _PlayCard extends StatelessWidget {
                       const SizedBox(width: AppSpacing.sm),
                       Expanded(
                         child: OutlinedButton.icon(
-                          onPressed: () =>
-                              _comingSoon(context, 'ระบบเข้าร่วมห้อง'),
+                          onPressed: () => context.go(JoinRoomScreen.path),
                           icon: const Icon(Icons.link_rounded),
                           label: const Text('เข้าร่วมห้อง'),
                         ),

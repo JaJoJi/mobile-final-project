@@ -113,6 +113,12 @@ class ApiClient {
     return Map<String, dynamic>.from(res.data!);
   }
 
+  /// `GET /user/me/stats` — completed-match statistics for the caller.
+  Future<Map<String, dynamic>> getMyStats() async {
+    final res = await _dio.get<Map<String, dynamic>>('/user/me/stats');
+    return Map<String, dynamic>.from(res.data!);
+  }
+
   // ─── match history ────────────────────────────────────────────────
 
   /// `GET /match/history` — the caller's last matches (server caps the count).
