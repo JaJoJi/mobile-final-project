@@ -178,24 +178,36 @@ jobs:
   sonar:
     runs-on: ubuntu-latest
     needs: backend
-    if: ${{ secrets.SONAR_TOKEN != '' && secrets.SONAR_HOST_URL != '' }}
+    # `secrets` isn't a valid context in ANY `if:` (job or step -- only
+    # github/inputs/needs/vars at job level, plus env/job/steps/etc at
+    # step level, per GitHub's context-availability table). Confirmed
+    # with actionlint: using it in a job-level `if:` silently invalidates
+    # the whole workflow file (every run fails with zero jobs, no useful
+    # error on the PR checks list). Fix: read the secrets into job-level
+    # `env:` (secrets ARE readable there) and gate each step on `env.*`,
+    # which step-level `if:` is allowed to reference.
+    env:
+      SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+      SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
     steps:
       - uses: actions/checkout@v4
+        if: ${{ env.SONAR_TOKEN != '' && env.SONAR_HOST_URL != '' }}
         with:
           fetch-depth: 0
       - uses: actions/setup-node@v4
+        if: ${{ env.SONAR_TOKEN != '' && env.SONAR_HOST_URL != '' }}
         with:
           node-version: 22
           cache: npm
           cache-dependency-path: backend/package-lock.json
       - run: npm ci
+        if: ${{ env.SONAR_TOKEN != '' && env.SONAR_HOST_URL != '' }}
       - name: Coverage for Sonar
+        if: ${{ env.SONAR_TOKEN != '' && env.SONAR_HOST_URL != '' }}
         run: npm run test:cov
       - name: SonarQube scan + quality gate
+        if: ${{ env.SONAR_TOKEN != '' && env.SONAR_HOST_URL != '' }}
         uses: SonarSource/sonarqube-scan-action@v4
         with:
           projectBaseDir: backend
           args: -Dsonar.qualitygate.wait=true
-        env:
-          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
-          SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
