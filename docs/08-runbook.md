@@ -173,9 +173,10 @@ repeatable.
    branches with open PRs) — Jenkins auto-discovers `Jenkinsfile` per
    branch/PR. The `Jenkinsfile` itself scopes what actually runs per
    branch: Gitleaks/Semgrep/Trivy-fs/Checkov (cheap, no build needed)
-   run on every branch discovered; build/test/docker-image/ZAP run only
-   for PRs into `dev` and for `dev`/`main` themselves; the Docker Hub
-   push only fires on `main`.
+   run on every branch discovered; build/test/docker-image/ZAP run for
+   PRs into `dev` **or** `main` and for `dev`/`main` themselves — so a
+   dev→main promotion PR gets the full check before it merges, not just
+   after; the Docker Hub push only fires on `main`.
 5. **Credentials** (Jenkins → Credentials):
    - `dockerhub-token` (Docker Hub push, Kind: Username+password/PAT)
    - `discord-webhook` (optional, build-failure notifications, Kind: Secret text)
