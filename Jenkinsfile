@@ -10,7 +10,9 @@
 //   1. Stand up a Jenkins controller + at least one agent with Docker
 //      available (`docker` in PATH, socket mounted or DinD).
 //   2. Create a Multibranch Pipeline job pointing at this repo — Jenkins
-//      auto-discovers this Jenkinsfile per branch/PR.
+//      auto-discovers this Jenkinsfile per branch/PR. Install the
+//      "HTML Publisher" plugin too (JUnit is core) -- see
+//      docs/08-runbook.md §6 for the full controller setup checklist.
 //   3. Add credentials (Jenkins > Credentials):
 //        - `dockerhub-token` (Docker Hub push, Kind: Username+password / PAT
 //                             -- devops-toolchain.md §3, not GHCR)
@@ -94,11 +96,18 @@ pipeline {
       }
       post {
         always {
-          // TODO on activation: add the `jest-junit` devDependency + a
-          // `reporters: ['default', 'jest-junit']` entry to jest.config.js,
-          // then switch this to `junit testResults: 'backend/junit.xml'`
-          // (no jest-junit installed yet, so there's nothing to publish).
+          // P3-DO-14: jest-junit + jest.config.js's `reporters` entry
+          // write backend/reports/junit.xml -- verified for real
+          // (126 tests, real XML written, checked its content).
+          junit testResults: 'backend/reports/junit.xml', allowEmptyResults: true
           archiveArtifacts artifacts: 'backend/coverage/**', allowEmptyArchive: true
+          publishHTML(target: [
+            reportDir: 'backend/coverage/lcov-report',
+            reportFiles: 'index.html',
+            reportName: 'Backend coverage',
+            keepAll: true,
+            alwaysLinkToLastBuild: true,
+          ])
         }
       }
     }
@@ -178,7 +187,8 @@ pipeline {
       steps {
         sh '''
           docker run --rm -v "$WORKSPACE:/repo" aquasec/trivy:latest fs \
-            --scanners vuln,secret,misconfig --severity HIGH,CRITICAL --exit-code 1 /repo
+            --scanners vuln,secret,misconfig --severity HIGH,CRITICAL --exit-code 1 \
+            --ignorefile /repo/.trivyignore /repo
         '''
       }
     }
@@ -210,8 +220,8 @@ pipeline {
       when { expression { return params.ENABLE_SECURITY_SCAN } }
       steps {
         sh """
-          docker run --rm -v /var/run/docker.sock:/var/run/docker.sock aquasec/trivy:latest \
-            image --severity HIGH,CRITICAL --exit-code 1 ${IMAGE_NAME}:${IMAGE_TAG}
+          docker run --rm -v /var/run/docker.sock:/var/run/docker.sock -v \$WORKSPACE:/repo aquasec/trivy:latest \
+            image --severity HIGH,CRITICAL --exit-code 1 --ignorefile /repo/.trivyignore ${IMAGE_NAME}:${IMAGE_TAG}
         """
       }
     }

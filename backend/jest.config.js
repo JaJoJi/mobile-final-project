@@ -38,4 +38,9 @@ module.exports = {
     // Raise these numbers as coverage actually improves.
     global: { statements: 43, branches: 37, functions: 44, lines: 44 },
   },
+  // P3-DO-14: Jenkins JUnit report publisher reads this.
+  reporters: [
+    'default',
+    ['jest-junit', { outputDirectory: 'reports', outputName: 'junit.xml' }],
+  ],
 };
