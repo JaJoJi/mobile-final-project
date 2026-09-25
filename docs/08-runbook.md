@@ -168,11 +168,14 @@ repeatable.
    `http://<jenkins-host>/github-webhook/`, content type
    `application/json`, event: `push`. Matches the Jenkinsfile's
    `triggers { githubPush() }`.
-4. **Job:** create a Multibranch Pipeline job pointing at this repo —
-   Jenkins auto-discovers `Jenkinsfile` per branch/PR. Configure it to
-   build every PR into `dev`, plus `dev` and `main` themselves — the
-   agreed scope: checks on every PR into `dev`, checks again + release
-   to Docker Hub on `dev`→`main` merge.
+4. **Job:** create a Multibranch Pipeline job pointing at this repo, with
+   branch discovery set to **all branches** (not just `dev`/`main` or
+   branches with open PRs) — Jenkins auto-discovers `Jenkinsfile` per
+   branch/PR. The `Jenkinsfile` itself scopes what actually runs per
+   branch: Gitleaks/Semgrep/Trivy-fs/Checkov (cheap, no build needed)
+   run on every branch discovered; build/test/docker-image/ZAP run only
+   for PRs into `dev` and for `dev`/`main` themselves; the Docker Hub
+   push only fires on `main`.
 5. **Credentials** (Jenkins → Credentials):
    - `dockerhub-token` (Docker Hub push, Kind: Username+password/PAT)
    - `discord-webhook` (optional, build-failure notifications, Kind: Secret text)
