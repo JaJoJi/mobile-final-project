@@ -1,0 +1,142 @@
+# Configures the VM from provision.yml as the Jenkins host (#218, #222):
+# Docker (every pipeline tool runs as a pinned container, see Jenkinsfile),
+# Jenkins LTS, cloudflared. Idempotent -- safe to re-run.
+#
+#   ./run.sh ansible-playbook jenkins-host.yml
+#
+# Jenkins itself (plugins, job, credentials) is then set up through its UI
+# per docs/08-runbook.md §6; hardening checklist in #288.
+- name: Configure the Jenkins host
+  hosts: jenkins
+  become: true
+  gather_facts: true
+
+  handlers:
+    - name: Restart jenkins
+      ansible.builtin.systemd_service:
+        name: jenkins
+        state: restarted
+
+  tasks:
+    - name: Wait for SSH (fresh VMs take a minute)
+      ansible.builtin.wait_for_connection:
+        timeout: 300
+
+    - name: Base packages
+      ansible.builtin.apt:
+        name:
+          - ca-certificates
+          - curl
+          - python3-debian          # needed by deb822_repository
+          - fontconfig              # Jenkins requirement
+          - openjdk-21-jre-headless
+        update_cache: true
+        cache_valid_time: 3600
+
+    # ── Docker Engine (upstream repo, not the older distro docker.io) ──
+    - name: Docker apt repo
+      ansible.builtin.deb822_repository:
+        name: docker
+        types: deb
+        uris: https://download.docker.com/linux/ubuntu
+        suites: "{{ ansible_facts.distribution_release }}"
+        components: stable
+        architectures: amd64
+        signed_by: https://download.docker.com/linux/ubuntu/gpg
+
+    - name: Docker Engine
+      ansible.builtin.apt:
+        name:
+          - docker-ce
+          - docker-ce-cli
+          - containerd.io
+          - docker-buildx-plugin
+          - docker-compose-plugin
+        update_cache: true
+
+    - name: Docker running
+      ansible.builtin.systemd_service:
+        name: docker
+        state: started
+        enabled: true
+
+    - name: Admin user can use docker
+      ansible.builtin.user:
+        name: "{{ ansible_user }}"
+        groups: docker
+        append: true
+
+    # ── Jenkins LTS ────────────────────────────────────────────────────
+    # Signing key rotates -- 2026 key per jenkins.io/doc/book/installing/linux
+    # (checked 2026-09-28; the 2023 key no longer signs the repo).
+    - name: Jenkins apt repo
+      ansible.builtin.deb822_repository:
+        name: jenkins
+        types: deb
+        uris: https://pkg.jenkins.io/debian-stable
+        suites: binary/
+        signed_by: https://pkg.jenkins.io/debian-stable/jenkins.io-2026.key
+
+    - name: Jenkins
+      ansible.builtin.apt:
+        name: jenkins
+        update_cache: true
+
+    # Every Jenkinsfile stage is a docker container, so the jenkins user
+    # needs the docker socket (no separate build agent -- runbook §6).
+    - name: jenkins user can use docker
+      ansible.builtin.user:
+        name: jenkins
+        groups: docker
+        append: true
+      notify: Restart jenkins
+
+    - name: Jenkins running
+      ansible.builtin.systemd_service:
+        name: jenkins
+        state: started
+        enabled: true
+
+    # ── cloudflared (exposes Jenkins without opening a port) ───────────
+    - name: Cloudflare apt repo
+      ansible.builtin.deb822_repository:
+        name: cloudflared
+        types: deb
+        uris: https://pkg.cloudflare.com/cloudflared
+        suites: "{{ ansible_facts.distribution_release }}"
+        components: main
+        signed_by: https://pkg.cloudflare.com/cloudflare-main.gpg
+
+    - name: cloudflared
+      ansible.builtin.apt:
+        name: cloudflared
+        update_cache: true
+
+    - name: Apply pending handlers before verifying
+      ansible.builtin.meta: flush_handlers
+
+    # ── Verify (evidence, not assumptions) ─────────────────────────────
+    - name: jenkins user can actually talk to docker
+      ansible.builtin.command: docker info --format '{{ "{{" }} .ServerVersion {{ "}}" }}'
+      become_user: jenkins
+      register: jenkins_docker
+      changed_when: false
+
+    - name: Jenkins answers on :8080
+      ansible.builtin.uri:
+        url: http://127.0.0.1:8080/login
+        status_code: 200
+      register: jenkins_http
+      retries: 30
+      delay: 5
+      until: jenkins_http.status == 200
+
+    - name: Summary
+      ansible.builtin.debug:
+        msg:
+          - "Docker {{ jenkins_docker.stdout }} usable by the jenkins user"
+          - "Jenkins is up on 127.0.0.1:8080 (not exposed by the NSG)"
+          - "Initial admin password: ssh in and run"
+          - "  sudo cat /var/lib/jenkins/secrets/initialAdminPassword"
+          - "Open the UI through an SSH tunnel until cloudflared is set up:"
+          - "  ssh -L 8080:127.0.0.1:8080 {{ ansible_user }}@{{ ansible_host }}  ->  http://localhost:8080"

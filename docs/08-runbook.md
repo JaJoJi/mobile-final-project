@@ -157,7 +157,9 @@ Controller install + webhook + credentials aren't repo-tracked — done by
 hand on the target VM (Azure, student credit), documented here so it's
 repeatable. Hardening checklist for that setup: #288.
 
-1. **Host:** Jenkins LTS + Docker Engine. That's all — every build tool
+1. **Host:** created + configured by Ansible — `infra/ansible/`
+   (`provision.yml` makes the Azure VM, `jenkins-host.yml` installs the
+   below; see its README). Jenkins LTS + Docker Engine. That's all — every build tool
    (Node, Flutter, Gitleaks, Semgrep, Trivy, Checkov, ZAP, Postgres,
    Redis) runs as a container pinned by version + digest in the
    `Jenkinsfile` (`IMAGES` map). Add the `jenkins` user to the `docker`
