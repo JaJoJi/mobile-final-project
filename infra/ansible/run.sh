@@ -2,7 +2,8 @@
 # Run Azure CLI / Ansible from the pinned toolbox image (Dockerfile here).
 # Ansible's controller can't run on native Windows, so everyone uses this.
 #
-#   ./run.sh az login --use-device-code          # once; kept in a docker volume
+#   ./run.sh az login --use-device-code          # once; kept in docker volume mfp-infra-azure
+#   (PSU's tenant blocks device-code login -- run from WSL instead, README)
 #   ./run.sh ansible-playbook provision.yml -e @vars.yml
 #   ./run.sh ansible-playbook jenkins-host.yml
 #
@@ -28,10 +29,10 @@ docker build -q -t mfp-infra:local . >/dev/null
 
 TTY=(-i); [ -t 0 ] && [ -t 1 ] && TTY=(-it)
 exec docker run --rm "${TTY[@]}" \
-  -v mfp-azure-cli:/root/.azure \
+  -v mfp-infra-azure:/home/tool/.azure \
   -v "$REPO:/work" \
   -v "$KEY_DIR/$KEY_NAME:/keys-ro/id:ro" \
   -v "$KEY_DIR/$KEY_NAME.pub:/keys-ro/id.pub:ro" \
   mfp-infra:local \
-  sh -c 'mkdir -p /keys /root/.ssh && cp /keys-ro/id /keys-ro/id.pub /keys/ && chmod 600 /keys/id \
-         && printf "Host *\n  IdentityFile /keys/id\n" > /root/.ssh/config && exec "$@"' -- "$@"
+  sh -c 'cp /keys-ro/id /keys-ro/id.pub /keys/ && chmod 600 /keys/id \
+         && printf "Host *\n  IdentityFile /keys/id\n" > "$HOME/.ssh/config" && exec "$@"' -- "$@"
