@@ -27,6 +27,49 @@
       ansible.builtin.wait_for_connection:
         timeout: 300
 
+    # ── Memory safety (2026-09-28: two parallel builds ran the 4 GB VM
+    # out of RAM; with no swap the whole machine froze, SSH included) ──
+    # Swap turns "frozen" into "slow"; low swappiness keeps it a last resort.
+    - name: Swap file
+      ansible.builtin.command: fallocate -l {{ swap_size }} /swapfile
+      args:
+        creates: /swapfile
+      register: swapfile
+
+    - name: Swap file permissions
+      ansible.builtin.file:
+        path: /swapfile
+        mode: "0600"
+
+    - name: Format swap
+      ansible.builtin.command: mkswap /swapfile
+      when: swapfile is changed
+
+    - name: Swap on at boot
+      ansible.builtin.lineinfile:
+        path: /etc/fstab
+        line: "/swapfile none swap sw 0 0"
+
+    - name: Swap active?
+      ansible.builtin.command: swapon --show=NAME --noheadings
+      register: swap_active
+      changed_when: false
+
+    - name: Enable swap
+      ansible.builtin.command: swapon /swapfile
+      when: "'/swapfile' not in swap_active.stdout"
+
+    - name: Low swappiness
+      ansible.builtin.copy:
+        dest: /etc/sysctl.d/99-mfp-swap.conf
+        mode: "0644"
+        content: "vm.swappiness = 10\n"
+      register: swappiness
+
+    - name: Apply swappiness
+      ansible.builtin.command: sysctl -p /etc/sysctl.d/99-mfp-swap.conf
+      when: swappiness is changed
+
     - name: Base packages
       ansible.builtin.apt:
         name:
@@ -153,6 +196,23 @@
         regexp: '<jenkinsUrl>.*</jenkinsUrl>'
         replace: '<jenkinsUrl>{{ jenkins_url }}</jenkinsUrl>'
       when: jenkins_location.stat.exists
+      notify: Restart jenkins
+
+    # One build at a time: each build already runs 5 tool containers in
+    # parallel + an ephemeral stack; two builds at once exceed 4 GB. Extra
+    # builds wait in the queue instead. (config.xml appears after Jenkins'
+    # first start; the wizard's default is 2.)
+    - name: Jenkins config present?
+      ansible.builtin.stat:
+        path: /var/lib/jenkins/config.xml
+      register: jenkins_config
+
+    - name: One executor on the built-in node
+      ansible.builtin.replace:
+        path: /var/lib/jenkins/config.xml
+        regexp: '<numExecutors>\d+</numExecutors>'
+        replace: '<numExecutors>{{ jenkins_executors }}</numExecutors>'
+      when: jenkins_config.stat.exists
       notify: Restart jenkins
 
     # Earlier revisions installed cloudflared for a webhook tunnel; not

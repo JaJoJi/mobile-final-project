@@ -66,6 +66,16 @@ Build:  ${env.BUILD_URL}   (open through the SSH tunnel)
   }
 }
 
+// Hard memory caps for tool containers (guide rule 7). The VM has 4 GB:
+// without caps, the parallel PR checks plus the Jenkins JVM ran it out of
+// memory and froze the whole machine (2026-09-28). With a cap, only the
+// offending container is OOM-killed and that stage fails.
+MEM = [
+  small : '--memory=512m --memory-swap=1g',
+  medium: '--memory=1g --memory-swap=2g',
+  large : '--memory=1536m --memory-swap=3g',
+]
+
 pipeline {
   agent any
 
@@ -110,7 +120,7 @@ pipeline {
     // ── 1. Secrets — cheapest, every branch ─────────────────────────────
     stage('Security · Gitleaks') {
       when { expression { params.ENABLE_SECURITY_SCAN != false } }
-      agent { docker { image IMAGES.gitleaks; args '--entrypoint='; reuseNode true } }
+      agent { docker { image IMAGES.gitleaks; args "--entrypoint= ${MEM.small}"; reuseNode true } }
       // Tool containers run as the Jenkins uid, which has no home dir there.
       environment { HOME = '/tmp' }
       steps {
@@ -126,7 +136,7 @@ pipeline {
       parallel {
         stage('Backend · lint + unit test') {
           when { anyOf { branch 'dev'; branch 'main'; changeRequest target: 'dev'; changeRequest target: 'main' } }
-          agent { docker { image IMAGES.node; reuseNode true } }
+          agent { docker { image IMAGES.node; args MEM.large; reuseNode true } }
           environment { HOME = '/tmp'; npm_config_cache = "${env.WORKSPACE}/.cache/npm" }
           steps {
             dir('backend') {
@@ -156,7 +166,7 @@ pipeline {
           when { anyOf { branch 'dev'; branch 'main'; changeRequest target: 'dev'; changeRequest target: 'main' } }
           // Root: the Flutter SDK in this image is root-owned and flutter
           // writes to its own cache. Ownership is handed back in post.
-          agent { docker { image IMAGES.flutter; args '-u 0:0'; reuseNode true } }
+          agent { docker { image IMAGES.flutter; args "-u 0:0 ${MEM.large}"; reuseNode true } }
           environment { HOME = '/tmp'; PUB_CACHE = "${env.WORKSPACE}/.cache/pub" }
           steps {
             dir('mobile') {
@@ -188,7 +198,7 @@ pipeline {
 
         stage('Security · Semgrep') {
           when { expression { params.ENABLE_SECURITY_SCAN != false } }
-          agent { docker { image IMAGES.semgrep; args '--entrypoint='; reuseNode true } }
+          agent { docker { image IMAGES.semgrep; args "--entrypoint= ${MEM.medium}"; reuseNode true } }
           environment { HOME = '/tmp' }
           steps {
             // Community engine + registry ruleset only (no Pro rules).
@@ -202,7 +212,7 @@ pipeline {
 
         stage('Security · Trivy fs') {
           when { expression { params.ENABLE_SECURITY_SCAN != false } }
-          agent { docker { image IMAGES.trivy; args '--entrypoint='; reuseNode true } }
+          agent { docker { image IMAGES.trivy; args "--entrypoint= ${MEM.medium}"; reuseNode true } }
           environment { HOME = '/tmp' }
           steps {
             // Blocks only fixable HIGH/CRITICAL (guide A4). Accepted risks
@@ -219,7 +229,7 @@ pipeline {
 
         stage('Security · Checkov') {
           when { expression { params.ENABLE_SECURITY_SCAN != false } }
-          agent { docker { image IMAGES.checkov; args '--entrypoint='; reuseNode true } }
+          agent { docker { image IMAGES.checkov; args "--entrypoint= ${MEM.medium}"; reuseNode true } }
           environment { HOME = '/tmp' }
           steps {
             // No docker_compose framework exists in Checkov — the old
@@ -250,7 +260,7 @@ pipeline {
           }
         }
         stage('Security · SBOM + Trivy image') {
-          agent { docker { image IMAGES.trivy; args '--entrypoint='; reuseNode true } }
+          agent { docker { image IMAGES.trivy; args "--entrypoint= ${MEM.medium}"; reuseNode true } }
           environment { HOME = '/tmp' }
           steps {
             sh '''
@@ -312,6 +322,8 @@ pipeline {
         stage('Security · ZAP') {
           when { expression { params.ENABLE_SECURITY_SCAN != false } }
           options { timeout(time: 20, unit: 'MINUTES') }
+          // Active API scan on dev/main only; PRs get the passive baseline.
+          environment { ZAP_API_SCAN = "${['dev', 'main'].contains(env.BRANCH_NAME)}" }
           steps { sh 'OUT_DIR=zap-reports bash ci/scripts/zap-scan.sh' }
           post {
             always {
