@@ -81,21 +81,22 @@ pipeline {
   }
 
   parameters {
-    // Kill switches, default ON. Checked as `!= false` because the first
-    // build of a new branch job has no params yet (guide A7 gotchas).
+    // Kill switches, all default ON. Checked as `!= false` because the
+    // first build of a new branch job has no params yet (guide A7
+    // gotchas) -- `== true` would silently turn them off on that build.
     booleanParam(name: 'ENABLE_SECURITY_SCAN', defaultValue: true,
       description: 'Gitleaks / Semgrep / Trivy / Checkov / ZAP stages')
     booleanParam(name: 'ENABLE_INTEGRATION_TESTS', defaultValue: true,
       description: 'Backend *.smoke.ts against a real Postgres + Redis + 3 Nest instances')
-    // Default OFF until the credential exists on the controller.
-    booleanParam(name: 'ENABLE_IMAGE_PUBLISH', defaultValue: false,
-      description: 'Push the backend image to Docker Hub on main (needs dockerhub-token)')
-    booleanParam(name: 'ENABLE_NOTIFICATIONS', defaultValue: false,
-      description: 'Email SUCCESS/FAILURE (needs notify-email credential + SMTP, runbook §6)')
+    booleanParam(name: 'ENABLE_IMAGE_PUBLISH', defaultValue: true,
+      description: 'Push the backend image to Docker Hub on main (dockerhub-token)')
+    booleanParam(name: 'ENABLE_NOTIFICATIONS', defaultValue: true,
+      description: 'Email SUCCESS/FAILURE (notify-email credential + SMTP, runbook §6)')
   }
 
   environment {
-    IMAGE_NAME  = 'jajoji/auto-chess-backend' // Docker Hub, not GHCR (#286)
+    // Private Docker Hub repo (created 2026-09-28). Holds the backend image.
+    IMAGE_NAME  = 'fiatthanapon/mobile-final-project'
     IMAGE_TAG   = "${env.GIT_COMMIT ? env.GIT_COMMIT.take(7) : 'local'}"
     // Unique per job + build: BUILD_ID alone collides across branches, and
     // BUILD_TAG contains %2F for feature/x branches (guide A7 gotchas).
@@ -331,7 +332,7 @@ pipeline {
         allOf {
           branch 'main'
           not { changeRequest() }
-          expression { params.ENABLE_IMAGE_PUBLISH == true }
+          expression { params.ENABLE_IMAGE_PUBLISH != false }
         }
       }
       steps {
@@ -358,10 +359,10 @@ pipeline {
       '''
     }
     success {
-      script { if (params.ENABLE_NOTIFICATIONS == true) { notifyEmail('SUCCESS') } }
+      script { if (params.ENABLE_NOTIFICATIONS != false) { notifyEmail('SUCCESS') } }
     }
     unsuccessful {
-      script { if (params.ENABLE_NOTIFICATIONS == true) { notifyEmail(currentBuild.currentResult) } }
+      script { if (params.ENABLE_NOTIFICATIONS != false) { notifyEmail(currentBuild.currentResult) } }
     }
   }
 }

@@ -179,12 +179,12 @@ log. Hardening checklist: #288.
    | `github-token` | Username with password | GitHub username + **classic** PAT with `repo:status` + `public_repo` (classic because the repo belongs to another user; fine-grained tokens can't reach collaborator repos). Used to scan the repo and post commit statuses. |
    | `notify-email` | Secret text | Recipient address(es), comma-separated — a credential because the repo is public |
    | `smtp-gmail` | Username with password | Gmail address + **App Password** (Google Account → Security → App passwords; needs 2-Step Verification). Never the real Gmail password. |
-   | `dockerhub-token` | Username with password | Docker Hub user + PAT — later, for `ENABLE_IMAGE_PUBLISH` |
+   | `dockerhub-token` | Username with password | Docker Hub user `fiatthanapon` + PAT (Read & Write). Pushes `fiatthanapon/mobile-final-project` (private) on `main`. |
 5. **SMTP** (Manage Jenkins → System → *Extended E-mail Notification*):
    SMTP server `smtp.gmail.com`, port `465`, *Use SSL*, credentials
    `smtp-gmail`, Default Content Type *plain text*. Use *Test
-   configuration* before relying on it. Then set `ENABLE_NOTIFICATIONS`
-   default to `true` in the `Jenkinsfile`.
+   configuration* before relying on it. `ENABLE_NOTIFICATIONS` is on by
+   default, so both email credentials must exist or builds fail in `post`.
 6. **Job:** New Item → **Multibranch Pipeline** `mobile-final-project`
    - Branch source **GitHub**, credentials `github-token`, URL
      `https://github.com/JaJoJi/mobile-final-project`
