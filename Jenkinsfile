@@ -237,7 +237,14 @@ pipeline {
       stages {
         stage('Backend · docker build') {
           steps {
-            sh 'docker build -t "$IMAGE_NAME:$IMAGE_TAG" backend'
+            // Per-build OCI labels (#285): which commit, when, which tag.
+            sh '''
+              docker build -t "$IMAGE_NAME:$IMAGE_TAG" \
+                --label org.opencontainers.image.revision="$GIT_COMMIT" \
+                --label org.opencontainers.image.version="$IMAGE_TAG" \
+                --label org.opencontainers.image.created="$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+                backend
+            '''
             // Scanners read the tarball — no docker.sock inside a scanner.
             sh 'docker save -o backend-image.tar "$IMAGE_NAME:$IMAGE_TAG"'
           }

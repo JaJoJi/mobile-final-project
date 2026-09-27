@@ -1,5 +1,9 @@
+# One pinned base for every stage (version + digest, #285) -- bump here
+# deliberately; a floating tag makes old builds unreproducible.
+ARG NODE_IMAGE=node:22.23.3-alpine@sha256:0a7108bf6c7bf5de370ffb1a3ed6be93d405b43ff159f681a8d18c0e2bc2e402
+
 # Full dependency set (dev + prod) — used only to compile TypeScript.
-FROM node:22-alpine AS deps
+FROM ${NODE_IMAGE} AS deps
 WORKDIR /app
 COPY package.json package-lock.json ./
 RUN npm ci
@@ -10,12 +14,18 @@ COPY src ./src
 RUN npm run build
 
 # Production-only dependencies — no devDependencies in the final image.
-FROM node:22-alpine AS prod-deps
+FROM ${NODE_IMAGE} AS prod-deps
 WORKDIR /app
 COPY package.json package-lock.json ./
 RUN npm ci --omit=dev
 
-FROM node:22-alpine AS runtime
+FROM ${NODE_IMAGE} AS runtime
+# Static OCI metadata; revision/created/version are added per build by
+# the Jenkinsfile (`docker build --label ...`) so Docker Hub images trace
+# back to the exact commit.
+LABEL org.opencontainers.image.title="auto-chess-backend" \
+      org.opencontainers.image.description="Auto Chess game backend (NestJS)" \
+      org.opencontainers.image.source="https://github.com/JaJoJi/mobile-final-project"
 WORKDIR /app
 ENV NODE_ENV=production
 # Files stay root-owned (read-only to the app); the process runs as the
