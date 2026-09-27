@@ -6,7 +6,7 @@ Terraform. Two playbooks:
 | Playbook | Runs against | Does |
 |---|---|---|
 | `provision.yml` | localhost → Azure CLI | resource group, VM (Ubuntu 24.04, `Standard_B2als_v2` in `malaysiawest`, 64 GB), NSG with **SSH only, from your IP + `admin_cidrs`**, Cost Management budget alert |
-| `jenkins-host.yml` | the VM over SSH | Docker Engine, Jenkins LTS, cloudflared; verifies the `jenkins` user can run docker and Jenkins answers on `:8080` |
+| `jenkins-host.yml` | the VM over SSH | Docker Engine, Jenkins LTS bound to `127.0.0.1:8080`, Jenkins URL `http://localhost:8080/`; verifies the `jenkins` user can run docker, Jenkins answers, and nothing listens on a public interface |
 
 Both are idempotent: re-running changes nothing unless something drifted
 (verified: second run of `jenkins-host.yml` → `changed=0`).
@@ -54,15 +54,9 @@ different key pair (default `~/.ssh/id_ed25519`).
    ```
 2. Finish setup per `docs/08-runbook.md` §6 (plugins, Multibranch job,
    credentials) and the hardening checklist in #288.
-3. **GitHub webhook** needs a public HTTPS URL — use a Cloudflare Tunnel
-   (cloudflared is installed), not an open port:
-   - **Named tunnel** (stable URL, needs a domain on Cloudflare):
-     `cloudflared tunnel login` → `cloudflared tunnel create jenkins-mfp` →
-     `cloudflared tunnel route dns jenkins-mfp jenkins.<domain>` →
-     `sudo cloudflared service install <token>`
-   - **Quick tunnel** (no domain, URL changes on every restart):
-     `cloudflared tunnel --url http://localhost:8080`, then point the
-     webhook at `https://<printed-url>/github-webhook/`.
+3. **No webhook** — Jenkins is private. The Multibranch job polls GitHub
+   every minute (runbook §6), posts commit statuses with `github-token`,
+   and emails results (`notify-email` + SMTP).
 
 ## Teammate IP changed?
 

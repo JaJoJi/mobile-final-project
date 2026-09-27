@@ -24,7 +24,10 @@
 // Host requirements + controller setup: docs/08-runbook.md §6.
 // Credentials (Jenkins > Credentials), only needed by gated stages:
 //   - dockerhub-token  Username + password/PAT  (ENABLE_IMAGE_PUBLISH)
-//   - discord-webhook  Secret text              (ENABLE_NOTIFICATIONS)
+//   - notify-email     Secret text: recipient(s), comma-separated
+//                      (ENABLE_NOTIFICATIONS; kept out of this public repo)
+//   Email also needs SMTP set in Manage Jenkins > System > Extended E-mail
+//   Notification (runbook §6).
 
 // Pinned tool images — bump deliberately (verify the new version first;
 // Trivy's own releases were compromised in Mar 2026, guide A3).
@@ -40,14 +43,35 @@ IMAGES = [
   redis   : 'redis:7-alpine@sha256:858f009f9709ce576febc734aa78b8f6d624b82571f9ddb6bda4377c833b3499',
 ]
 
+// Email with the result; on failure the tail of the log inline + the full
+// log attached, so nobody needs the (private, SSH-tunnel-only) Jenkins UI
+// just to see why a build broke.
+def notifyEmail(String status) {
+  withCredentials([string(credentialsId: 'notify-email', variable: 'NOTIFY_TO')]) {
+    def failed = status != 'SUCCESS'
+    emailext(
+      to: env.NOTIFY_TO,
+      subject: "[${status}] ${env.JOB_NAME} #${env.BUILD_NUMBER}",
+      mimeType: 'text/plain',
+      attachLog: failed,
+      compressLog: failed,
+      // "${BUILD_LOG ...}" is an Email Extension token, expanded by the
+      // plugin, not Groovy -- hence the single-quoted part.
+      body: """Result: ${status}
+Branch: ${env.BRANCH_NAME}${env.CHANGE_ID ? " (PR #${env.CHANGE_ID}: ${env.CHANGE_TITLE})" : ''}
+Commit: ${env.GIT_COMMIT}
+Build:  ${env.BUILD_URL}   (open through the SSH tunnel)
+""" + (failed ? '\nLast 80 log lines:\n${BUILD_LOG, maxLines=80, escapeHtml=false}\n' : '')
+    )
+  }
+}
+
 pipeline {
   agent any
 
-  triggers {
-    // GitHub push webhook (GitHub plugin). The Multibranch job discovers
-    // ALL branches + PRs; the `when` blocks below scope what runs where.
-    githubPush()
-  }
+  // No triggers: Jenkins is private (no inbound webhook). The Multibranch
+  // job's periodic scan (1 min, runbook §6) finds new commits/PRs and
+  // starts builds; the `when` blocks below scope what runs where.
 
   options {
     timestamps()
@@ -67,7 +91,7 @@ pipeline {
     booleanParam(name: 'ENABLE_IMAGE_PUBLISH', defaultValue: false,
       description: 'Push the backend image to Docker Hub on main (needs dockerhub-token)')
     booleanParam(name: 'ENABLE_NOTIFICATIONS', defaultValue: false,
-      description: 'Post failures to Discord (needs discord-webhook)')
+      description: 'Email SUCCESS/FAILURE (needs notify-email credential + SMTP, runbook §6)')
   }
 
   environment {
@@ -333,20 +357,11 @@ pipeline {
         docker image prune -f >/dev/null 2>&1 || true
       '''
     }
+    success {
+      script { if (params.ENABLE_NOTIFICATIONS == true) { notifyEmail('SUCCESS') } }
+    }
     unsuccessful {
-      script {
-        if (params.ENABLE_NOTIFICATIONS == true) {
-          withCredentials([string(credentialsId: 'discord-webhook', variable: 'WEBHOOK')]) {
-            // Single-quoted: the shell expands $WEBHOOK, Groovy never sees
-            // the value, so it isn't on the command line (guide A7 #3).
-            sh '''
-              curl -sf -X POST -H 'Content-Type: application/json' \
-                -d "{\\"content\\":\\"❌ Jenkins build failed: $JOB_NAME #$BUILD_NUMBER — $BUILD_URL\\"}" \
-                "$WEBHOOK"
-            '''
-          }
-        }
-      }
+      script { if (params.ENABLE_NOTIFICATIONS == true) { notifyEmail(currentBuild.currentResult) } }
     }
   }
 }

@@ -153,41 +153,55 @@ grepping `docker compose logs` by hand — update this section then.
 
 ## 6. Jenkins CI Setup
 
-Controller install + webhook + credentials aren't repo-tracked — done by
-hand on the target VM (Azure, student credit), documented here so it's
-repeatable. Hardening checklist for that setup: #288.
+Jenkins runs on the Azure VM `mfp-jenkins` and is **private**: nothing
+inbound except SSH from known IPs, Jenkins bound to `127.0.0.1:8080`
+(decided 2026-09-28, "option A"). It polls GitHub instead of receiving
+webhooks, posts ✅/❌ back to commits/PRs, and emails results with the
+log. Hardening checklist: #288.
 
 1. **Host:** created + configured by Ansible — `infra/ansible/`
-   (`provision.yml` makes the Azure VM, `jenkins-host.yml` installs the
-   below; see its README). Jenkins LTS + Docker Engine. That's all — every build tool
-   (Node, Flutter, Gitleaks, Semgrep, Trivy, Checkov, ZAP, Postgres,
-   Redis) runs as a container pinned by version + digest in the
-   `Jenkinsfile` (`IMAGES` map). Add the `jenkins` user to the `docker`
-   group. Keep **≥ 30 GB free disk** (Flutter image ≈ 3 GB, plus
-   build/scan images) and **≥ 4 GB RAM** for the build (parallel stages +
-   the ephemeral stack of Postgres + Redis + 3 Nest + ZAP).
-2. **Plugins:** Pipeline (`workflow-aggregator`), Multibranch, Git,
-   GitHub (webhook trigger), Docker Pipeline (`docker-workflow`), JUnit,
-   HTML Publisher, Timestamper, Credentials Binding.
-3. **Webhook:** GitHub repo → Settings → Webhooks → add
-   `https://<jenkins-host>/github-webhook/`, content type
-   `application/json`, event: `push` (+ `pull_request`), with a shared
-   secret. Matches the Jenkinsfile's `triggers { githubPush() }`.
-4. **Job:** Multibranch Pipeline pointing at this repo, discovering **all
-   branches + PRs**. The `Jenkinsfile` scopes what runs:
-   - every branch: Gitleaks, Semgrep, Trivy fs, Checkov
-   - PRs into `dev`/`main` + `dev`/`main` themselves: backend + mobile
-     checks, image build → SBOM → Trivy image, ephemeral stack →
-     integration smoke → ZAP
-   - `main` only (after a `dev` → `main` merge): Docker Hub push
-5. **Credentials** (Jenkins → Credentials):
-   - `dockerhub-token` (Docker Hub push, Kind: Username+password/PAT) —
-     then set `ENABLE_IMAGE_PUBLISH` default to true
-   - `discord-webhook` (optional, build-failure notifications, Kind:
-     Secret text) — then enable `ENABLE_NOTIFICATIONS`
-6. **Verify:** push a commit, confirm the webhook fires a build, and that
-   the JUnit tab, `Backend coverage` and `ZAP` reports populate, and
-   `sbom.cdx.json` is archived.
+   (`provision.yml` makes the VM, `jenkins-host.yml` installs Docker +
+   Jenkins; see its README). Every build tool (Node, Flutter, Gitleaks,
+   Semgrep, Trivy, Checkov, ZAP, Postgres, Redis) runs as a container
+   pinned by version + digest in the `Jenkinsfile` (`IMAGES` map). Keep
+   **≥ 30 GB free disk** and **≥ 4 GB RAM**.
+2. **Open the UI** (SSH tunnel; your IP must be in the NSG allow-list —
+   add it via `admin_cidrs` + re-run `provision.yml`):
+   ```bash
+   ssh -L 8080:127.0.0.1:8080 azureuser@<vm-ip>    # then http://localhost:8080
+   ```
+3. **Plugins:** Pipeline, Pipeline: Multibranch, Git, **GitHub Branch
+   Source**, **Docker Pipeline**, JUnit, **HTML Publisher**, Timestamper,
+   Credentials Binding, **Email Extension**.
+4. **Credentials** (Manage Jenkins → Credentials → Global):
+   | ID | Kind | What |
+   |---|---|---|
+   | `github-token` | Username with password | GitHub username + **classic** PAT with `repo:status` + `public_repo` (classic because the repo belongs to another user; fine-grained tokens can't reach collaborator repos). Used to scan the repo and post commit statuses. |
+   | `notify-email` | Secret text | Recipient address(es), comma-separated — a credential because the repo is public |
+   | `smtp-gmail` | Username with password | Gmail address + **App Password** (Google Account → Security → App passwords; needs 2-Step Verification). Never the real Gmail password. |
+   | `dockerhub-token` | Username with password | Docker Hub user + PAT — later, for `ENABLE_IMAGE_PUBLISH` |
+5. **SMTP** (Manage Jenkins → System → *Extended E-mail Notification*):
+   SMTP server `smtp.gmail.com`, port `465`, *Use SSL*, credentials
+   `smtp-gmail`, Default Content Type *plain text*. Use *Test
+   configuration* before relying on it. Then set `ENABLE_NOTIFICATIONS`
+   default to `true` in the `Jenkinsfile`.
+6. **Job:** New Item → **Multibranch Pipeline** `mobile-final-project`
+   - Branch source **GitHub**, credentials `github-token`, URL
+     `https://github.com/JaJoJi/mobile-final-project`
+   - Behaviours: discover branches (all); discover PRs from origin
+     (merge with target); discover PRs from forks — trust **From users
+     with Admin or Write permission**; **Filter by name (with
+     wildcards)** include `dev main PR-*` (the repo has ~40 stale
+     feature branches; without the filter each gets built)
+   - **Scan Multibranch Pipeline Triggers → Periodically if not otherwise
+     run: 1 minute** (replaces the webhook)
+   - Orphaned items: discard after 7 days
+   The `Jenkinsfile` scopes stages: cheap scans on every discovered
+   branch; full build/test/image/ZAP on PRs into `dev`/`main` and on
+   `dev`/`main`; Docker Hub push on `main` only.
+7. **Verify:** push to a PR branch → build starts within ~1 min → the PR
+   shows the Jenkins status check → email arrives; JUnit, `Backend
+   coverage`, `ZAP` reports and `sbom.cdx.json` present on the build.
 
 **Running pieces outside Jenkins** (from repo root, needs Docker + bash):
 build the image, then `CI_ID=local IMAGE=<image:tag> PG_IMAGE=postgres:16-alpine

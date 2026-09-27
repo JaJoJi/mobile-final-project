@@ -1,6 +1,10 @@
 # Configures the VM from provision.yml as the Jenkins host (#218, #222):
-# Docker (every pipeline tool runs as a pinned container, see Jenkinsfile),
-# Jenkins LTS, cloudflared. Idempotent -- safe to re-run.
+# Docker (every pipeline tool runs as a pinned container, see Jenkinsfile)
+# and Jenkins LTS, reachable only through an SSH tunnel. Idempotent.
+#
+# Private by design (decided 2026-09-28, "option A"): nothing inbound but
+# SSH. Jenkins polls GitHub (multibranch periodic scan) instead of taking
+# webhooks, reports ✅/❌ back to the PR, and emails results with the log.
 #
 #   ./run.sh ansible-playbook jenkins-host.yml
 #
@@ -16,6 +20,7 @@
       ansible.builtin.systemd_service:
         name: jenkins
         state: restarted
+        daemon_reload: true
 
   tasks:
     - name: Wait for SSH (fresh VMs take a minute)
@@ -91,26 +96,77 @@
         append: true
       notify: Restart jenkins
 
+    # Loopback only: :8080 stays unreachable from outside even if an NSG
+    # rule were opened by mistake. Access = SSH tunnel.
+    - name: Jenkins systemd drop-in dir
+      ansible.builtin.file:
+        path: /etc/systemd/system/jenkins.service.d
+        state: directory
+        mode: "0755"
+
+    - name: Jenkins listens on 127.0.0.1 only
+      ansible.builtin.copy:
+        dest: /etc/systemd/system/jenkins.service.d/override.conf
+        mode: "0644"
+        content: |
+          # Managed by infra/ansible/jenkins-host.yml
+          [Service]
+          Environment="JENKINS_LISTEN_ADDRESS=127.0.0.1"
+          # First boot (unpacking the war + plugins) on a 2-vCPU VM can take
+          # longer than the unit's default 90 s and systemd would kill it.
+          TimeoutStartSec=300
+      notify: Restart jenkins
+
     - name: Jenkins running
       ansible.builtin.systemd_service:
         name: jenkins
         state: started
         enabled: true
+        daemon_reload: true
 
-    # ── cloudflared (exposes Jenkins without opening a port) ───────────
-    - name: Cloudflare apt repo
-      ansible.builtin.deb822_repository:
-        name: cloudflared
-        types: deb
-        uris: https://pkg.cloudflare.com/cloudflared
-        suites: "{{ ansible_facts.distribution_release }}"
-        components: main
-        signed_by: https://pkg.cloudflare.com/cloudflare-main.gpg
+    # Links Jenkins puts in GitHub statuses and emails use this URL. With
+    # the SSH tunnel (-L 8080:127.0.0.1:8080) it opens on your own machine.
+    # The Setup Wizard writes this file on first login; create it before
+    # that, only fix the URL after.
+    - name: Jenkins URL config exists?
+      ansible.builtin.stat:
+        path: /var/lib/jenkins/jenkins.model.JenkinsLocationConfiguration.xml
+      register: jenkins_location
 
-    - name: cloudflared
+    - name: Create Jenkins URL config
+      ansible.builtin.copy:
+        dest: /var/lib/jenkins/jenkins.model.JenkinsLocationConfiguration.xml
+        owner: jenkins
+        group: jenkins
+        mode: "0644"
+        content: |
+          <?xml version='1.1' encoding='UTF-8'?>
+          <jenkins.model.JenkinsLocationConfiguration>
+            <jenkinsUrl>{{ jenkins_url }}</jenkinsUrl>
+          </jenkins.model.JenkinsLocationConfiguration>
+      when: not jenkins_location.stat.exists
+      notify: Restart jenkins
+
+    - name: Set Jenkins URL
+      ansible.builtin.replace:
+        path: /var/lib/jenkins/jenkins.model.JenkinsLocationConfiguration.xml
+        regexp: '<jenkinsUrl>.*</jenkinsUrl>'
+        replace: '<jenkinsUrl>{{ jenkins_url }}</jenkinsUrl>'
+      when: jenkins_location.stat.exists
+      notify: Restart jenkins
+
+    # Earlier revisions installed cloudflared for a webhook tunnel; not
+    # needed now that Jenkins polls GitHub. Remove it (least software).
+    - name: No cloudflared
       ansible.builtin.apt:
         name: cloudflared
-        update_cache: true
+        state: absent
+        purge: true
+
+    - name: No cloudflared apt repo
+      ansible.builtin.deb822_repository:
+        name: cloudflared
+        state: absent
 
     - name: Apply pending handlers before verifying
       ansible.builtin.meta: flush_handlers
@@ -131,12 +187,23 @@
       delay: 5
       until: jenkins_http.status == 200
 
+    - name: Jenkins not listening on a public interface
+      ansible.builtin.command: ss -Htln 'sport = :8080'
+      register: jenkins_listen
+      changed_when: false
+      # Every :8080 listener must be loopback -- IPv4 `127.0.0.1:8080` or the
+      # Java dual-stack form `[::ffff:127.0.0.1]:8080` -- and there must be one.
+      failed_when: >-
+        jenkins_listen.stdout_lines | length == 0
+        or (jenkins_listen.stdout_lines
+            | reject('search', '(^|\s|\[::ffff:)127\.0\.0\.1\]?:8080\s')
+            | list | length) > 0
+
     - name: Summary
       ansible.builtin.debug:
         msg:
           - "Docker {{ jenkins_docker.stdout }} usable by the jenkins user"
-          - "Jenkins is up on 127.0.0.1:8080 (not exposed by the NSG)"
-          - "Initial admin password: ssh in and run"
-          - "  sudo cat /var/lib/jenkins/secrets/initialAdminPassword"
-          - "Open the UI through an SSH tunnel until cloudflared is set up:"
-          - "  ssh -L 8080:127.0.0.1:8080 {{ ansible_user }}@{{ ansible_host }}  ->  http://localhost:8080"
+          - "Jenkins is up on 127.0.0.1:8080 only (private -- SSH tunnel)"
+          - "Open the UI:  ssh -L 8080:127.0.0.1:8080 {{ ansible_user }}@{{ ansible_host }}  ->  http://localhost:8080"
+          - "Initial admin password:  ssh {{ ansible_user }}@{{ ansible_host }} sudo cat /var/lib/jenkins/secrets/initialAdminPassword"
+          - "Then: docs/08-runbook.md §6 (plugins, periodic scan, GitHub status, email)"
