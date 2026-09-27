@@ -12,7 +12,7 @@ configuration over SSH, so there's one tool and one way of running it.
 
 | กลุ่ม | build | test | release | deploy | config | secret | operate | monitor |
 |---|---|---|---|---|---|---|---|---|
-| Auto Chess Mobile (116, 661, 732) | Jenkins | Gitleaks → Semgrep → Trivy → Checkov → ZAP | Docker Hub | Docker Compose | Ansible | HashiCorp Vault | nginx + ModSecurity | Beyla → Prometheus → Grafana, Tempo, Loki, Promtail + OTel SDK |
+| Auto Chess Mobile (116, 661, 732) | Jenkins | Gitleaks → Semgrep → Trivy → Checkov → ZAP | Docker Hub | Docker Compose | Ansible | HashiCorp Vault | nginx + ModSecurity | Beyla → Prometheus → Grafana, Tempo, Loki, Grafana Alloy + OTel SDK |
 
 | Stage | Tool | Role in this project | Status (2026-09-28) |
 |---|---|---|---|
@@ -23,7 +23,7 @@ configuration over SSH, so there's one tool and one way of running it.
 | config | Ansible | `infra/ansible/`: Jenkins VM provisioned + configured; app deploy playbook next | 🟡 partly (#222) |
 | secret | HashiCorp Vault | production mode: Raft storage, AppRole, Vault Agent renders app secrets | ⬜ (#223) |
 | operate | nginx + ModSecurity | reverse proxy + OWASP CRS WAF in front of the app | 🟡 nginx only (#224) |
-| monitor | Beyla, Prometheus, Grafana, Tempo, Loki, Promtail, OTel SDK | metrics (Beyla → Prometheus), traces (OTel SDK → Tempo), logs (Promtail → Loki), all in Grafana; no mtail — log counters are LogQL queries | ⬜ (#225) |
+| monitor | Beyla, Prometheus, Grafana, Tempo, Loki, Grafana Alloy, OTel SDK | metrics (Beyla → Prometheus), traces (OTel SDK → Tempo), logs (Alloy → Loki), all in Grafana; Alloy instead of the deprecated Promtail, no mtail — log counters are LogQL queries | ⬜ (#225) |
 
 Not in the stack (deliberately): SonarQube (SAST = Semgrep, coverage gates
 live in jest/lcov), Terraform (Ansible provisions), GitHub Actions as CI
