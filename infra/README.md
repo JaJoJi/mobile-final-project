@@ -8,6 +8,27 @@ this folder is about the machine it runs on.
 Terraform — Ansible drives the Azure CLI for provisioning and does the
 configuration over SSH, so there's one tool and one way of running it.
 
+## DevOps toolchain
+
+| กลุ่ม | build | test | release | deploy | config | secret | operate | monitor |
+|---|---|---|---|---|---|---|---|---|
+| Auto Chess Mobile (116, 661, 732) | Jenkins | Gitleaks → Semgrep → Trivy → Checkov → ZAP | Docker Hub | Docker Compose | Ansible | HashiCorp Vault | nginx + ModSecurity | Beyla → Prometheus → Grafana, Tempo, Loki, Grafana Alloy + OTel SDK |
+
+| Stage | Tool | Role in this project | Status (2026-09-28) |
+|---|---|---|---|
+| build | Jenkins | Multibranch on the Azure VM, polls GitHub every minute; backend + mobile build/test in pinned containers (`Jenkinsfile`) | ✅ live (#218) |
+| test | Gitleaks → Semgrep → Trivy → Checkov → ZAP | secrets → SAST → dependency + image CVEs → Dockerfile/workflow misconfig → DAST on an ephemeral stack | ✅ live, blocks PRs (#219) |
+| release | Docker Hub | `fiatthanapon/mobile-final-project:<sha7>` + `latest`, pushed on `main` after a `dev → main` merge — the image that passed the scans, never rebuilt | 🟡 wired, first push pending (#220) |
+| deploy | Docker Compose | `docker-compose.prod.yml`: nginx → nest ×3 → Redis, Postgres primary/replica | 🟡 dev compose only (#221) |
+| config | Ansible | `infra/ansible/`: Jenkins VM provisioned + configured; app deploy playbook next | 🟡 partly (#222) |
+| secret | HashiCorp Vault | production mode: Raft storage, AppRole, Vault Agent renders app secrets | ⬜ (#223) |
+| operate | nginx + ModSecurity | reverse proxy + OWASP CRS WAF in front of the app | 🟡 nginx only (#224) |
+| monitor | Beyla, Prometheus, Grafana, Tempo, Loki, Grafana Alloy, OTel SDK | metrics (Beyla → Prometheus), traces (OTel SDK → Tempo), logs (Alloy → Loki), all in Grafana; Alloy instead of the deprecated Promtail, no mtail — log counters are LogQL queries | ⬜ (#225) |
+
+Not in the stack (deliberately): SonarQube (SAST = Semgrep, coverage gates
+live in jest/lcov), Terraform (Ansible provisions), GitHub Actions as CI
+(interim only, removed in #272).
+
 ## Layout
 
 | Path | What | Status |
