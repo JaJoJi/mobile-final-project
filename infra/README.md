@@ -12,19 +12,24 @@ configuration over SSH, so there's one tool and one way of running it.
 
 | Path | What | Status |
 |---|---|---|
-| [`ansible/`](ansible/README.md) | Jenkins host on Azure: `provision.yml` (VM, NSG, budget alert) + `jenkins-host.yml` (Docker, Jenkins, cloudflared) | ready, not yet applied |
+| [`ansible/`](ansible/README.md) | Jenkins host on Azure: `provision.yml` (VM, NSG, budget alert) + `jenkins-host.yml` (Docker, Jenkins on loopback) | **live** — `mfp-jenkins`, malaysiawest |
 | _later_ | App deploy (#221), Vault (#223), ModSecurity (#224), LGTM monitoring (#225) — new playbooks in `ansible/` | planned |
 
 ## Architecture (today)
 
 ```
- GitHub ──webhook──► Cloudflare Tunnel ──► Azure VM  mfp-jenkins  (Standard_B2als_v2, malaysiawest, Ubuntu 24.04)
-                     (no inbound port)      ├─ Jenkins LTS  127.0.0.1:8080  (never exposed)
-                                            ├─ Docker Engine  ← every pipeline stage runs as a
-                                            │                   pinned container (Jenkinsfile)
-                                            └─ cloudflared
- Team ──SSH (22, your IP only)──► VM        NSG allows nothing else inbound
+ GitHub ◄──── polls every 1 min, posts ✅/❌ ──── Azure VM  mfp-jenkins  (Standard_B2als_v2, malaysiawest)
+                                                 ├─ Jenkins LTS  127.0.0.1:8080 only
+ Team inbox ◄── email: result + log tail ─────── │
+                                                 └─ Docker Engine ← every pipeline stage runs as a
+                                                                    pinned container (Jenkinsfile)
+ Team ──SSH (22, allow-listed IPs) + tunnel -L 8080:127.0.0.1:8080 ──► UI
+                                        NSG allows nothing else inbound
 ```
+
+**Private by design** (decided 2026-09-28): no webhook, no public URL.
+Jenkins polls GitHub instead, reports status on the PR and emails the
+result, so the UI (SSH tunnel) is only needed for admin work.
 
 ## Quick start
 
