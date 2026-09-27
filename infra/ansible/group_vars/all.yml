@@ -1,0 +1,25 @@
+# Defaults for provision.yml + jenkins-host.yml. Per-person values
+# (budget email, teammates' IPs) go in vars.yml -- copy vars.example.yml.
+
+azure_location: southeastasia          # Singapore, closest region to Thailand
+resource_group: mfp-jenkins-rg
+vm_name: mfp-jenkins
+# Decided 2026-09-28: B2s (2 vCPU / 4 GB), $30/month budget, runs 24/7
+# (no auto-shutdown) so teammates can build any time, until ~2026-10-15.
+vm_size: Standard_B2s
+vm_image: Canonical:ubuntu-24_04-lts:server:latest
+os_disk_gb: 64                          # scanner images + docker cache + jenkins_home
+admin_username: azureuser
+ssh_public_key_file: /keys/id.pub       # mounted by run.sh from $SSH_KEY.pub
+
+# Extra CIDRs allowed to SSH in, on top of the IPv4 of whoever runs
+# provision.yml (auto-detected). Never 0.0.0.0/0 -- the repo is public.
+admin_cidrs: []
+
+# Cost Management budget: EMAIL ALERT ONLY, it never stops the VM.
+budget_amount: 30
+budget_start_date: "2026-09-01"         # must be the 1st of a month
+budget_end_date: "2026-12-31"
+budget_alert_emails: []                 # required, set in vars.yml
+
+azure_tags: "project=mobile-final-project purpose=jenkins-ci"

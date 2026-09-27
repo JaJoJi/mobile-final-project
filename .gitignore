@@ -48,3 +48,7 @@ backend-image.tar
 sbom.cdx.json
 *.sarif
 mobile/reports/
+
+# infra/ansible — per-person values and generated inventory (real IPs)
+infra/ansible/vars.yml
+infra/ansible/inventory/azure.yml
