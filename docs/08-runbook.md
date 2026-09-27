@@ -155,31 +155,40 @@ grepping `docker compose logs` by hand — update this section then.
 
 Controller install + webhook + credentials aren't repo-tracked — done by
 hand on the target VM (Azure, student credit), documented here so it's
-repeatable.
+repeatable. Hardening checklist for that setup: #288.
 
-1. **Install Jenkins** on the target VM, running on the built-in node —
-   no separate Docker agent (devops-toolchain.md §1). Standard LTS
-   package for the host OS; no Docker-in-Docker needed since `docker`
-   CLI is invoked directly on the built-in node against the host's
-   Docker daemon.
-2. **Plugins:** GitHub Integration (webhook trigger), HTML Publisher
-   (backend coverage report), JUnit (already core in modern Jenkins).
+1. **Host:** Jenkins LTS + Docker Engine. That's all — every build tool
+   (Node, Flutter, Gitleaks, Semgrep, Trivy, Checkov, ZAP, Postgres,
+   Redis) runs as a container pinned by version + digest in the
+   `Jenkinsfile` (`IMAGES` map). Add the `jenkins` user to the `docker`
+   group. Keep **≥ 30 GB free disk** (Flutter image ≈ 3 GB, plus
+   build/scan images) and **≥ 4 GB RAM** for the build (parallel stages +
+   the ephemeral stack of Postgres + Redis + 3 Nest + ZAP).
+2. **Plugins:** Pipeline (`workflow-aggregator`), Multibranch, Git,
+   GitHub (webhook trigger), Docker Pipeline (`docker-workflow`), JUnit,
+   HTML Publisher, Timestamper, Credentials Binding.
 3. **Webhook:** GitHub repo → Settings → Webhooks → add
-   `http://<jenkins-host>/github-webhook/`, content type
-   `application/json`, event: `push`. Matches the Jenkinsfile's
-   `triggers { githubPush() }`.
-4. **Job:** create a Multibranch Pipeline job pointing at this repo, with
-   branch discovery set to **all branches** (not just `dev`/`main` or
-   branches with open PRs) — Jenkins auto-discovers `Jenkinsfile` per
-   branch/PR. The `Jenkinsfile` itself scopes what actually runs per
-   branch: Gitleaks/Semgrep/Trivy-fs/Checkov (cheap, no build needed)
-   run on every branch discovered; build/test/docker-image/ZAP run for
-   PRs into `dev` **or** `main` and for `dev`/`main` themselves — so a
-   dev→main promotion PR gets the full check before it merges, not just
-   after; the Docker Hub push only fires on `main`.
+   `https://<jenkins-host>/github-webhook/`, content type
+   `application/json`, event: `push` (+ `pull_request`), with a shared
+   secret. Matches the Jenkinsfile's `triggers { githubPush() }`.
+4. **Job:** Multibranch Pipeline pointing at this repo, discovering **all
+   branches + PRs**. The `Jenkinsfile` scopes what runs:
+   - every branch: Gitleaks, Semgrep, Trivy fs, Checkov
+   - PRs into `dev`/`main` + `dev`/`main` themselves: backend + mobile
+     checks, image build → SBOM → Trivy image, ephemeral stack →
+     integration smoke → ZAP
+   - `main` only (after a `dev` → `main` merge): Docker Hub push
 5. **Credentials** (Jenkins → Credentials):
-   - `dockerhub-token` (Docker Hub push, Kind: Username+password/PAT)
-   - `discord-webhook` (optional, build-failure notifications, Kind: Secret text)
-6. **Verify:** push a commit, confirm the webhook fires a build, confirm
-   `Backend coverage` (HTML Publisher) and the JUnit tab both populate
-   after `Backend · unit test + coverage`.
+   - `dockerhub-token` (Docker Hub push, Kind: Username+password/PAT) —
+     then set `ENABLE_IMAGE_PUBLISH` default to true
+   - `discord-webhook` (optional, build-failure notifications, Kind:
+     Secret text) — then enable `ENABLE_NOTIFICATIONS`
+6. **Verify:** push a commit, confirm the webhook fires a build, and that
+   the JUnit tab, `Backend coverage` and `ZAP` reports populate, and
+   `sbom.cdx.json` is archived.
+
+**Running pieces outside Jenkins** (from repo root, needs Docker + bash):
+build the image, then `CI_ID=local IMAGE=<image:tag> PG_IMAGE=postgres:16-alpine
+REDIS_IMAGE=redis:7-alpine bash ci/scripts/stack-up.sh`, run smoke / ZAP
+(`ZAP_IMAGE=zaproxy/zap-stable:2.17.0 bash ci/scripts/zap-scan.sh`), and
+`CI_ID=local bash ci/scripts/stack-down.sh` to clean up.

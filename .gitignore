@@ -39,3 +39,12 @@ coverage/
 # Misc
 Thumbs.db
 .worktrees/
+
+# CI outputs (Jenkinsfile)
+.cache/
+zap-reports/
+stack-logs/
+backend-image.tar
+sbom.cdx.json
+*.sarif
+mobile/reports/

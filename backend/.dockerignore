@@ -15,3 +15,5 @@ README.md
 .vscode
 .idea
 **/*.spec.ts
+reports
+zap
