@@ -24,6 +24,11 @@ admin_cidrs: []
 # point here and open through `ssh -L 8080:127.0.0.1:8080 ...`.
 jenkins_url: "http://localhost:8080/"
 
+# 4 GB VM: one build at a time + swap as a safety net (a 2-build run froze
+# the VM on 2026-09-28). Raise executors only after a bigger vm_size.
+jenkins_executors: 1
+swap_size: 4G
+
 # Cost Management budget: EMAIL ALERT ONLY, it never stops the VM.
 budget_amount: 30
 budget_start_date: "2026-09-01"         # must be the 1st of a month
