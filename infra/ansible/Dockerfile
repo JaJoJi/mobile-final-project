@@ -8,6 +8,15 @@ RUN tdnf install -y python3-pip openssh-clients \
  && tdnf clean all \
  && python3 -m pip install --no-cache-dir ansible-core==2.21.4
 
+# Non-root (Trivy DS-0002 / Checkov CKV_DOCKER_3 caught the first
+# version). /keys receives run.sh's copy of the SSH key pair; group_vars'
+# ssh_public_key_file points there.
+RUN tdnf install -y shadow-utils  && tdnf clean all  && useradd -m -u 1000 tool  && install -d -o tool -g tool -m 0700 /keys /home/tool/.azure /home/tool/.ssh
+USER tool
+
+# A CLI toolbox, not a service -- nothing to health-check (CKV_DOCKER_2).
+HEALTHCHECK NONE
+
 ENV ANSIBLE_CONFIG=/work/infra/ansible/ansible.cfg
 WORKDIR /work/infra/ansible
 ENTRYPOINT []
