@@ -18,7 +18,7 @@ configuration over SSH, so there's one tool and one way of running it.
 ## Architecture (today)
 
 ```
- GitHub ──webhook──► Cloudflare Tunnel ──► Azure VM  mfp-jenkins  (Standard_B2s, Ubuntu 24.04)
+ GitHub ──webhook──► Cloudflare Tunnel ──► Azure VM  mfp-jenkins  (Standard_B2als_v2, malaysiawest, Ubuntu 24.04)
                      (no inbound port)      ├─ Jenkins LTS  127.0.0.1:8080  (never exposed)
                                             ├─ Docker Engine  ← every pipeline stage runs as a
                                             │                   pinned container (Jenkinsfile)
@@ -47,7 +47,7 @@ Full details: [`ansible/README.md`](ansible/README.md).
 
 | | |
 |---|---|
-| VM | `Standard_B2s`, runs **24/7**, no auto-shutdown |
+| VM | `Standard_B2als_v2` (2 vCPU / 4 GB) in `malaysiawest`, runs **24/7**, no auto-shutdown |
 | Budget | **$30/month** — email alert at 80 % / 100 %, **not** a cap |
 | Until | about **2026-10-15** |
 | Teardown | `./run.sh az group delete -n mfp-jenkins-rg --yes` (deletes everything in the group) |

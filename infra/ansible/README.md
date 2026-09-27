@@ -5,7 +5,7 @@ Terraform. Two playbooks:
 
 | Playbook | Runs against | Does |
 |---|---|---|
-| `provision.yml` | localhost → Azure CLI | resource group, VM (Ubuntu 24.04, `Standard_B2s`, 64 GB), NSG with **SSH only, from your IP + `admin_cidrs`**, Cost Management budget alert |
+| `provision.yml` | localhost → Azure CLI | resource group, VM (Ubuntu 24.04, `Standard_B2als_v2` in `malaysiawest`, 64 GB), NSG with **SSH only, from your IP + `admin_cidrs`**, Cost Management budget alert |
 | `jenkins-host.yml` | the VM over SSH | Docker Engine, Jenkins LTS, cloudflared; verifies the `jenkins` user can run docker and Jenkins answers on `:8080` |
 
 Both are idempotent: re-running changes nothing unless something drifted
@@ -17,7 +17,7 @@ ansible-core 2.21.4) via `run.sh`. Needs only Docker + Git Bash.
 
 ## Cost
 
-`Standard_B2s` ≈ **$30/month running 24/7** (decided 2026-09-28: no
+`Standard_B2als_v2` (2 vCPU / 4 GB, `malaysiawest`) ≈ **$31/month running 24/7** (decided 2026-09-28: no
 auto-shutdown so teammates can build any time; project runs to about
 **2026-10-15**). The budget created by `provision.yml` only **emails**
 at 80 % / 100 % — it never stops the VM. When the project is over:
