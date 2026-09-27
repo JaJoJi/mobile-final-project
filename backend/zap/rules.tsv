@@ -1,0 +1,32 @@
+# ZAP rule overrides for ci/scripts/zap-scan.sh (baseline + API scan).
+# Format: <rule id><TAB><IGNORE|INFO|WARN|FAIL><TAB><name / reason>
+# Anything not listed keeps ZAP's default (WARN), and warnings never fail
+# the build (-I). Promote a rule to FAIL only after reviewing a real
+# report; every IGNORE needs a one-line reason.
+
+# FAIL — injection classes. All PASS on the first real scan (2026-09-27, 54 URLs from the OpenAPI spec); any regression blocks.
+40003	FAIL	CRLF Injection
+40012	FAIL	Cross Site Scripting (Reflected)
+40014	FAIL	Cross Site Scripting (Persistent)
+40018	FAIL	SQL Injection
+40022	FAIL	SQL Injection - PostgreSQL (Time Based)
+40043	FAIL	Log4Shell
+6	FAIL	Path Traversal
+7	FAIL	Remote File Inclusion
+90019	FAIL	Server Side Code Injection
+90020	FAIL	Remote OS Command Injection
+90035	FAIL	Server Side Template Injection
+# FAIL — headers helmet sets today (main.ts); blocks if helmet is removed or misconfigured.
+10020	FAIL	Anti-clickjacking Header
+10021	FAIL	X-Content-Type-Options Header Missing
+10037	FAIL	Server Leaks Information via X-Powered-By
+10023	FAIL	Information Disclosure - Debug Error Messages
+# IGNORE — reviewed false positives / informational on the first real report.
+10096	IGNORE	Timestamp Disclosure - Unix: only hit is 1518500249 in /api/docs/swagger-ui-standalone-preset.js = SHA-1 round constant 0x5A827999, not a timestamp
+10109	IGNORE	Modern Web Application: informational only (Swagger UI is a JS app)
+10049	IGNORE	Storable and Cacheable Content: informational; hits are unauthenticated 404s (/, /api, /robots.txt, /sitemap.xml) and the Swagger UI page
+# Left at WARN on purpose (visible in the report, not blocking):
+#   10038 CSP not set — helmet CSP is disabled deliberately so Swagger UI works (main.ts)
+#   10003 Vulnerable JS Library — DOMPurify 3.1.4 inside swagger-ui-bundle.js (@nestjs/swagger); fix via a newer
+#         swagger-ui-dist or by not serving /api/docs in production
+#   10063 Permissions-Policy, 90004 COEP — hardening headers, candidates for FAIL once added

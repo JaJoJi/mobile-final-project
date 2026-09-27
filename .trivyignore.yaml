@@ -1,0 +1,35 @@
+# Accepted Trivy findings. Every entry needs a reason (`statement`) and an
+# expiry (`expired_at`) — once expired, Trivy reports the finding again and
+# the gate goes red, forcing a re-check instead of a permanent silence
+# (DevOps Master Guide A4). Replaces the old flat .trivyignore (#281).
+
+vulnerabilities:
+  # Trivy reports "Installed Version: 7.5.11" for `tar` in the built backend
+  # image, but that string exists nowhere in the image (grepped the whole
+  # image filesystem — zero matches). The real installed version, read from
+  # node_modules/tar/package.json inside the running image, is 7.5.22
+  # (pinned via backend/package.json `overrides`, #220) — newer than every
+  # "fixed in" version these CVEs cite (7.5.18/19/21). Reproduced with a
+  # --no-cache build and a fresh vuln DB (2026-09-25). Looks like a Trivy
+  # detection bug for npm `overrides`-remapped packages. To re-verify:
+  # rebuild --no-cache, grep the image, re-scan.
+  - id: CVE-2026-59873
+    statement: Trivy false positive — tar is 7.5.22 in the image (overrides pin, #220)
+    expired_at: 2026-12-31
+  - id: CVE-2026-59874
+    statement: Trivy false positive — tar is 7.5.22 in the image (overrides pin, #220)
+    expired_at: 2026-12-31
+  - id: CVE-2026-73566
+    statement: Trivy false positive — tar is 7.5.22 in the image (overrides pin, #220)
+    expired_at: 2026-12-31
+
+misconfigurations:
+  # Scoped to nginx/Dockerfile only, so a root backend image still fails.
+  - id: DS-0002
+    paths:
+      - nginx/Dockerfile
+    statement: >-
+      nginx master must start as root to bind :80 and drops workers to the
+      nginx user itself; the image is replaced by the non-root ModSecurity
+      image (listens on 8080) in #224. Same skip as checkov CKV_DOCKER_3.
+    expired_at: 2026-12-31
