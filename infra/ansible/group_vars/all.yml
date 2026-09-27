@@ -1,12 +1,16 @@
 # Defaults for provision.yml + jenkins-host.yml. Per-person values
 # (budget email, teammates' IPs) go in vars.yml -- copy vars.example.yml.
 
-azure_location: southeastasia          # Singapore, closest region to Thailand
+# Azure for Students policy only allows: japanwest, eastasia, malaysiawest,
+# indonesiacentral, southeastasia. On 2026-09-28 southeastasia/japanwest had
+# no capacity for 2-vCPU B/D sizes (SkuNotAvailable) and Standard_B2s (v1) is
+# no longer offered -- malaysiawest was unrestricted and cheapest.
+azure_location: malaysiawest            # Kuala Lumpur, close to Thailand
 resource_group: mfp-jenkins-rg
 vm_name: mfp-jenkins
-# Decided 2026-09-28: B2s (2 vCPU / 4 GB), $30/month budget, runs 24/7
-# (no auto-shutdown) so teammates can build any time, until ~2026-10-15.
-vm_size: Standard_B2s
+# 2 vCPU / 4 GB (same spec as the originally planned B2s), $0.0428/h
+# ~= $31/month 24/7 (no auto-shutdown, decided 2026-09-28), until ~2026-10-15.
+vm_size: Standard_B2als_v2
 vm_image: Canonical:ubuntu-24_04-lts:server:latest
 os_disk_gb: 64                          # scanner images + docker cache + jenkins_home
 admin_username: azureuser
