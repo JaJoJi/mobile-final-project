@@ -81,13 +81,23 @@
       when: vm_show.rc != 0
 
     # ── NSG: SSH from the allow-list only ──────────────────────────────
+    # Azure stores ONE prefix in sourceAddressPrefix (singular) and leaves
+    # sourceAddressPrefixes empty; two or more go in the list. Read both,
+    # or a single-IP rule never compares equal and is re-applied every run.
     - name: Read current SSH rule
       ansible.builtin.command: >
         az network nsg rule show -g {{ resource_group }} --nsg-name {{ vm_name }}NSG
-        -n AllowSSHFromAdmins --query sourceAddressPrefixes -o json
+        -n AllowSSHFromAdmins
+        --query "{one: sourceAddressPrefix, many: sourceAddressPrefixes}" -o json
       register: ssh_rule
       changed_when: false
       failed_when: false
+
+    - name: Current SSH allow-list
+      ansible.builtin.set_fact:
+        ssh_rule_cidrs: >-
+          {{ ((ssh_rule.stdout | from_json).many or [(ssh_rule.stdout | from_json).one])
+             | select | sort if ssh_rule.rc == 0 else [] }}
 
     - name: Create/update SSH rule
       ansible.builtin.command: >
@@ -95,7 +105,7 @@
         -n AllowSSHFromAdmins --priority 100 --direction Inbound --access Allow
         --protocol Tcp --destination-port-ranges 22
         --source-address-prefixes {{ ssh_cidrs | join(' ') }} -o none
-      when: ssh_rule.rc != 0 or (ssh_rule.stdout | from_json | sort) != ssh_cidrs
+      when: ssh_rule_cidrs != ssh_cidrs
 
     # ── Budget alert (not a cap) ───────────────────────────────────────
     - name: Read budget
