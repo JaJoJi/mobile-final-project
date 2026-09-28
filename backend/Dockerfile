@@ -1,9 +1,11 @@
 # One pinned base for every stage (version + digest, #285) -- bump here
-# deliberately; a floating tag makes old builds unreproducible.
-ARG NODE_IMAGE=node:22.23.3-alpine@sha256:0a7108bf6c7bf5de370ffb1a3ed6be93d405b43ff159f681a8d18c0e2bc2e402
+# deliberately; a floating tag makes old builds unreproducible. A named
+# stage rather than `ARG` + `FROM ${...}`: Checkov can't resolve build
+# args, so it read the ARG form as an untagged image (CKV_DOCKER_7).
+FROM node:22.23.3-alpine@sha256:0a7108bf6c7bf5de370ffb1a3ed6be93d405b43ff159f681a8d18c0e2bc2e402 AS base
 
 # Full dependency set (dev + prod) — used only to compile TypeScript.
-FROM ${NODE_IMAGE} AS deps
+FROM base AS deps
 WORKDIR /app
 COPY package.json package-lock.json ./
 RUN npm ci
@@ -14,12 +16,12 @@ COPY src ./src
 RUN npm run build
 
 # Production-only dependencies — no devDependencies in the final image.
-FROM ${NODE_IMAGE} AS prod-deps
+FROM base AS prod-deps
 WORKDIR /app
 COPY package.json package-lock.json ./
 RUN npm ci --omit=dev
 
-FROM ${NODE_IMAGE} AS runtime
+FROM base AS runtime
 # Static OCI metadata; revision/created/version are added per build by
 # the Jenkinsfile (`docker build --label ...`) so Docker Hub images trace
 # back to the exact commit.
