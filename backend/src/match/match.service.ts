@@ -7,6 +7,7 @@ import {
 } from '@nestjs/common';
 import { DataSource } from 'typeorm';
 import { PubsubBridge } from '../runtime/pubsub.bridge';
+import { LeaderboardService } from '../user/leaderboard.service';
 import { UserService } from '../user/user.service';
 import { MatchDetailDto } from './dto/match-detail.dto';
 import { MatchHistoryDto, MatchOutcome } from './dto/match-history.dto';
@@ -27,6 +28,7 @@ export class MatchService {
     private readonly matches: MatchRepository,
     private readonly pubsub: PubsubBridge,
     private readonly users: UserService,
+    private readonly leaderboard: LeaderboardService,
   ) {}
 
   async findById(id: string): Promise<Match> {
@@ -149,6 +151,11 @@ export class MatchService {
     });
 
     if (!finalized) return false;
+    // Leaderboard version bump (#256): any terminal finalize can change
+    // ratings, so rotate the cache version. Best-effort like the rest of
+    // finalization's followers — old versions expire via TTL and a cache
+    // failure must never block the match:end publish below.
+    await this.leaderboard.bumpVersion();
     await this.pubsub.publish(finalized.id, 'game:match:end', {
       matchId: finalized.id,
       winnerId: finalized.winnerId,

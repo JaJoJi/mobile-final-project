@@ -173,7 +173,7 @@ async function run() {
     const repository = new MatchRepository(ds.getRepository(Match), ds.getRepository(MatchRound));
     const pubsub = new RedisPubsub(redis);
     const userService = new UserService(userRepo);
-    const matchService = new MatchService(ds, repository, pubsub as any, userService);
+    const matchService = new MatchService(ds, repository, pubsub as any, userService, { bumpVersion: async () => undefined } as any);
     const queue = new CaptureQueue();
     const coordinator = new CombatCoordinator(
       redis,

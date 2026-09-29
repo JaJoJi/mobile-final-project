@@ -170,6 +170,7 @@ async function run(): Promise<void> {
     matches as any,
     pubsub as any,
     users as any,
+    { bumpVersion: async () => undefined } as any,
   );
   const results: Result[] = [];
 
