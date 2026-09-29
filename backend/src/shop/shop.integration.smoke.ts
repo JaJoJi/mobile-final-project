@@ -74,7 +74,7 @@ async function run() {
     createdUsers.push(...users.map((user) => user.id));
     const repository = new MatchRepository(ds.getRepository(Match), ds.getRepository(MatchRound));
     const pubsub = new CapturePubsub();
-    const matchService = new MatchService(ds, repository, pubsub as any, new UserService(userRepo), { bumpVersion: async () => undefined } as any);
+    const matchService = new MatchService(ds, repository, pubsub as any, new UserService(userRepo), { invalidateUsers: async () => undefined } as any, { bumpVersion: async () => undefined } as any);
     const match = await repository.create({
       player1Id: users[0].id,
       player2Id: users[1].id,
