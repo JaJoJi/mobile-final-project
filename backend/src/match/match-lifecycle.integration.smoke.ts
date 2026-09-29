@@ -89,7 +89,7 @@ async function run(): Promise<void> {
   );
   const users = new UserService(ds.getRepository(User));
   const pubsub = new CapturePubsub();
-  const service = new MatchService(ds, matches, pubsub as any, users);
+  const service = new MatchService(ds, matches, pubsub as any, users, { invalidateUsers: async () => undefined } as any);
   const results: Result[] = [];
   const createdUserIds: string[] = [];
   let matchId: string | null = null;
