@@ -14,6 +14,7 @@
 | `PATCH /user/me` | ✅ implemented | username only |
 | `GET /match/history` | ✅ implemented | JWT-guarded; latest 50 completed matches |
 | `GET /match/:matchId` | ✅ implemented | JWT-guarded; participants only |
+| `GET /leaderboard` | ✅ implemented | JWT-guarded; `RANK()` by rating, `?limit=&offset=`, always includes `me` |
 | WS gateway (`/socket.io`, namespace `/game`) | ✅ implemented | all 9 incoming events validated and routed |
 
 ## 1. REST Endpoints

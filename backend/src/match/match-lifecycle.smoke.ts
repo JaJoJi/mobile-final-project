@@ -171,6 +171,7 @@ async function run(): Promise<void> {
     pubsub as any,
     users as any,
     { invalidateUsers: async () => undefined } as any,
+    { bumpVersion: async () => undefined } as any,
   );
   const results: Result[] = [];
 
