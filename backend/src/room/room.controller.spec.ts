@@ -1,5 +1,10 @@
 import { UnauthorizedException } from '@nestjs/common';
 import { JwtAccessGuard } from '../auth/guards/jwt-access.guard';
+
+// See room.handoff.spec.ts — stub the BullMQ-chained module.
+jest.mock('../matchmaking/matchmaking.service', () => ({
+  MatchmakingService: class MatchmakingService {},
+}));
 import { RoomController } from './room.controller';
 
 describe('RoomController (#255)', () => {

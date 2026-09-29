@@ -1,5 +1,10 @@
 import { ConflictException, NotFoundException } from '@nestjs/common';
 import { MATCHMAKING_QUEUE_KEY } from '../matchmaking/matchmaking.keys';
+
+// See room.handoff.spec.ts — stub the BullMQ-chained module.
+jest.mock('../matchmaking/matchmaking.service', () => ({
+  MatchmakingService: class MatchmakingService {},
+}));
 import { RoomService } from './room.service';
 import { randomRoomCode, roomCodeKey, roomKey, userRoomKey } from './room.types';
 
@@ -82,7 +87,12 @@ class ScriptedRoomService extends RoomService {
     matches: unknown,
     private readonly codes: string[],
   ) {
-    super(redis as any, matches as any, { publishToRoom: async () => undefined } as any);
+    super(
+      redis as any,
+      matches as any,
+      { publishToRoom: async () => undefined } as any,
+      { createMatchForPlayers: async () => ({}) } as any,
+    );
   }
 
   protected override randomCode(): string {
@@ -99,6 +109,7 @@ const makeService = () => {
     { client } as any,
     matches as any,
     { publishToRoom: async () => undefined } as any,
+    { createMatchForPlayers: async () => ({}) } as any,
   );
   return { client, matches, service };
 };

@@ -1,6 +1,11 @@
 import { readFileSync } from 'fs';
 import { join } from 'path';
 import RedisMock from 'ioredis-mock';
+
+// See room.handoff.spec.ts — stub the BullMQ-chained module.
+jest.mock('../matchmaking/matchmaking.service', () => ({
+  MatchmakingService: class MatchmakingService {},
+}));
 import { MATCHMAKING_QUEUE_KEY } from '../matchmaking/matchmaking.keys';
 import { RoomService } from './room.service';
 import { ROOM_TTL_SECONDS, roomCodeKey, roomKey, userRoomKey } from './room.types';
@@ -11,20 +16,41 @@ const load = (name: string): string =>
 const SOURCES: Record<string, string> = {
   room_join: load('room_join'),
   room_leave: load('room_leave'),
+  room_start_match: load('room_start_match'),
+  room_match_done: load('room_match_done'),
+  room_match_abort: load('room_match_abort'),
 };
 
 type Mock = InstanceType<typeof RedisMock>;
 
 class FakeMatches {
   active: unknown = null;
-  async findActiveByUserId(_userId: string): Promise<unknown> {
-    return this.active as any;
+  async findActiveByUserId(userId: string): Promise<unknown> {
+    const active = this.active as any;
+    if (!active) return null;
+    return active.player1Id === userId || active.player2Id === userId ? active : null;
+  }
+}
+
+class FakePairing {
+  calls: Array<[string, string]> = [];
+  failNext: Error | null = null;
+  nextMatchId = 'match-1';
+  async createMatchForPlayers(player1Id: string, player2Id: string) {
+    this.calls.push([player1Id, player2Id]);
+    if (this.failNext) {
+      const err = this.failNext;
+      this.failNext = null;
+      throw err;
+    }
+    return { matchId: this.nextMatchId, player1Id, player2Id };
   }
 }
 
 const makeService = () => {
   const mock: Mock = new RedisMock();
   const matches = new FakeMatches();
+  const pairing = new FakePairing();
   const published: Array<{ roomId: string; type: string; payload: unknown; targets: string[] }> = [];
   const redis = {
     client: mock,
@@ -36,8 +62,8 @@ const makeService = () => {
       published.push({ roomId, type, payload, targets });
     },
   };
-  const service = new RoomService(redis as any, matches as any, pubsub as any);
-  return { mock, matches, published, service };
+  const service = new RoomService(redis as any, matches as any, pubsub as any, pairing as any);
+  return { mock, matches, pairing, published, service };
 };
 
 // ioredis-mock instances share one global store — flush before every test
@@ -63,9 +89,9 @@ const seedRoom = async (
   await mock.set(userRoomKey(opts.owner), opts.roomId, 'EX', ROOM_TTL_SECONDS);
 };
 
-describe('RoomService.joinRoom (#258)', () => {
-  it('joins a waiting room: full, guest set, mapping created, code/TTL intact', async () => {
-    const { mock, published, service } = makeService();
+describe('RoomService.joinRoom (#258 + #259 handoff)', () => {
+  it('joins then hands off: matched view, matchId, room cleaned, both notified', async () => {
+    const { mock, pairing, published, service } = makeService();
     await seedRoom(mock, { roomId: 'r1', code: 'ABC234', owner: 'owner-1' });
 
     const room = await service.joinRoom('guest-1', 'abc234');
@@ -75,14 +101,16 @@ describe('RoomService.joinRoom (#258)', () => {
       code: 'ABC234',
       ownerId: 'owner-1',
       guestId: 'guest-1',
-      status: 'full',
+      status: 'matched',
+      matchId: 'match-1',
     });
-    expect(await mock.get(userRoomKey('guest-1'))).toBe('r1');
-    // Code mapping untouched, room TTL preserved (not extended, not dropped).
-    expect(await mock.get(roomCodeKey('ABC234'))).toBe('r1');
-    const ttl = await mock.ttl(roomKey('r1'));
-    expect(ttl).toBeGreaterThan(0);
-    expect(ttl).toBeLessThanOrEqual(ROOM_TTL_SECONDS);
+    expect(pairing.calls).toEqual([['owner-1', 'guest-1']]);
+    // Live room state cleaned — only a short tombstone remains for retries.
+    expect(await mock.hget(roomKey('r1'), 'status')).toBe('matched');
+    expect(await mock.hget(roomKey('r1'), 'matchId')).toBe('match-1');
+    expect(await mock.get(roomCodeKey('ABC234'))).toBeNull();
+    expect(await mock.get(userRoomKey('owner-1'))).toBeNull();
+    expect(await mock.get(userRoomKey('guest-1'))).toBeNull();
     expect(published).toEqual([
       {
         roomId: 'r1',
@@ -157,7 +185,7 @@ describe('RoomService.joinRoom (#258)', () => {
   it('rejects a user with an active match or queue entry', async () => {
     const { mock, matches, service } = makeService();
     await seedRoom(mock, { roomId: 'r1', code: 'ABC234', owner: 'owner-1' });
-    matches.active = { id: 'm1' } as any;
+    matches.active = { id: 'm1', player1Id: 'guest-1', player2Id: 'other' } as any;
     await expect(service.joinRoom('guest-1', 'ABC234')).rejects.toMatchObject({
       response: { code: 'match.already_active' },
     });
@@ -168,8 +196,8 @@ describe('RoomService.joinRoom (#258)', () => {
     });
   });
 
-  it('concurrent joins: exactly one winner, loser clean', async () => {
-    const { mock, service } = makeService();
+  it('concurrent joins: exactly one winner and one match, loser clean', async () => {
+    const { mock, pairing, service } = makeService();
     await seedRoom(mock, { roomId: 'r1', code: 'ABC234', owner: 'owner-1' });
 
     const [a, b] = await Promise.allSettled([
@@ -185,12 +213,14 @@ describe('RoomService.joinRoom (#258)', () => {
     });
 
     const winner = (fulfilled[0] as PromiseFulfilledResult<any>).value;
-    expect(winner.status).toBe('full');
+    expect(winner.status).toBe('matched');
     const winnerId = winner.guestId as string;
     const loserId = winnerId === 'guest-B' ? 'guest-C' : 'guest-B';
-    expect(await mock.get(userRoomKey(winnerId))).toBe('r1');
+    // Exactly one match for the room, shared by the single winner.
+    expect(pairing.calls).toHaveLength(1);
+    expect(winner.matchId).toBe('match-1');
     expect(await mock.get(userRoomKey(loserId))).toBeNull();
-    expect(await mock.hget(roomKey('r1'), 'guestId')).toBe(winnerId);
+    expect(await mock.hget(roomKey('r1'), 'matchId')).toBe('match-1');
   });
 });
 
@@ -234,7 +264,7 @@ describe('RoomService.leaveRoom (#258)', () => {
     await mock.set(userRoomKey('guest-1'), 'r1', 'EX', ROOM_TTL_SECONDS);
     await service.leaveRoom('guest-1');
     const room = await service.joinRoom('guest-2', 'ABC234');
-    expect(room).toMatchObject({ guestId: 'guest-2', status: 'full' });
+    expect(room).toMatchObject({ guestId: 'guest-2', status: 'matched', matchId: 'match-1' });
   });
 
   it('owner leave destroys everything and notifies the guest with closed', async () => {

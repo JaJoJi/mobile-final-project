@@ -1,6 +1,6 @@
 import { randomBytes, randomUUID } from 'crypto';
 
-export type RoomStatus = 'waiting' | 'full';
+export type RoomStatus = 'waiting' | 'full' | 'matched';
 
 export interface RoomView {
   roomId: string;
@@ -9,6 +9,8 @@ export interface RoomView {
   guestId: string | null;
   status: RoomStatus;
   expiresAt: string;
+  /** Set once the room has transitioned into a match (#259). */
+  matchId: string | null;
 }
 
 /** Redis key holding the room hash. */
@@ -19,6 +21,18 @@ export const roomCodeKey = (code: string): string => `room:code:${code}`;
 
 /** Redis key mapping a user to their current room (single membership). */
 export const userRoomKey = (userId: string): string => `user:room:${userId}`;
+
+/** Redis key guarding the Room → Match handoff (#259, auto-expiring claim). */
+export const roomHandoffKey = (roomId: string): string => `room:${roomId}:handoff`;
+
+/** Handoff claim TTL — bounds a crashed worker; room stays retryable. */
+export const ROOM_HANDOFF_TTL_SECONDS = 120;
+
+/**
+ * Matched-room tombstone TTL — lets late retries converge on the recorded
+ * matchId instead of not_found. Short; no permanent room keys remain.
+ */
+export const ROOM_MATCH_TOMBSTONE_TTL_SECONDS = 300;
 
 /** Room TTL — inside the 30–60 min project convention for ephemeral state. */
 export const ROOM_TTL_SECONDS = 45 * 60;
@@ -37,7 +51,7 @@ export function randomRoomCode(): string {
   return Array.from(bytes, (b) => CODE_ALPHABET[b % CODE_ALPHABET.length]).join('');
 }
 
-/** Stored hash shape — `guestId` is `''` when empty (Redis hashes are strings). */
+/** Stored hash shape — `guestId`/`matchId` are `''` when empty (Redis hashes are strings). */
 export interface RoomHash extends Record<string, string> {
   roomId: string;
   code: string;
@@ -45,6 +59,7 @@ export interface RoomHash extends Record<string, string> {
   guestId: string;
   status: RoomStatus;
   expiresAt: string;
+  matchId: string;
 }
 
 export function roomHashToView(hash: RoomHash): RoomView {
@@ -55,6 +70,7 @@ export function roomHashToView(hash: RoomHash): RoomView {
     guestId: hash.guestId === '' ? null : hash.guestId,
     status: hash.status,
     expiresAt: hash.expiresAt,
+    matchId: hash.matchId === '' || hash.matchId === undefined ? null : hash.matchId,
   };
 }
 

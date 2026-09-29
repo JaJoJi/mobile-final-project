@@ -140,6 +140,24 @@ export class MatchmakingService {
     });
   }
 
+  /**
+   * Shared creation seam for room handoff (#259): persist the match row and
+   * initialize the normal runtime (phase event, state, shops, timer).
+   * No queue operations — callers own player selection. `tryPair` above is
+   * intentionally untouched (its requeue-on-PG-failure contract stays).
+   */
+  async createMatchForPlayers(
+    player1Id: string,
+    player2Id: string,
+  ): Promise<MatchPairResult> {
+    const match = await this.createMatch(player1Id, player2Id);
+    await this.runtime.initializeMatch(match);
+    this.logger.log(
+      `paired match=${match.id} player1=${player1Id} player2=${player2Id}`,
+    );
+    return { matchId: match.id, player1Id, player2Id };
+  }
+
   private initialPlayerState(): InitialPlayerState {
     return {
       hp: 100,

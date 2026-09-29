@@ -9,18 +9,28 @@ import {
 import { randomUUID } from 'crypto';
 import { MatchService } from '../match/match.service';
 import { MATCHMAKING_QUEUE_KEY } from '../matchmaking/matchmaking.keys';
+import { MatchmakingService } from '../matchmaking/matchmaking.service';
 import { RedisService } from '../redis/redis.service';
 import { PubsubBridge } from '../runtime/pubsub.bridge';
 import {
+  ROOM_HANDOFF_TTL_SECONDS,
+  ROOM_MATCH_TOMBSTONE_TTL_SECONDS,
   ROOM_TTL_SECONDS,
   RoomStatus,
   RoomView,
   randomRoomCode,
   roomCodeKey,
   roomHashToView,
+  roomHandoffKey,
   roomKey,
   userRoomKey,
 } from './room.types';
+
+/** Matched room view returned once the handoff completes (#259). */
+export interface RoomMatchedView extends RoomView {
+  status: 'matched';
+  matchId: string;
+}
 
 /** Join result codes from room_join.lua (see the script header). */
 const JOIN_OK = 1;
@@ -34,6 +44,12 @@ const JOIN_OWNER = -4;
 const LEAVE_MISSING = 0;
 const LEAVE_GUEST = 1;
 const LEAVE_OWNER = 2;
+
+/** Handoff claim results from room_start_match.lua. */
+const CLAIM_MISSING = 0;
+const CLAIM_NOT_FULL = -1;
+const CLAIM_INVALID = -2;
+const CLAIM_HELD = -3;
 
 export interface LeaveRoomResult {
   room: RoomView | null;
@@ -65,6 +81,7 @@ export class RoomService {
     private readonly redis: RedisService,
     private readonly matches: MatchService,
     private readonly pubsub: PubsubBridge,
+    private readonly pairing: MatchmakingService,
   ) {}
 
   /** Override point for deterministic collision tests (prod uses crypto). */
@@ -115,6 +132,7 @@ export class RoomService {
         guestId: '',
         status: 'waiting' satisfies RoomStatus,
         expiresAt,
+        matchId: '',
       });
       await this.redis.client.expire(roomKey(roomId), ROOM_TTL_SECONDS);
       // Replace the pending placeholder with the real room id (same TTL).
@@ -125,7 +143,7 @@ export class RoomService {
         ROOM_TTL_SECONDS,
       );
       this.logger.log(`room created room=${roomId} code=${code} owner=${ownerId}`);
-      return { roomId, code, ownerId, guestId: null, status: 'waiting', expiresAt };
+      return { roomId, code, ownerId, guestId: null, status: 'waiting', expiresAt, matchId: null };
     } catch (e: unknown) {
       // Best-effort rollback of our own claim so a failed create does not
       // wedge the owner out of future creates (TTL is the backstop).
@@ -166,20 +184,21 @@ export class RoomService {
       guestId: hash.guestId ?? '',
       status: hash.status as RoomStatus,
       expiresAt: hash.expiresAt,
+      matchId: hash.matchId ?? '',
     });
   }
 
   /**
-   * Join a room by code (#258). Advisory checks (format, membership, active
-   * match, queue) run first for clear errors; the guest-slot claim itself
-   * is one atomic Lua transition (WAITING → FULL + both key writes).
+   * Join a room by code (#258) then automatically hand off to a match
+   * (#259) — no Ready/Start. The Lua join admits exactly one guest; only
+   * that winner (or a retry resuming its full room) runs the handoff.
    *
    * Known limitation (documented, accepted): the queue/active-match reads
    * cannot join the Lua atomically — a user could enter the FIFO queue in
    * the gap between the check and the commit. Lua still guarantees the
    * slot invariant; a global lock to close the gap is deliberately avoided.
    */
-  async joinRoom(userId: string, rawCode: string): Promise<RoomView> {
+  async joinRoom(userId: string, rawCode: string): Promise<RoomMatchedView> {
     const code = rawCode.trim().toUpperCase();
     if (!/^[A-Z2-9]{6}$/.test(code)) {
       throw new BadRequestException({
@@ -194,7 +213,20 @@ export class RoomService {
         message: 'No room exists for this code',
       });
     }
-    if (await this.redis.client.get(userRoomKey(userId))) {
+    const ownRoomId = await this.redis.client.get(userRoomKey(userId));
+    if (ownRoomId) {
+      // Idempotent retry (#259): the caller may already be the guest of a
+      // full room whose handoff failed or is still settling — resume it
+      // instead of rejecting. Any other membership still conflicts.
+      const existing = await this.loadRoomIfExists(ownRoomId);
+      if (
+        existing &&
+        existing.guestId === userId &&
+        existing.status === 'full' &&
+        !existing.matchId
+      ) {
+        return this.startRoomMatch(existing.roomId);
+      }
       throw new ConflictException({
         code: 'room.already_in_room',
         message: 'You are already in a room',
@@ -255,12 +287,147 @@ export class RoomService {
         });
     }
 
-    const room = await this.loadRoom(roomId);
-    await this.pubsub.publishToRoom(roomId, 'game:room:state', room, [
-      room.ownerId,
-      room.guestId as string,
+    // Winner proceeds straight to the handoff (#259): the single
+    // `game:room:state` event clients receive is the matched transition
+    // (finishRoomMatch publishes it), so no intermediate full-state emit.
+    return this.startRoomMatch(roomId);
+  }
+
+  /**
+   * Automatic Room → Match handoff (#259). Triggered by the join winner
+   * (or a guest retry resuming its full room). Exactly-once via the
+   * `room_start_match.lua` claim: only the claim winner creates; any other
+   * trigger that finds a recorded `matchId` finishes idempotently.
+   */
+  async startRoomMatch(roomId: string): Promise<RoomMatchedView> {
+    const view = await this.loadRoomIfExists(roomId);
+    const token = randomUUID();
+    const claim = await this.redis.eval<unknown>(
+      'room_start_match',
+      [roomKey(roomId), roomHandoffKey(roomId)],
+      [token, ROOM_HANDOFF_TTL_SECONDS],
+    );
+    if (Array.isArray(claim) && claim.length === 2) {
+      const [ownerId, guestId] = claim.map(String);
+      return this.createRoomMatch(roomId, ownerId, guestId, token, view);
+    }
+    if (claim === CLAIM_MISSING || !view) {
+      throw new NotFoundException({
+        code: 'room.not_found',
+        message: 'Room no longer exists',
+      });
+    }
+    if (view.matchId) {
+      return this.finishRoomMatch(view, view.matchId);
+    }
+    if (claim === CLAIM_HELD) {
+      throw new ConflictException({
+        code: 'room.match_starting',
+        message: 'Match creation already in progress, please retry',
+      });
+    }
+    throw new ConflictException({
+      code: 'room.not_waiting',
+      message: 'Room is no longer accepting players',
+    });
+  }
+
+  /**
+   * Claim-winner path: adopt an existing active match (orphan of a crashed
+   * attempt — the only match either player could have, since both were
+   * match-free at join) or create one through the shared matchmaking seam,
+   * then record + clean up + notify. Any PG/runtime failure releases the
+   * claim so the full room stays retryable; nothing is half-committed.
+   */
+  private async createRoomMatch(
+    roomId: string,
+    ownerId: string,
+    guestId: string,
+    token: string,
+    view: RoomView | null,
+  ): Promise<RoomMatchedView> {
+    let matchId: string;
+    const orphan =
+      (await this.matches.findActiveByUserId(ownerId)) ??
+      (await this.matches.findActiveByUserId(guestId));
+    if (orphan) {
+      this.logger.warn(`room handoff adopting existing match=${orphan.id} room=${roomId}`);
+      matchId = orphan.id;
+    } else {
+      try {
+        const created = await this.pairing.createMatchForPlayers(ownerId, guestId);
+        matchId = created.matchId;
+      } catch (e: unknown) {
+        await this.redis.eval('room_match_abort', [roomHandoffKey(roomId)], [token]);
+        throw e;
+      }
+    }
+    return this.finishRoomMatch(
+      {
+        roomId,
+        code: view?.code ?? '',
+        ownerId,
+        guestId,
+        status: 'full',
+        expiresAt: view?.expiresAt ?? new Date().toISOString(),
+        matchId: null,
+      },
+      matchId,
+    );
+  }
+
+  /**
+   * Idempotent finish: record the matchId (no-op if already recorded),
+   * remove all room keys, and notify both clients with the transition the
+   * frontend navigates on. Safe to run twice — the losers' retry, a crash
+   * between record and cleanup, and duplicate triggers all converge here.
+   */
+  private async finishRoomMatch(view: RoomView, matchId: string): Promise<RoomMatchedView> {
+    const ownerId = view.ownerId;
+    const guestId = view.guestId as string;
+    const recorded = String(
+      await this.redis.eval<string>(
+        'room_match_done',
+        [
+          roomKey(view.roomId),
+          roomCodeKey(view.code),
+          userRoomKey(ownerId),
+          userRoomKey(guestId),
+          roomHandoffKey(view.roomId),
+        ],
+        [view.roomId, matchId, ownerId, guestId, ROOM_MATCH_TOMBSTONE_TTL_SECONDS],
+      ),
+    );
+    const matched: RoomMatchedView = {
+      roomId: view.roomId,
+      code: view.code,
+      ownerId,
+      guestId,
+      status: 'matched',
+      expiresAt: view.expiresAt,
+      matchId: recorded,
+    };
+    await this.pubsub.publishToRoom(view.roomId, 'game:room:state', matched, [
+      ownerId,
+      guestId,
     ]);
-    return room;
+    this.logger.log(`room matched room=${view.roomId} match=${recorded}`);
+    return matched;
+  }
+
+  private async loadRoomIfExists(roomId: string | null): Promise<RoomView | null> {
+    if (!roomId || roomId === 'pending') return null;
+    const hash = await this.redis.client.hgetall(roomKey(roomId));
+    if (!hash?.roomId) return null;
+    return roomHashToView({
+      roomId: hash.roomId,
+      code: hash.code,
+      ownerId: hash.ownerId,
+      guestId: hash.guestId ?? '',
+      status: hash.status as RoomStatus,
+      expiresAt: hash.expiresAt,
+      matchId: hash.matchId ?? '',
+    });
   }
 
   /**
@@ -335,6 +502,7 @@ export class RoomService {
       guestId: hash.guestId ?? '',
       status: hash.status as RoomStatus,
       expiresAt: hash.expiresAt,
+      matchId: hash.matchId ?? '',
     });
   }
 
