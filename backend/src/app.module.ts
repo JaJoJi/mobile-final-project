@@ -12,6 +12,7 @@ import { MatchmakingModule } from './matchmaking/matchmaking.module';
 import { QueueModule } from './queue/queue.module';
 import { RedisModule } from './redis/redis.module';
 import { RedisService } from './redis/redis.service';
+import { RoomModule } from './room/room.module';
 import { RuntimeModule } from './runtime/match.runtime.module';
 import { UserModule } from './user/user.module';
 import { WsModule } from './ws/ws.module';
@@ -44,6 +45,7 @@ import { WsModule } from './ws/ws.module';
     MatchModule,
     RuntimeModule,
     MatchmakingModule,
+    RoomModule,
     WsModule,
   ],
   controllers: [HealthController],

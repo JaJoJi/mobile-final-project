@@ -4,8 +4,9 @@ import { Match } from '../match/match.entity';
 import { MatchRepository } from '../match/match.repository';
 import { RedisService } from '../redis/redis.service';
 import { MatchRuntimeAdapter } from '../runtime/match.runtime.adapter';
+import { MATCHMAKING_QUEUE_KEY } from './matchmaking.keys';
 
-export const MATCHMAKING_QUEUE_KEY = 'matchmaking:queue';
+export { MATCHMAKING_QUEUE_KEY };
 export interface MatchmakingJoinResult {
   /** False means the user was already waiting; their original FIFO score is preserved. */
   queued: boolean;
