@@ -82,7 +82,7 @@ class ScriptedRoomService extends RoomService {
     matches: unknown,
     private readonly codes: string[],
   ) {
-    super(redis as any, matches as any);
+    super(redis as any, matches as any, { publishToRoom: async () => undefined } as any);
   }
 
   protected override randomCode(): string {
@@ -95,7 +95,11 @@ class ScriptedRoomService extends RoomService {
 const makeService = () => {
   const client = new FakeRedisClient();
   const matches = new FakeMatches();
-  const service = new RoomService({ client } as any, matches as any);
+  const service = new RoomService(
+    { client } as any,
+    matches as any,
+    { publishToRoom: async () => undefined } as any,
+  );
   return { client, matches, service };
 };
 

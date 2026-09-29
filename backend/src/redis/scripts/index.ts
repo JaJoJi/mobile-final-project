@@ -7,4 +7,6 @@ export const LUA_SCRIPTS: Record<string, string> = {
   action_log: fs.readFileSync(path.join(__dirname, 'action_log.lua'), 'utf8'),
   match_pair: fs.readFileSync(path.join(__dirname, 'match_pair.lua'), 'utf8'),
   ws_rate_limit: fs.readFileSync(path.join(__dirname, 'ws_rate_limit.lua'), 'utf8'),
+  room_join: fs.readFileSync(path.join(__dirname, 'room_join.lua'), 'utf8'),
+  room_leave: fs.readFileSync(path.join(__dirname, 'room_leave.lua'), 'utf8'),
 };
