@@ -9,20 +9,25 @@ import {
 import { JwtAccessGuard } from '../auth/guards/jwt-access.guard';
 import { CurrentUser } from './decorators/current-user.decorator';
 import { UpdateUserDto } from './dto/update-user.dto';
+import { StatsService } from './stats.service';
 import { UserService } from './user.service';
 
 /**
- * GET /user/me, PATCH /user/me.
+ * GET /user/me, GET /user/me/stats, PATCH /user/me.
  *
  * Locked design (`docs/04-api-contracts.md`):
  *   - GET  → `{ id, email, username, rating }`
+ *   - GET stats → `{ matches, wins, losses, winRate, currentRank }` (#254)
  *   - PATCH → updates `username` only (email + password non-editable)
  *   - 401 on missing / invalid token (handled by JwtAccessGuard)
  */
 @Controller('user')
 @UseGuards(JwtAccessGuard)
 export class UserController {
-  constructor(private readonly users: UserService) {}
+  constructor(
+    private readonly users: UserService,
+    private readonly stats: StatsService,
+  ) {}
 
   @Get('me')
   async me(@CurrentUser() jwt: { sub: string; type: string }) {
@@ -36,6 +41,11 @@ export class UserController {
       username: user.username,
       rating: user.rating,
     };
+  }
+
+  @Get('me/stats')
+  async getMyStats(@CurrentUser() jwt: { sub: string; type: string }) {
+    return this.stats.getStats(jwt.sub);
   }
 
   @Patch('me')
