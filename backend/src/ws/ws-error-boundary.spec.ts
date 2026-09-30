@@ -3,6 +3,8 @@ import { WsException } from '@nestjs/websockets';
 import { toGameError } from './ws-exception.filter';
 
 describe('toGameError matrix (#308)', () => {
+  // Comment-only note: every case below asserts the masking rule — only an
+  // explicit `code` field survives; raw messages with secrets never do.
   it('passes domain codes through and keeps clientActionId', () => {
     expect(
       toGameError(
