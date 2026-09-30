@@ -13,6 +13,7 @@ import '../features/profile/profile_screen.dart';
 import '../features/rooms/create_room_screen.dart';
 import '../features/rooms/join_room_screen.dart';
 import '../features/splash/splash_screen.dart';
+import '../features/units/units_screen.dart';
 import 'auth/auth_gate.dart';
 
 /// App routing — single source of truth for navigation.
@@ -87,6 +88,10 @@ GoRouter buildRouter() {
       GoRoute(
         path: LeaderboardScreen.path,
         builder: (_, __) => const LeaderboardScreen(),
+      ),
+      GoRoute(
+        path: UnitsScreen.path,
+        builder: (_, __) => const UnitsScreen(),
       ),
       GoRoute(
         path: CreateRoomScreen.path,

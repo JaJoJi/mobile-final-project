@@ -4,6 +4,7 @@ import 'package:auto_chess_mobile/features/auth/login_screen.dart';
 import 'package:auto_chess_mobile/features/history/history_list_screen.dart';
 import 'package:auto_chess_mobile/features/lobby/lobby_screen.dart';
 import 'package:auto_chess_mobile/features/player_hub/player_hub_fixture_provider.dart';
+import 'package:auto_chess_mobile/features/units/units_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -88,6 +89,16 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.byType(HistoryListScreen), findsOneWidget);
+  });
+
+  testWidgets('signed in → deep link to /units resolves', (tester) async {
+    AuthGate.instance.signalSignedIn();
+    final router = await pumpApp(tester);
+
+    router.go(UnitsScreen.path);
+    await tester.pumpAndSettle();
+
+    expect(find.byType(UnitsScreen), findsOneWidget);
   });
 
   testWidgets('sign-out signal bounces an authed screen back to /login',

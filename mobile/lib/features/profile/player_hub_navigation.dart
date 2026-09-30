@@ -47,7 +47,12 @@ class PlayerHubNavigation extends StatelessWidget {
                   icon: Icons.home_outlined,
                   onTap: () => context.go('/lobby'),
                 ),
-                const _NavItem(label: 'ยูนิต', icon: Icons.shield_outlined),
+                _NavItem(
+                  label: 'ยูนิต',
+                  icon: Icons.shield_outlined,
+                  selected: selected == PlayerHubTab.units,
+                  onTap: () => context.go('/units'),
+                ),
                 _NavItem(
                   label: 'ประวัติ',
                   icon: Icons.history_outlined,

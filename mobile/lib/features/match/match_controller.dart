@@ -7,6 +7,7 @@ import '../../core/debug/combat_trace.dart';
 import '../../core/ws/ws_client.dart';
 import '../../core/ws/ws_providers.dart';
 import '../../shared/models/game_events.dart';
+import '../../shared/models/unit_catalog.dart';
 
 enum RosterArea { board, bench }
 
@@ -470,17 +471,9 @@ class MatchController extends StateNotifier<MatchViewState> {
   }
 }
 
-int unitPrice(UnitId unitId) => switch (unitId) {
-      UnitId.fighter || UnitId.healer => 1,
-      UnitId.ranger || UnitId.tank => 2,
-    };
+int unitPrice(UnitId unitId) => UnitCatalogEntry.of(unitId).cost;
 
-int unitMaxHp(UnitId unitId) => switch (unitId) {
-      UnitId.fighter => 100,
-      UnitId.healer => 70,
-      UnitId.ranger => 60,
-      UnitId.tank => 150,
-    };
+int unitMaxHp(UnitId unitId) => UnitCatalogEntry.of(unitId).hp;
 
 String gameErrorMessage(String code) => switch (code) {
       'shop.insufficient_gold' => 'ทองไม่พอ',

@@ -4,7 +4,6 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../core/theme/app_spacing.dart';
-import '../../core/widgets/app_toast.dart';
 
 enum PlayerHubTab { home, units, history, profile }
 
@@ -88,7 +87,7 @@ class PlayerHubNavigation extends StatelessWidget {
       case PlayerHubTab.home:
         context.go('/lobby');
       case PlayerHubTab.units:
-        AppToast.show(context, 'ระบบยูนิตจะเปิดให้ใช้งานเร็ว ๆ นี้');
+        context.go('/units');
       case PlayerHubTab.history:
         context.go('/history');
       case PlayerHubTab.profile:
