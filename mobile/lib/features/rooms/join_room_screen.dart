@@ -138,6 +138,8 @@ class _JoinRoomScreenState extends ConsumerState<JoinRoomScreen> {
         'room.already_in_room' => 'คุณอยู่ในห้องอื่นแล้ว',
         'room.not_waiting' => 'ห้องนี้ไม่รับผู้เล่นเพิ่มแล้ว',
         'room.match_starting' => 'กำลังเริ่มเกม ลองอีกครั้ง',
+        'room.owner_cannot_join' => 'คุณเป็นเจ้าของห้องนี้อยู่แล้ว',
+        'room.in_matchmaking_queue' => 'ออกจากคิวจับคู่ก่อนเข้าห้อง',
         'match.already_active' => 'คุณมีการแข่งขันที่ยังไม่จบ',
         _ => 'เข้าร่วมห้องไม่สำเร็จ ลองอีกครั้ง',
       };
