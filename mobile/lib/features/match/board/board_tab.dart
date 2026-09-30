@@ -3,10 +3,9 @@ import 'package:flutter/material.dart';
 import '../../../core/theme/app_motion.dart';
 import '../../../core/theme/app_spacing.dart';
 import '../../../core/theme/game_theme.dart';
-import '../../../core/utils/unit_star_level.dart';
 import '../../../core/widgets/game_art_frame.dart';
-import '../../../core/widgets/health_bar.dart';
 import '../../../core/widgets/unit_avatar.dart';
+import '../../../core/widgets/unit_detail_sheet.dart';
 import '../../../shared/models/match_state.dart';
 import '../../../shared/models/unit.dart';
 import '../match_controller.dart';
@@ -273,7 +272,13 @@ class _BoardArena extends StatelessWidget {
                             onTap: () => onSelect(RosterArea.board, slot),
                             onLongPress: unit == null
                                 ? null
-                                : () => _showUnitDetails(context, unit),
+                                : () => showUnitDetailSheet(
+                                      context,
+                                      unitId: unit.unitId,
+                                      star: unit.star,
+                                      hp: unit.hp,
+                                      maxHp: unit.maxHp,
+                                    ),
                             onDrop: (from) =>
                                 onDrop(RosterArea.board, slot, from),
                           );
@@ -372,7 +377,13 @@ class _BenchBar extends StatelessWidget {
                           onTap: () => onSelect(RosterArea.bench, slot),
                           onLongPress: unit == null
                               ? null
-                              : () => _showUnitDetails(context, unit),
+                              : () => showUnitDetailSheet(
+                                    context,
+                                    unitId: unit.unitId,
+                                    star: unit.star,
+                                    hp: unit.hp,
+                                    maxHp: unit.maxHp,
+                                  ),
                           onDrop: (from) =>
                               onDrop(RosterArea.bench, slot, from),
                         ),
@@ -583,7 +594,7 @@ class _OpponentScout extends StatelessWidget {
                                       star: entry.star,
                                       side: UnitSide.enemy,
                                       expand: true,
-                                      onLongPress: () => _showUnitDetailSheet(
+                                      onLongPress: () => showUnitDetailSheet(
                                         context,
                                         unitId: entry.unitId,
                                         star: entry.star,
@@ -617,207 +628,4 @@ class _EmptyOpponentSlot extends StatelessWidget {
         label: 'ช่องคู่แข่ง ${slot + 1} ว่าง',
         child: const SizedBox.expand(),
       );
-}
-
-void _showUnitDetails(BuildContext context, Unit unit) {
-  _showUnitDetailSheet(
-    context,
-    unitId: unit.unitId,
-    star: unit.star,
-    hp: unit.hp,
-    maxHp: unit.maxHp,
-  );
-}
-
-void _showUnitDetailSheet(
-  BuildContext context, {
-  required UnitId unitId,
-  required int star,
-  int? hp,
-  int? maxHp,
-}) {
-  showModalBottomSheet<void>(
-    context: context,
-    showDragHandle: true,
-    builder: (context) => _UnitDetailSheet(
-      unitId: unitId,
-      star: star,
-      hp: hp,
-      maxHp: maxHp,
-    ),
-  );
-}
-
-class _UnitDetailSheet extends StatelessWidget {
-  const _UnitDetailSheet({
-    required this.unitId,
-    required this.star,
-    this.hp,
-    this.maxHp,
-  });
-
-  final UnitId unitId;
-  final int star;
-  final int? hp;
-  final int? maxHp;
-
-  @override
-  Widget build(BuildContext context) {
-    final info = _UnitInfo.of(unitId, star);
-    final displayStar = displayStarLevel(star);
-    return SafeArea(
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(
-          AppSpacing.lg,
-          0,
-          AppSpacing.lg,
-          AppSpacing.lg,
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                UnitAvatar(
-                  unitId: unitId.toJson(),
-                  star: star,
-                  size: UnitAvatarSize.sm,
-                  variant: UnitAvatarVariant.bench,
-                ),
-                const SizedBox(width: AppSpacing.md),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        info.name,
-                        style: Theme.of(context).textTheme.headlineSmall,
-                      ),
-                      Text(
-                        '$displayStar ดาว · ${info.role}',
-                      ),
-                    ],
-                  ),
-                ),
-                _CountBadge(label: '${unitPrice(unitId)} ทอง'),
-              ],
-            ),
-            if (hp != null && maxHp != null) ...[
-              const SizedBox(height: AppSpacing.md),
-              HealthBar(current: hp!, max: maxHp!, size: HealthBarSize.lg),
-            ],
-            const SizedBox(height: AppSpacing.md),
-            Row(
-              children: [
-                Expanded(child: _StatTile(label: 'HP', value: '${info.hp}')),
-                const SizedBox(width: AppSpacing.sm),
-                Expanded(child: _StatTile(label: 'ATK', value: '${info.atk}')),
-                const SizedBox(width: AppSpacing.sm),
-                Expanded(child: _StatTile(label: 'SPD', value: '${info.spd}')),
-              ],
-            ),
-            const SizedBox(height: AppSpacing.md),
-            Text('ความสามารถ', style: Theme.of(context).textTheme.titleMedium),
-            const SizedBox(height: AppSpacing.xs),
-            Text(info.ability),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _StatTile extends StatelessWidget {
-  const _StatTile({required this.label, required this.value});
-
-  final String label;
-  final String value;
-
-  @override
-  Widget build(BuildContext context) => DecoratedBox(
-        decoration: BoxDecoration(
-          color: Theme.of(context).colorScheme.surfaceContainerHigh,
-          borderRadius: AppRadius.allSm,
-        ),
-        child: Padding(
-          padding: const EdgeInsets.all(AppSpacing.sm),
-          child: Column(
-            children: [
-              Text(label, style: Theme.of(context).textTheme.labelSmall),
-              Text(value, style: Theme.of(context).textTheme.titleMedium),
-            ],
-          ),
-        ),
-      );
-}
-
-class _UnitInfo {
-  const _UnitInfo({
-    required this.name,
-    required this.role,
-    required this.hp,
-    required this.atk,
-    required this.spd,
-    required this.ability,
-  });
-
-  final String name;
-  final String role;
-  final int hp;
-  final int atk;
-  final int spd;
-  final String ability;
-
-  static _UnitInfo of(UnitId id, int star) => switch (id) {
-        UnitId.fighter => _UnitInfo(
-            name: 'นักรบ',
-            role: 'สมดุลและดูดเลือด',
-            hp: 100,
-            atk: 15,
-            spd: 20,
-            ability: switch (star) {
-              1 => 'ดูดเลือด 5% หลังโจมตีสำเร็จ',
-              2 => 'ดูดเลือด 10% หลังโจมตีสำเร็จ',
-              _ => 'ยังไม่มีความสามารถพิเศษ',
-            },
-          ),
-        UnitId.healer => _UnitInfo(
-            name: 'นักบวช',
-            role: 'สนับสนุนและฟื้นฟู',
-            hp: 70,
-            atk: 6,
-            spd: 50,
-            ability: switch (star) {
-              1 => 'ฮีลเพื่อนที่ HP ต่ำสุด 10 และทำให้เป้าหมายช้าลง',
-              2 => 'ฮีลเพื่อน HP ต่ำสุดสองตัว ตัวละ 10',
-              _ => 'ฮีลเพื่อนที่ HP ต่ำสุด 10 หลังโจมตี',
-            },
-          ),
-        UnitId.ranger => _UnitInfo(
-            name: 'พลธนู',
-            role: 'สร้างความเสียหายระยะไกล',
-            hp: 60,
-            atk: 12,
-            // Mirrors UNIT_BASE_STATS in backend/src/game/constants.ts.
-            spd: 67,
-            ability: switch (star) {
-              1 => 'ความเสียหาย 10% ทะลุไปยังศัตรูด้านหลัง',
-              2 => 'เล็งศัตรู HP ต่ำสุดได้จากทุกช่อง',
-              _ => 'ยังไม่มีความสามารถพิเศษ',
-            },
-          ),
-        UnitId.tank => _UnitInfo(
-            name: 'อัศวินโล่',
-            role: 'แนวหน้าและรับความเสียหาย',
-            hp: 150,
-            atk: 8,
-            spd: 0,
-            ability: switch (star) {
-              1 => 'ฟื้นคืนชีพด้วย HP 50% ได้หนึ่งครั้งต่อรอบ',
-              2 => 'บังคับศัตรูให้เล็งตน และยังฟื้นคืนชีพได้',
-              _ => 'ยังไม่มีความสามารถพิเศษ',
-            },
-          ),
-      };
 }
