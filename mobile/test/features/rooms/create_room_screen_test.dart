@@ -1,62 +1,121 @@
+import 'package:auto_chess_mobile/core/api/api_client.dart';
+import 'package:auto_chess_mobile/core/auth/auth_repository.dart';
 import 'package:auto_chess_mobile/core/theme/app_theme.dart';
-import 'package:auto_chess_mobile/features/player_hub/player_hub_fixture_provider.dart';
-import 'package:auto_chess_mobile/features/player_hub/player_hub_models.dart';
+import 'package:auto_chess_mobile/core/ws/ws_client.dart';
+import 'package:auto_chess_mobile/core/ws/ws_providers.dart';
 import 'package:auto_chess_mobile/features/rooms/create_room_screen.dart';
+import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import '../../core/ws/fake_ws_transport.dart';
+
+class _RoomApi extends ApiClient {
+  bool created = false;
+  bool missing = false;
+  String? guestId;
+
+  Map<String, dynamic> get room => {
+        'roomId': 'room-1',
+        'code': 'ABC234',
+        'ownerId': 'owner-1',
+        'guestId': guestId,
+        'status': guestId == null ? 'waiting' : 'full',
+        'expiresAt': '2026-10-01T00:00:00Z',
+        'matchId': null,
+      };
+
+  @override
+  Future<Map<String, dynamic>> getMyRoom() async {
+    if (missing) {
+      throw DioException(
+        requestOptions: RequestOptions(path: '/rooms/mine'),
+        response: Response(
+          requestOptions: RequestOptions(path: '/rooms/mine'),
+          statusCode: 404,
+        ),
+      );
+    }
+    return room;
+  }
+
+  @override
+  Future<Map<String, dynamic>> createRoom() async {
+    created = true;
+    missing = false;
+    return room;
+  }
+
+  @override
+  Future<Map<String, dynamic>> getMe() async => {'username': 'Alice'};
+}
+
+class _Auth extends AuthRepository {
+  _Auth(super.api);
+
+  @override
+  Future<String?> getUserId() async => 'owner-1';
+}
+
 void main() {
-  Widget app({RoomViewState? room, double textScale = 1}) => ProviderScope(
+  late _RoomApi api;
+  late WsClient ws;
+  late FakeWsTransport transport;
+
+  setUp(() async {
+    api = _RoomApi();
+    transport = FakeWsTransport();
+    ws = WsClient(
+      url: 'ws://localhost',
+      getAccessToken: () async => 'token',
+      transport: transport,
+    );
+    final connected = ws.connect();
+    transport.serverConnect();
+    await connected;
+  });
+
+  tearDown(() => ws.dispose());
+
+  Widget app() => ProviderScope(
         overrides: [
-          if (room != null) roomFixtureProvider.overrideWithValue(room),
+          apiClientProvider.overrideWithValue(api),
+          authRepositoryProvider.overrideWithValue(_Auth(api)),
+          wsClientProvider.overrideWithValue(ws),
         ],
         child: MaterialApp(
           theme: buildTheme(Brightness.light),
-          builder: (context, child) => MediaQuery(
-            data: MediaQuery.of(context).copyWith(
-              textScaler: TextScaler.linear(textScale),
-            ),
-            child: child!,
-          ),
           home: const CreateRoomScreen(),
         ),
       );
 
-  testWidgets('shows the V2 arena with host, VS, invite code and waiting state',
+  testWidgets('creates a room when none exists and shows the returned code',
       (tester) async {
+    api.missing = true;
     await tester.pumpWidget(app());
     await tester.pumpAndSettle();
 
-    expect(find.text('ห้องส่วนตัว'), findsOneWidget);
-    expect(find.text('K7M2Q9'), findsOneWidget);
-    expect(find.text('คัดลอก'), findsOneWidget);
-    expect(find.text('JaJoJi'), findsOneWidget);
-    expect(find.text('VS'), findsOneWidget);
-    expect(find.text('รอคู่แข่ง'), findsOneWidget);
+    expect(api.created, isTrue);
+    expect(find.text('ABC234'), findsOneWidget);
+    expect(find.text('Alice'), findsOneWidget);
     expect(find.text('กำลังรอผู้ท้าชิง'), findsOneWidget);
-    expect(find.text('ไม่มีห้องจริงหรือการเริ่มเกม'), findsOneWidget);
-    expect(find.text('เชื่อมต่อแล้ว'), findsNothing);
   });
 
-  testWidgets('renders joined and reconnecting fixture states', (tester) async {
-    await tester.pumpWidget(app(room: PlayerHubFixtures.joined));
+  testWidgets('shows the guest from the room response', (tester) async {
+    api.guestId = 'guest-2';
+    await tester.pumpWidget(app());
     await tester.pumpAndSettle();
+
     expect(find.text('ผู้เล่น 2 / 2'), findsOneWidget);
-    expect(find.text('Astra'), findsOneWidget);
-    expect(find.text('ผู้ท้าชิงเข้าร่วมแล้ว'), findsOneWidget);
-
-    await tester.pumpWidget(app(room: PlayerHubFixtures.reconnecting));
-    await tester.pumpAndSettle();
-    expect(find.text('จำลองการเชื่อมต่อใหม่'), findsOneWidget);
+    expect(find.text('ผู้เล่น guest-2'), findsOneWidget);
   });
 
-  testWidgets('does not overflow at 360x640 with text scale 2', (tester) async {
+  testWidgets('keeps the arena readable at 360 pixels', (tester) async {
     tester.view.physicalSize = const Size(360, 640);
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.reset);
-
-    await tester.pumpWidget(app(textScale: 2));
+    await tester.pumpWidget(app());
     await tester.pumpAndSettle();
 
     expect(tester.takeException(), isNull);

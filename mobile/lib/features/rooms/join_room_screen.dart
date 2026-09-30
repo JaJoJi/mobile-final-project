@@ -1,10 +1,13 @@
+import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../core/api/api_client.dart';
 import '../../core/theme/app_spacing.dart';
-import '../player_hub/player_hub_fixture_provider.dart';
+import '../../core/ws/ws_client.dart';
+import '../../core/ws/ws_providers.dart';
 import '../player_hub/player_hub_shell.dart';
 import '../profile/player_hub_navigation.dart';
 import 'create_room_screen.dart';
@@ -21,7 +24,7 @@ class JoinRoomScreen extends ConsumerStatefulWidget {
 class _JoinRoomScreenState extends ConsumerState<JoinRoomScreen> {
   final _codeController = TextEditingController();
   String? _error;
-  bool _joined = false;
+  bool _joining = false;
 
   String get _normalizedCode =>
       _codeController.text.replaceAll(RegExp(r'\s+'), '').toUpperCase();
@@ -33,17 +36,25 @@ class _JoinRoomScreenState extends ConsumerState<JoinRoomScreen> {
   }
 
   @override
-  Widget build(BuildContext context) => PlayerHubShell(
-        title: 'เข้าร่วมห้อง',
-        subtitle: 'พบเพื่อนในสนามส่วนตัว',
-        badge: '1 vs 1',
-        navigation: const PlayerHubNavigation(),
-        body: _joined
-            ? const RoomArenaContent(room: PlayerHubFixtures.joined)
-            : _buildJoinForm(context),
-      );
+  Widget build(BuildContext context) {
+    ref.listen(wsEventProvider('game:room:state'), (previous, next) {
+      final event = next.valueOrNull;
+      if (event?['status'] == 'matched' && event?['matchId'] is String) {
+        context.go('/match/${event!['matchId']}');
+      }
+    });
+    final online = ref.watch(wsConnectionStateProvider).valueOrNull ==
+        WsConnectionState.connected;
+    return PlayerHubShell(
+      title: 'เข้าร่วมห้อง',
+      subtitle: 'พบเพื่อนในสนามส่วนตัว',
+      badge: '1 vs 1',
+      navigation: const PlayerHubNavigation(),
+      body: _buildJoinForm(context, online),
+    );
+  }
 
-  Widget _buildJoinForm(BuildContext context) => LayoutBuilder(
+  Widget _buildJoinForm(BuildContext context, bool online) => LayoutBuilder(
         builder: (context, constraints) {
           final compact = constraints.maxWidth < 650;
           return SingleChildScrollView(
@@ -58,6 +69,8 @@ class _JoinRoomScreenState extends ConsumerState<JoinRoomScreen> {
                         error: _error,
                         onCodeChanged: _onCodeChanged,
                         onJoin: _join,
+                        joining: _joining,
+                        online: online,
                         onCreateRoom: () => context.go(CreateRoomScreen.path),
                       ),
                     ],
@@ -72,6 +85,8 @@ class _JoinRoomScreenState extends ConsumerState<JoinRoomScreen> {
                           error: _error,
                           onCodeChanged: _onCodeChanged,
                           onJoin: _join,
+                          joining: _joining,
+                          online: online,
                           onCreateRoom: () => context.go(CreateRoomScreen.path),
                         ),
                       ),
@@ -85,20 +100,55 @@ class _JoinRoomScreenState extends ConsumerState<JoinRoomScreen> {
     setState(() => _error = null);
   }
 
-  void _join() {
+  Future<void> _join() async {
+    if (_joining) return;
     final code = _normalizedCode;
     _codeController.value = TextEditingValue(
       text: code,
       selection: TextSelection.collapsed(offset: code.length),
     );
-    if (code == PlayerHubFixtures.hostWaiting.roomCode) {
-      setState(() {
-        _error = null;
-        _joined = true;
-      });
+    if (!RegExp(r'^[A-Z2-9]{6}$').hasMatch(code)) {
+      setState(() => _error = 'รหัสห้องต้องมี 6 ตัวอักษร A-Z หรือเลข 2-9');
       return;
     }
-    setState(() => _error = 'ไม่พบห้องนี้ ลองรหัสตัวอย่าง K7M2Q9');
+    if (ref.read(wsClientProvider).state != WsConnectionState.connected) {
+      setState(
+        () => _error = 'ขาดการเชื่อมต่อเกม ลองอีกครั้งเมื่อเชื่อมต่อแล้ว',
+      );
+      return;
+    }
+    setState(() {
+      _joining = true;
+      _error = null;
+    });
+    try {
+      final room = await ref.read(apiClientProvider).joinRoom(code);
+      if (mounted && room['matchId'] is String) {
+        context.go('/match/${room['matchId']}');
+      } else if (mounted) {
+        setState(() => _error = 'กำลังเตรียมการแข่งขัน ลองอีกครั้ง');
+      }
+    } on DioException catch (error) {
+      final body = error.response?.data;
+      final code = body is Map ? body['code'] : null;
+      final message = switch (code) {
+        'room.not_found' => 'ไม่พบห้องนี้ หรือห้องหมดอายุแล้ว',
+        'room.invalid_code' => 'รูปแบบรหัสห้องไม่ถูกต้อง',
+        'room.full' => 'ห้องนี้มีผู้เล่นครบแล้ว',
+        'room.already_in_room' => 'คุณอยู่ในห้องอื่นแล้ว',
+        'room.not_waiting' => 'ห้องนี้ไม่รับผู้เล่นเพิ่มแล้ว',
+        'room.match_starting' => 'กำลังเริ่มเกม ลองอีกครั้ง',
+        'room.owner_cannot_join' => 'คุณเป็นเจ้าของห้องนี้อยู่แล้ว',
+        'room.in_matchmaking_queue' => 'ออกจากคิวจับคู่ก่อนเข้าห้อง',
+        'match.already_active' => 'คุณมีการแข่งขันที่ยังไม่จบ',
+        _ => 'เข้าร่วมห้องไม่สำเร็จ ลองอีกครั้ง',
+      };
+      if (mounted) setState(() => _error = message);
+    } catch (_) {
+      if (mounted) setState(() => _error = 'เข้าร่วมห้องไม่สำเร็จ ลองอีกครั้ง');
+    } finally {
+      if (mounted) setState(() => _joining = false);
+    }
   }
 }
 
@@ -153,6 +203,8 @@ class _JoinForm extends StatelessWidget {
     required this.error,
     required this.onCodeChanged,
     required this.onJoin,
+    required this.joining,
+    required this.online,
     required this.onCreateRoom,
   });
 
@@ -160,6 +212,8 @@ class _JoinForm extends StatelessWidget {
   final String? error;
   final ValueChanged<String> onCodeChanged;
   final VoidCallback onJoin;
+  final bool joining;
+  final bool online;
   final VoidCallback onCreateRoom;
 
   @override
@@ -190,7 +244,7 @@ class _JoinForm extends StatelessWidget {
               enableSuggestions: false,
               textInputAction: TextInputAction.done,
               onSubmitted: (_) {
-                if (controller.text.trim().isNotEmpty) onJoin();
+                if (controller.text.trim().isNotEmpty && !joining) onJoin();
               },
               inputFormatters: [
                 FilteringTextInputFormatter.allow(RegExp(r'[a-zA-Z0-9\s]')),
@@ -198,7 +252,7 @@ class _JoinForm extends StatelessWidget {
               ],
               decoration: InputDecoration(
                 labelText: 'รหัสห้อง',
-                hintText: 'K7M2Q9',
+                hintText: 'ABC234',
                 errorText: error,
                 helperText:
                     error == null ? 'วางรหัสได้ ระบบจัดรูปแบบให้' : null,
@@ -213,8 +267,10 @@ class _JoinForm extends StatelessWidget {
             ),
             const SizedBox(height: AppSpacing.md),
             FilledButton(
-              onPressed: controller.text.trim().isEmpty ? null : onJoin,
-              child: const Text('เข้าร่วมห้อง'),
+              onPressed: controller.text.trim().isEmpty || joining || !online
+                  ? null
+                  : onJoin,
+              child: Text(joining ? 'กำลังเข้าร่วมห้อง…' : 'เข้าร่วมห้อง'),
             ),
             const SizedBox(height: AppSpacing.xs),
             OutlinedButton(
@@ -222,10 +278,11 @@ class _JoinForm extends StatelessWidget {
               child: const Text('สร้างห้องของฉันแทน'),
             ),
             const SizedBox(height: AppSpacing.sm),
-            const Text(
-              'ตัวอย่างนี้ไม่เชื่อมต่อ backend และไม่เริ่มเกมจริง',
-              textAlign: TextAlign.center,
-            ),
+            if (!online)
+              const Text(
+                'ขาดการเชื่อมต่อเกม กำลังเชื่อมต่อใหม่…',
+                textAlign: TextAlign.center,
+              ),
           ],
         ),
       );

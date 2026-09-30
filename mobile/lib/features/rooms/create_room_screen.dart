@@ -1,44 +1,200 @@
+import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../core/api/api_client.dart';
+import '../../core/auth/auth_repository.dart';
 import '../../core/theme/app_spacing.dart';
+import '../../core/ws/ws_client.dart';
+import '../../core/ws/ws_providers.dart';
 import '../player_hub/player_crest.dart';
-import '../player_hub/player_hub_fixture_provider.dart';
 import '../player_hub/player_hub_models.dart';
 import '../player_hub/player_hub_shell.dart';
 import '../profile/player_hub_navigation.dart';
 
-class CreateRoomScreen extends ConsumerWidget {
+class CreateRoomScreen extends ConsumerStatefulWidget {
   const CreateRoomScreen({super.key});
 
   static const path = '/rooms/create';
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final room = ref.watch(roomFixtureProvider);
+  ConsumerState<CreateRoomScreen> createState() => _CreateRoomScreenState();
+}
+
+class _CreateRoomScreenState extends ConsumerState<CreateRoomScreen> {
+  RoomViewState? _room;
+  Map<String, dynamic>? _pendingRoomEvent;
+  bool _loading = true;
+  bool _opening = false;
+  bool _leaving = false;
+  String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) => _openRoom());
+  }
+
+  Future<void> _openRoom({bool createIfMissing = true}) async {
+    if (!mounted || _opening) return;
+    _opening = true;
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
+    try {
+      final api = ref.read(apiClientProvider);
+      Map<String, dynamic> json;
+      try {
+        json = await api.getMyRoom();
+      } on DioException catch (error) {
+        if (error.response?.statusCode != 404 || !createIfMissing) rethrow;
+        if (ref.read(wsClientProvider).state != WsConnectionState.connected) {
+          throw StateError('รอการเชื่อมต่อเกมแล้วลองอีกครั้ง');
+        }
+        json = await api.createRoom();
+      }
+      final userId = await ref.read(authRepositoryProvider).getUserId() ?? '';
+      final me = await ref.read(apiClientProvider).getMe();
+      if (!mounted) return;
+      final room = RoomViewState.fromJson(
+        json,
+        currentUserId: userId,
+        currentUsername: me['username'] as String? ?? 'คุณ',
+      );
+      setState(() => _room = room);
+      final pending = _pendingRoomEvent;
+      if (pending != null &&
+          pending['roomId'] == room.roomId &&
+          pending['status'] == 'matched' &&
+          pending['matchId'] is String) {
+        context.go('/match/${pending['matchId']}');
+        return;
+      }
+      if (room.matchId != null) context.go('/match/${room.matchId}');
+    } catch (error) {
+      if (mounted) {
+        if (!createIfMissing &&
+            error is DioException &&
+            error.response?.statusCode == 404) {
+          setState(() {
+            _room = null;
+            _error = 'ห้องนี้สิ้นสุดแล้ว';
+          });
+          return;
+        }
+        setState(
+          () => _error = error is StateError
+              ? error.message.toString()
+              : 'เปิดห้องไม่สำเร็จ ลองอีกครั้ง',
+        );
+      }
+    } finally {
+      _opening = false;
+      if (mounted) setState(() => _loading = false);
+    }
+  }
+
+  Future<void> _leaveRoom() async {
+    if (_leaving) return;
+    setState(() => _leaving = true);
+    try {
+      await ref.read(apiClientProvider).leaveRoom();
+      if (mounted) context.go('/lobby');
+    } catch (_) {
+      if (mounted) setState(() => _error = 'ออกจากห้องไม่สำเร็จ ลองอีกครั้ง');
+    } finally {
+      if (mounted) setState(() => _leaving = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    ref.listen(wsEventProvider('game:room:state'), (previous, next) {
+      final json = next.valueOrNull;
+      if (json == null) return;
+      if (_room == null) {
+        _pendingRoomEvent = json;
+        return;
+      }
+      if (json['roomId'] != _room?.roomId) return;
+      if (json['status'] == 'matched' && json['matchId'] is String) {
+        context.go('/match/${json['matchId']}');
+      } else if (json['status'] == 'closed') {
+        context.go('/lobby');
+      } else {
+        _openRoom(createIfMissing: false);
+      }
+    });
+    ref.listen(matchPhaseProvider, (previous, next) {
+      final phase = next.valueOrNull;
+      if (_room != null && phase != null) context.go('/match/${phase.matchId}');
+    });
+    ref.listen(wsConnectionStateProvider, (previous, next) {
+      if (next.valueOrNull == WsConnectionState.connected &&
+          previous?.valueOrNull == WsConnectionState.reconnecting) {
+        _openRoom(createIfMissing: false);
+      }
+    });
+    final online = ref.watch(wsConnectionStateProvider).valueOrNull ==
+        WsConnectionState.connected;
     return PlayerHubShell(
       title: 'ห้องส่วนตัว',
       subtitle: 'ออโต้เชส / ประลองกับเพื่อน',
-      badge: 'ตัวอย่าง',
+      badge: '1 vs 1',
       navigation: const PlayerHubNavigation(),
-      body: RoomArenaContent(room: room),
+      body: _loading && _room == null
+          ? const Center(child: CircularProgressIndicator())
+          : _room == null
+              ? Center(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(_error ?? 'ยังไม่มีห้อง'),
+                      TextButton(
+                        onPressed: () => _openRoom(),
+                        child: const Text('ลองอีกครั้ง'),
+                      ),
+                    ],
+                  ),
+                )
+              : Column(
+                  children: [
+                    if (_error != null) Text(_error!),
+                    if (!online)
+                      const Text('ขาดการเชื่อมต่อ กำลังเชื่อมต่อใหม่…'),
+                    Expanded(
+                      child: RoomArenaContent(
+                        room: _room!,
+                        canLeave: online && !_leaving,
+                        onLeave: _leaveRoom,
+                      ),
+                    ),
+                  ],
+                ),
     );
   }
 }
 
-/// The fixture-only online-room presentation shared by host and join preview.
+/// Shared room presentation for the live room state.
 class RoomArenaContent extends StatelessWidget {
-  const RoomArenaContent({super.key, required this.room});
+  const RoomArenaContent({
+    super.key,
+    required this.room,
+    this.onLeave,
+    this.canLeave = true,
+  });
 
   final RoomViewState room;
+  final VoidCallback? onLeave;
+  final bool canLeave;
 
   @override
   Widget build(BuildContext context) {
-    final isJoined = room.status == RoomFixtureStatus.joined;
     final isReconnecting = room.status == RoomFixtureStatus.reconnecting;
-    final canAct = !isJoined && !isReconnecting;
+    final canAct = !isReconnecting;
     return LayoutBuilder(
       builder: (context, constraints) {
         final compact = constraints.maxWidth < 520;
@@ -101,7 +257,8 @@ class RoomArenaContent extends StatelessWidget {
                   ),
                   _RoomStatus(room: room),
                   _RoomFooter(
-                    canCancel: canAct,
+                    room: room,
+                    canCancel: canAct && canLeave,
                     onCancel: () => _confirmLeave(context),
                   ),
                 ],
@@ -117,7 +274,7 @@ class RoomArenaContent extends StatelessWidget {
     final leave = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('ยกเลิกห้องตัวอย่างนี้?'),
+        title: const Text('ออกจากห้องนี้?'),
         content: const Text('ออกจากห้องเพื่อกลับหน้าหลัก'),
         actions: [
           TextButton(
@@ -131,7 +288,7 @@ class RoomArenaContent extends StatelessWidget {
         ],
       ),
     );
-    if (leave == true && context.mounted) context.go('/lobby');
+    if (leave == true && context.mounted) onLeave?.call();
   }
 }
 
@@ -187,7 +344,7 @@ class _InviteBar extends StatelessWidget {
                 ),
               ],
             ),
-            const Text('ห้องตัวอย่าง · 1 vs 1'),
+            const Text('ห้องส่วนตัว · 1 vs 1'),
           ],
         ),
       );
@@ -340,15 +497,12 @@ class _RoomStatus extends StatelessWidget {
     final title = switch (room.status) {
       RoomFixtureStatus.waiting => 'กำลังรอผู้ท้าชิง',
       RoomFixtureStatus.joined => 'ผู้ท้าชิงเข้าร่วมแล้ว',
-      RoomFixtureStatus.reconnecting => 'จำลองการเชื่อมต่อใหม่',
+      RoomFixtureStatus.reconnecting => 'กำลังเชื่อมต่อใหม่',
     };
     final description = switch (room.status) {
-      RoomFixtureStatus.waiting =>
-        'หน้าตัวอย่างนี้ไม่สร้างห้องจริงหรือเริ่มเกม',
-      RoomFixtureStatus.joined =>
-        'สถานะผู้เล่นนี้เป็นข้อมูลตัวอย่าง ไม่มีการเริ่มเกมจริง',
-      RoomFixtureStatus.reconnecting =>
-        'สถานะนี้จำลองการเชื่อมต่อใหม่ ไม่มี backend ทำงาน',
+      RoomFixtureStatus.waiting => 'ส่งรหัสห้องให้เพื่อนเพื่อเริ่มการแข่งขัน',
+      RoomFixtureStatus.joined => 'กำลังเตรียมการแข่งขัน',
+      RoomFixtureStatus.reconnecting => 'รอสถานะล่าสุดจากเซิร์ฟเวอร์',
     };
     return Padding(
       padding: const EdgeInsets.symmetric(
@@ -373,14 +527,6 @@ class _RoomStatus extends StatelessWidget {
                         ),
                   ),
                   Text(description, textAlign: TextAlign.center),
-                  const SizedBox(height: AppSpacing.xs),
-                  Text(
-                    'ไม่มีห้องจริงหรือการเริ่มเกม',
-                    textAlign: TextAlign.center,
-                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                          color: Theme.of(context).colorScheme.onSurfaceVariant,
-                        ),
-                  ),
                 ],
               ),
             ),
@@ -392,7 +538,12 @@ class _RoomStatus extends StatelessWidget {
 }
 
 class _RoomFooter extends StatelessWidget {
-  const _RoomFooter({required this.canCancel, required this.onCancel});
+  const _RoomFooter({
+    required this.room,
+    required this.canCancel,
+    required this.onCancel,
+  });
+  final RoomViewState room;
   final bool canCancel;
   final VoidCallback onCancel;
 
@@ -409,7 +560,7 @@ class _RoomFooter extends StatelessWidget {
           runSpacing: AppSpacing.sm,
           spacing: AppSpacing.md,
           children: [
-            const Text('ห้องของ JaJoJi\nออกจากห้องเพื่อกลับหน้าหลัก'),
+            Text('ห้องของ ${room.host.username}\nออกจากห้องเพื่อกลับหน้าหลัก'),
             OutlinedButton(
               onPressed: canCancel ? onCancel : null,
               child: const Text('ยกเลิกห้อง'),

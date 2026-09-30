@@ -7,6 +7,7 @@ import 'package:auto_chess_mobile/features/lobby/lobby_screen.dart';
 import 'package:auto_chess_mobile/features/lobby/logout_button.dart';
 import 'package:auto_chess_mobile/features/lobby/player_hub_navigation.dart';
 import 'package:auto_chess_mobile/features/lobby/profile_card.dart';
+import 'package:auto_chess_mobile/features/player_hub/player_hub_fixture_provider.dart';
 import 'package:auto_chess_mobile/shared/models/game_events.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -83,6 +84,9 @@ void main() {
             (ref) async => {'username': 'alice', 'rating': 1234},
           ),
           matchHistoryProvider.overrideWith((ref) async => []),
+          leaderboardSourceProvider.overrideWith(
+            (ref) async => PlayerHubFixtures.leaderboard,
+          ),
         ],
         child: MaterialApp.router(routerConfig: router),
       ),

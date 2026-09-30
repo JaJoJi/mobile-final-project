@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../core/api/api_client.dart';
 import '../../core/theme/app_spacing.dart';
 import '../player_hub/player_crest.dart';
 import '../player_hub/player_hub_fixture_provider.dart';
@@ -19,6 +20,37 @@ class LeaderboardScreen extends ConsumerStatefulWidget {
 
 class _LeaderboardScreenState extends ConsumerState<LeaderboardScreen> {
   bool _showAll = false;
+  bool _loadingMore = false;
+  String? _loadMoreError;
+  final List<LeaderboardEntry> _extraEntries = [];
+
+  Future<void> _showMore(LeaderboardViewData data) async {
+    if (!_showAll) {
+      setState(() => _showAll = true);
+      return;
+    }
+    if (_loadingMore ||
+        data.entries.length + _extraEntries.length >= data.total) {
+      return;
+    }
+    setState(() {
+      _loadingMore = true;
+      _loadMoreError = null;
+    });
+    try {
+      final next = LeaderboardViewData.fromJson(
+        await ref.read(apiClientProvider).getLeaderboard(
+              limit: data.limit,
+              offset: data.offset + data.entries.length + _extraEntries.length,
+            ),
+      );
+      if (mounted) setState(() => _extraEntries.addAll(next.entries));
+    } catch (_) {
+      if (mounted) setState(() => _loadMoreError = 'โหลดอันดับเพิ่มไม่สำเร็จ');
+    } finally {
+      if (mounted) setState(() => _loadingMore = false);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -38,7 +70,13 @@ class _LeaderboardScreenState extends ConsumerState<LeaderboardScreen> {
             children: [
               const Text('โหลดข้อมูลไม่สำเร็จ'),
               TextButton(
-                onPressed: () => ref.invalidate(leaderboardSourceProvider),
+                onPressed: () {
+                  setState(() {
+                    _showAll = false;
+                    _extraEntries.clear();
+                  });
+                  ref.invalidate(leaderboardSourceProvider);
+                },
                 child: const Text('ลองอีกครั้ง'),
               ),
             ],
@@ -51,7 +89,8 @@ class _LeaderboardScreenState extends ConsumerState<LeaderboardScreen> {
   }
 
   Widget _buildContent(LeaderboardViewData data) {
-    final rows = data.entries.take(_showAll ? data.entries.length : 5).toList();
+    final loaded = [...data.entries, ..._extraEntries];
+    final rows = loaded.take(_showAll ? loaded.length : 5).toList();
     final champion = data.entries.isEmpty ? null : data.entries.first;
     return LayoutBuilder(
       builder: (context, constraints) {
@@ -62,9 +101,11 @@ class _LeaderboardScreenState extends ConsumerState<LeaderboardScreen> {
         final ranking = _RankingPanel(
           entries: rows,
           currentPlayer: data.currentPlayer,
-          showMore: !_showAll && data.entries.length > 5,
-          allShown: _showAll,
-          onShowMore: () => setState(() => _showAll = true),
+          showMore:
+              (!_showAll && loaded.length > 5) || loaded.length < data.total,
+          loadingMore: _loadingMore,
+          loadMoreError: _loadMoreError,
+          onShowMore: () => _showMore(data),
         );
         return SingleChildScrollView(
           padding: const EdgeInsets.all(AppSpacing.lg),
@@ -181,14 +222,16 @@ class _RankingPanel extends StatelessWidget {
     required this.entries,
     required this.currentPlayer,
     required this.showMore,
-    required this.allShown,
+    required this.loadingMore,
+    required this.loadMoreError,
     required this.onShowMore,
   });
 
   final List<LeaderboardEntry> entries;
   final LeaderboardEntry currentPlayer;
   final bool showMore;
-  final bool allShown;
+  final bool loadingMore;
+  final String? loadMoreError;
   final VoidCallback onShowMore;
 
   @override
@@ -210,14 +253,14 @@ class _RankingPanel extends StatelessWidget {
               Padding(
                 padding: const EdgeInsets.all(AppSpacing.sm),
                 child: OutlinedButton(
-                  onPressed: onShowMore,
-                  child: const Text('โหลดเพิ่มเติม'),
+                  onPressed: loadingMore ? null : onShowMore,
+                  child: Text(loadingMore ? 'กำลังโหลด…' : 'โหลดเพิ่มเติม'),
                 ),
               ),
-            if (allShown)
-              const Padding(
-                padding: EdgeInsets.all(AppSpacing.md),
-                child: Text('แสดงข้อมูลตัวอย่างครบแล้ว'),
+            if (loadMoreError != null)
+              Padding(
+                padding: const EdgeInsets.all(AppSpacing.md),
+                child: Text(loadMoreError!),
               ),
           ],
         ),
