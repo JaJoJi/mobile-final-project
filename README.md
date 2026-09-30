@@ -1,8 +1,6 @@
 # Auto Chess Mobile — University Project
 
-[![backend-ci](https://github.com/JaJoJi/mobile-final-project/actions/workflows/backend-ci.yml/badge.svg)](https://github.com/JaJoJi/mobile-final-project/actions/workflows/backend-ci.yml)
-[![mobile-ci](https://github.com/JaJoJi/mobile-final-project/actions/workflows/mobile-ci.yml/badge.svg)](https://github.com/JaJoJi/mobile-final-project/actions/workflows/mobile-ci.yml)
-[![release](https://img.shields.io/github/v/release/JaJoJi/mobile-final-project?include_prereleases)](https://github.com/JaJoJi/mobile-final-project/releases)
+CI/CD: **Jenkins** on Azure (`Jenkinsfile`, [infra/README.md](infra/README.md)) — the only CI; there are no GitHub Actions workflows.
 
 2-player auto-chess mobile game. Flutter client + Nest.js backend + PostgreSQL + Redis. **Stateless backend with horizontal scaling** behind an nginx load balancer, primary + read-replica Postgres, BullMQ-delayed jobs, and an authoritative-server combat engine.
 

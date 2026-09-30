@@ -153,10 +153,7 @@ Full detail lives in the GitHub issues linked below.
 
 ## P4 — DevOps (16)
 
-Two parallel quality gates, on purpose, until the cutover below:
-
-- **Interim (live today):** `.github/workflows/security.yml` (gitleaks + `npm audit`, blocking) and the `sonar` job in `backend-ci.yml`/`mobile-ci.yml` (gated on `SONAR_TOKEN`/`SONAR_HOST_URL` secrets — no-ops until the server exists). Runs on GitHub Actions because Jenkins (#218) isn't live yet.
-- **Finalized target (per `devops-toolchain.md` §2):** Jenkins-only, no GitHub Actions, no SonarQube. `Jenkinsfile`'s `ENABLE_SECURITY_SCAN` param (default off) gates Gitleaks → Semgrep → Trivy → Checkov → ephemeral ZAP baseline, superseding #191's GH-Actions-based plan (#219).
+**Jenkins is the only CI (since 2026-09-30, #272):** the interim GitHub Actions workflows (`backend-ci`, `mobile-ci`, `security`, `release`, `release-please`) and the SonarQube config were removed. Every gate they ran — lint, unit + integration tests, coverage floors, Gitleaks, dependency scan — runs in the `Jenkinsfile` (Gitleaks → Semgrep → Trivy → Checkov → ephemeral ZAP), and the image is released to Docker Hub from `main` only (no more GHCR double release, #286).
 
 **Found 2026-09-25:** a full real (not just designed) build-out of the finalized Jenkins stack already exists as a stacked PR chain — #262–269, one per `devops-toolchain.md` section, each verified against real infra (booted `docker-compose.prod.yml` for real, real Trivy/Gitleaks/Semgrep/Checkov/ZAP runs, a real rollback drill). All closed, none merged to `dev`; they are the reference implementation to rebuild from, one issue at a time. #220's CVE fix was adopted directly (see P4-DO-01 below).
 

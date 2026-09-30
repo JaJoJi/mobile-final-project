@@ -4,7 +4,8 @@ useDefault = true
 [allowlist]
 description = "Known non-secret placeholder values, verified false positives"
 regexes = [
-  # .github/workflows/backend-ci.yml -- JWT_SECRET: ci_jwt_secret_not_a_real_secret_...,
+  # old .github/workflows/backend-ci.yml (removed, still in git history) --
+  # JWT_SECRET: ci_jwt_secret_not_a_real_secret_...,
   # a hardcoded CI-only placeholder, never a real credential. Two literal
   # variants exist across git history (an earlier draft used a different
   # placeholder string before this one).
