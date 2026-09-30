@@ -15,6 +15,8 @@ import '../../shared/models/game_events.dart';
 import '../history/history_format.dart';
 import '../history/history_providers.dart';
 import '../history/match_models.dart';
+import '../leaderboard/leaderboard_screen.dart';
+import '../player_hub/player_hub_fixture_provider.dart';
 import '../rooms/create_room_screen.dart';
 import '../rooms/join_room_screen.dart';
 import 'find_match_button.dart';
@@ -67,7 +69,7 @@ class _LobbyScreenState extends ConsumerState<LobbyScreen> {
       WsConnectionState.connecting => ConnectionStatus.connecting,
       WsConnectionState.reconnecting => ConnectionStatus.reconnecting,
       WsConnectionState.disconnected => ConnectionStatus.disconnected,
-      null => ConnectionStatus.connected,
+      null => ConnectionStatus.connecting,
     };
 
     return Theme(
@@ -258,7 +260,9 @@ class _PlayCard extends StatelessWidget {
                     children: [
                       Expanded(
                         child: OutlinedButton.icon(
-                          onPressed: () => context.go(CreateRoomScreen.path),
+                          onPressed: matchmakingEnabled
+                              ? () => context.go(CreateRoomScreen.path)
+                              : null,
                           icon: const Icon(Icons.group_add_outlined),
                           label: const Text('สร้างห้อง'),
                         ),
@@ -266,7 +270,9 @@ class _PlayCard extends StatelessWidget {
                       const SizedBox(width: AppSpacing.sm),
                       Expanded(
                         child: OutlinedButton.icon(
-                          onPressed: () => context.go(JoinRoomScreen.path),
+                          onPressed: matchmakingEnabled
+                              ? () => context.go(JoinRoomScreen.path)
+                              : null,
                           icon: const Icon(Icons.link_rounded),
                           label: const Text('เข้าร่วมห้อง'),
                         ),
@@ -281,11 +287,11 @@ class _PlayCard extends StatelessWidget {
       );
 }
 
-class _LeaderboardPreview extends StatelessWidget {
+class _LeaderboardPreview extends ConsumerWidget {
   const _LeaderboardPreview();
 
   @override
-  Widget build(BuildContext context) => FantasyPanel(
+  Widget build(BuildContext context, WidgetRef ref) => FantasyPanel(
         translucent: true,
         padding: const EdgeInsets.fromLTRB(
           AppSpacing.md,
@@ -298,40 +304,55 @@ class _LeaderboardPreview extends StatelessWidget {
           children: [
             _SectionHeader(
               title: 'อันดับประจำฤดูกาล',
-              onPressed: () => _comingSoon(context, 'ตารางอันดับ'),
+              onPressed: () => context.go(LeaderboardScreen.path),
             ),
             const SizedBox(height: AppSpacing.sm),
-            Row(
-              children: [
-                const Icon(
-                  Icons.emoji_events_outlined,
-                  color: Color(0xFFFFD35A),
-                  size: AppSpacing.xxl,
-                ),
-                const SizedBox(width: AppSpacing.md),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
+            ref.watch(leaderboardSourceProvider).when(
+                  loading: () => const SkeletonBox(height: 72),
+                  error: (_, __) => Row(
                     children: [
-                      Text(
-                        'ตารางอันดับกำลังจะเปิดใช้งาน',
-                        style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                              fontWeight: FontWeight.w700,
-                            ),
-                      ),
-                      Text(
-                        'ยังไม่มีข้อมูลอันดับประจำฤดูกาลในขณะนี้',
-                        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                              color: Theme.of(context)
-                                  .colorScheme
-                                  .onSurfaceVariant,
-                            ),
+                      const Expanded(child: Text('โหลดอันดับไม่สำเร็จ')),
+                      TextButton(
+                        onPressed: () =>
+                            ref.invalidate(leaderboardSourceProvider),
+                        child: const Text('ลองอีกครั้ง'),
                       ),
                     ],
                   ),
+                  data: (board) => Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      if (board.entries.isEmpty)
+                        const Text('ยังไม่มีข้อมูลอันดับ')
+                      else
+                        for (final entry in board.entries.take(3))
+                          Padding(
+                            padding: const EdgeInsets.symmetric(
+                              vertical: AppSpacing.xs,
+                            ),
+                            child: Row(
+                              children: [
+                                SizedBox(
+                                  width: 42,
+                                  child: Text('#${entry.rank}'),
+                                ),
+                                Expanded(
+                                  child: Text(
+                                    entry.username,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ),
+                                Text('${entry.rating}'),
+                              ],
+                            ),
+                          ),
+                      const SizedBox(height: AppSpacing.xs),
+                      Text('อันดับของคุณ #${board.currentPlayer.rank} · '
+                          '${board.currentPlayer.username} · '
+                          '${board.currentPlayer.rating}'),
+                    ],
+                  ),
                 ),
-              ],
-            ),
           ],
         ),
       );
@@ -635,8 +656,4 @@ class _MatchmakingTimerBadgeState extends State<_MatchmakingTimerBadge> {
       ),
     );
   }
-}
-
-void _comingSoon(BuildContext context, String feature) {
-  AppToast.show(context, '$feature จะเปิดให้ใช้งานเร็ว ๆ นี้');
 }

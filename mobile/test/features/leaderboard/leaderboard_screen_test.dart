@@ -15,7 +15,9 @@ void main() {
   }) =>
       ProviderScope(
         overrides: [
-          if (source != null) leaderboardSourceProvider.overrideWith(source),
+          leaderboardSourceProvider.overrideWith(
+            source ?? (_) async => PlayerHubFixtures.leaderboard,
+          ),
         ],
         child: MaterialApp(
           theme: buildTheme(Brightness.light),
@@ -61,7 +63,7 @@ void main() {
 
     expect(find.text('SilverPawn'), findsOneWidget);
     expect(find.text('NightOwl'), findsOneWidget);
-    expect(find.text('แสดงข้อมูลตัวอย่างครบแล้ว'), findsOneWidget);
+    expect(find.text('โหลดเพิ่มเติม'), findsNothing);
   });
 
   testWidgets('shows a loading state while the source is pending',
