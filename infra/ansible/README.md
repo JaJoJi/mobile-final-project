@@ -6,7 +6,7 @@ Terraform. Two playbooks:
 | Playbook | Runs against | Does |
 |---|---|---|
 | `provision.yml` | localhost → Azure CLI | resource group, VM (Ubuntu 24.04, `Standard_B2als_v2` in `malaysiawest`, 64 GB), NSG with **SSH only, from your IP + `admin_cidrs`**, Cost Management budget alert |
-| `jenkins-host.yml` | the VM over SSH | Docker Engine, Jenkins LTS bound to `127.0.0.1:8080`, Jenkins URL `http://localhost:8080/`; verifies the `jenkins` user can run docker, Jenkins answers, and nothing listens on a public interface |
+| `jenkins-host.yml` | the VM over SSH | Docker Engine, Jenkins LTS bound to `127.0.0.1:8080`, Caddy on 80/443 with a Let's Encrypt cert for `jenkins_fqdn`, Jenkins URL `https://<jenkins_fqdn>/`; refuses to start Caddy while Jenkins allows anonymous read or sign-up; verifies docker access, Jenkins on loopback only, and HTTPS through Caddy |
 
 Both are idempotent: re-running changes nothing unless something drifted
 (verified: second run of `jenkins-host.yml` → `changed=0`).
@@ -47,11 +47,11 @@ different key pair (default `~/.ssh/id_ed25519`).
 
 ## After the playbooks
 
-1. **Open Jenkins** through an SSH tunnel (Jenkins is not exposed by the NSG):
-   ```bash
-   ssh -L 8080:127.0.0.1:8080 azureuser@<vm-ip>     # then http://localhost:8080
-   ssh azureuser@<vm-ip> sudo cat /var/lib/jenkins/secrets/initialAdminPassword
-   ```
+1. **Open Jenkins** at `https://<dns_label>.<region>.cloudapp.azure.com`
+   (group_vars `jenkins_fqdn`; today https://mfp-jenkins-psu.malaysiawest.cloudapp.azure.com). On a fresh
+   install get the setup password with
+   `ssh azureuser@<vm-ip> sudo cat /var/lib/jenkins/secrets/initialAdminPassword`,
+   and keep anonymous read + sign-up off.
 2. Finish setup per `docs/08-runbook.md` §6 (plugins, Multibranch job,
    credentials) and the hardening checklist in #288.
 3. **No webhook** — Jenkins is private. The Multibranch job polls GitHub

@@ -33,24 +33,26 @@ live in jest/lcov), Terraform (Ansible provisions), GitHub Actions as CI
 
 | Path | What | Status |
 |---|---|---|
-| [`ansible/`](ansible/README.md) | Jenkins host on Azure: `provision.yml` (VM, NSG, budget alert) + `jenkins-host.yml` (Docker, Jenkins on loopback) | **live** — `mfp-jenkins`, malaysiawest |
+| [`ansible/`](ansible/README.md) | Jenkins host on Azure: `provision.yml` (VM, NSG, budget alert) + `jenkins-host.yml` (Docker, Jenkins on loopback, Caddy HTTPS) | **live** — `mfp-jenkins`, malaysiawest |
 | _later_ | App deploy (#221), Vault (#223), ModSecurity (#224), LGTM monitoring (#225) — new playbooks in `ansible/` | planned |
 
 ## Architecture (today)
 
 ```
  GitHub ◄──── polls every 1 min, posts ✅/❌ ──── Azure VM  mfp-jenkins  (Standard_B2als_v2, malaysiawest)
-                                                 ├─ Jenkins LTS  127.0.0.1:8080 only
+                                                 ├─ Caddy :80/:443 (Let's Encrypt) ─► Jenkins LTS 127.0.0.1:8080
  Team inbox ◄── email: result + log tail ─────── │
                                                  └─ Docker Engine ← every pipeline stage runs as a
                                                                     pinned container (Jenkinsfile)
- Team ──SSH (22, allow-listed IPs) + tunnel -L 8080:127.0.0.1:8080 ──► UI
-                                        NSG allows nothing else inbound
+ Browser ──HTTPS 443──► https://mfp-jenkins-psu.malaysiawest.cloudapp.azure.com  (Jenkins login)
+ Admins  ──SSH 22 (allow-listed IPs only)
 ```
 
-**Private by design** (decided 2026-09-28): no webhook, no public URL.
-Jenkins polls GitHub instead, reports status on the PR and emails the
-result, so the UI (SSH tunnel) is only needed for admin work.
+**UI over HTTPS** (decided 2026-09-30; SSH-tunnel-only before): Caddy
+publishes Jenkins at https://mfp-jenkins-psu.malaysiawest.cloudapp.azure.com with a Let's Encrypt cert; the
+Jenkins login is the access control (anonymous read and sign-up off —
+`jenkins-host.yml` refuses to start Caddy otherwise). Jenkins itself
+still listens on loopback only, and still polls GitHub (no webhook).
 
 ## Quick start
 

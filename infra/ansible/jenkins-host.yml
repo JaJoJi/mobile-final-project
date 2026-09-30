@@ -1,10 +1,13 @@
 # Configures the VM from provision.yml as the Jenkins host (#218, #222):
-# Docker (every pipeline tool runs as a pinned container, see Jenkinsfile)
-# and Jenkins LTS, reachable only through an SSH tunnel. Idempotent.
+# Docker (every pipeline tool runs as a pinned container, see Jenkinsfile),
+# Jenkins LTS on 127.0.0.1, and Caddy in front of it for HTTPS. Idempotent.
 #
-# Private by design (decided 2026-09-28, "option A"): nothing inbound but
-# SSH. Jenkins polls GitHub (multibranch periodic scan) instead of taking
-# webhooks, reports ✅/❌ back to the PR, and emails results with the log.
+# UI at https://<dns_label>.<region>.cloudapp.azure.com (decided
+# 2026-09-30; before that it was SSH-tunnel only). Caddy gets a Let's
+# Encrypt cert and proxies to 127.0.0.1:8080; the Jenkins login is the
+# access control, so this playbook refuses to start Caddy while anonymous
+# read or self sign-up is enabled. Jenkins still polls GitHub (no webhook),
+# reports ✅/❌ on the PR and emails results with the log.
 #
 #   ./run.sh ansible-playbook jenkins-host.yml
 #
@@ -21,6 +24,11 @@
         name: jenkins
         state: restarted
         daemon_reload: true
+
+    - name: Reload caddy
+      ansible.builtin.systemd_service:
+        name: caddy
+        state: reloaded
 
   tasks:
     - name: Wait for SSH (fresh VMs take a minute)
@@ -167,9 +175,8 @@
         enabled: true
         daemon_reload: true
 
-    # Links Jenkins puts in GitHub statuses and emails use this URL. With
-    # the SSH tunnel (-L 8080:127.0.0.1:8080) it opens on your own machine.
-    # The Setup Wizard writes this file on first login; create it before
+    # Links Jenkins puts in GitHub statuses and emails use this URL (the
+    # public https:// name Caddy serves). The Setup Wizard writes this file on first login; create it before
     # that, only fix the URL after.
     - name: Jenkins URL config exists?
       ansible.builtin.stat:
@@ -215,6 +222,71 @@
       when: jenkins_config.stat.exists
       notify: Restart jenkins
 
+    # ── Public HTTPS (Caddy -> 127.0.0.1:8080) ─────────────────────────
+    # The UI becomes reachable by anyone with the URL, so the Jenkins
+    # login must be the gate: security on, no anonymous read, no sign-up.
+    # Checked from config.xml before Caddy is ever started.
+    - name: Read Jenkins security config
+      ansible.builtin.slurp:
+        src: /var/lib/jenkins/config.xml
+      register: jenkins_config_xml
+      when: jenkins_config.stat.exists
+
+    - name: Jenkins is locked down before it goes public
+      vars:
+        cfg: "{{ jenkins_config_xml.content | b64decode }}"
+      ansible.builtin.assert:
+        that:
+          - "'<useSecurity>true</useSecurity>' in cfg"
+          - "'AuthorizationStrategy$Unsecured' not in cfg"
+          - "'<denyAnonymousReadAccess>false</denyAnonymousReadAccess>' not in cfg"
+          - "'<disableSignup>false</disableSignup>' not in cfg"
+        fail_msg: >-
+          Refusing to expose Jenkins: turn off anonymous read access and
+          "Allow users to sign up" (Manage Jenkins > Security), then re-run.
+        quiet: true
+      when: jenkins_config.stat.exists
+
+    - name: Caddy apt repo
+      ansible.builtin.deb822_repository:
+        name: caddy
+        types: deb
+        uris: https://dl.cloudsmith.io/public/caddy/stable/deb/debian
+        suites: any-version
+        components: main
+        signed_by: https://dl.cloudsmith.io/public/caddy/stable/gpg.key
+
+    - name: Caddy
+      ansible.builtin.apt:
+        name: caddy
+        update_cache: true
+
+    # Caddy obtains + renews the Let's Encrypt cert itself (HTTP-01 on
+    # :80, which it also redirects to HTTPS) and sets X-Forwarded-* so
+    # Jenkins builds correct https:// links.
+    - name: Caddyfile
+      ansible.builtin.copy:
+        dest: /etc/caddy/Caddyfile
+        mode: "0644"
+        content: |
+          # Managed by infra/ansible/jenkins-host.yml
+          {{ jenkins_fqdn }} {
+              encode gzip
+              header {
+                  Strict-Transport-Security "max-age=31536000"
+                  -Server
+              }
+              reverse_proxy 127.0.0.1:8080
+          }
+        validate: caddy validate --adapter caddyfile --config %s
+      notify: Reload caddy
+
+    - name: Caddy running
+      ansible.builtin.systemd_service:
+        name: caddy
+        state: started
+        enabled: true
+
     # Earlier revisions installed cloudflared for a webhook tunnel; not
     # needed now that Jenkins polls GitHub. Remove it (least software).
     - name: No cloudflared
@@ -259,11 +331,25 @@
             | reject('search', '(^|\s|\[::ffff:)127\.0\.0\.1\]?:8080\s')
             | list | length) > 0
 
+    # Through Caddy with a real cert, resolved to this host so it doesn't
+    # depend on hairpinning via the public IP. Retries cover the first
+    # Let's Encrypt issuance.
+    - name: Jenkins answers over HTTPS through Caddy
+      ansible.builtin.command: >
+        curl -sS -o /dev/null -w '%{http_code}'
+        --resolve {{ jenkins_fqdn }}:443:127.0.0.1
+        https://{{ jenkins_fqdn }}/login
+      register: jenkins_https
+      changed_when: false
+      retries: 24
+      delay: 5
+      until: jenkins_https.rc == 0 and jenkins_https.stdout == '200'
+
     - name: Summary
       ansible.builtin.debug:
         msg:
           - "Docker {{ jenkins_docker.stdout }} usable by the jenkins user"
-          - "Jenkins is up on 127.0.0.1:8080 only (private -- SSH tunnel)"
-          - "Open the UI:  ssh -L 8080:127.0.0.1:8080 {{ ansible_user }}@{{ ansible_host }}  ->  http://localhost:8080"
-          - "Initial admin password:  ssh {{ ansible_user }}@{{ ansible_host }} sudo cat /var/lib/jenkins/secrets/initialAdminPassword"
+          - "Jenkins on 127.0.0.1:8080, published by Caddy with a valid cert"
+          - "Open the UI:  {{ jenkins_url }}"
+          - "Initial admin password (fresh install only):  ssh {{ ansible_user }}@{{ ansible_host }} sudo cat /var/lib/jenkins/secrets/initialAdminPassword"
           - "Then: docs/08-runbook.md §6 (plugins, periodic scan, GitHub status, email)"
