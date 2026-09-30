@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Fail if total line coverage in an lcov file is below a floor.
-# Same math as the "Coverage threshold" step in mobile-ci.yml, so Jenkins
-# and GitHub Actions enforce the identical gate (#274, #282).
+# Mobile coverage gate for Jenkins (#274, #282). Originally mirrored the
+# GitHub Actions mobile-ci.yml step, removed when Jenkins became the only CI.
 #
 # Usage: lcov-floor.sh <lcov.info> <min-percent>
 set -euo pipefail

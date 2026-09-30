@@ -17,7 +17,7 @@ configuration over SSH, so there's one tool and one way of running it.
 | Stage | Tool | Role in this project | Status (2026-09-28) |
 |---|---|---|---|
 | build | Jenkins | Multibranch on the Azure VM, polls GitHub every minute; backend + mobile build/test in pinned containers (`Jenkinsfile`) | ✅ live (#218) |
-| test | Gitleaks → Semgrep → Trivy → Checkov → ZAP | secrets → SAST → dependency + image CVEs → Dockerfile/workflow misconfig → DAST on an ephemeral stack | ✅ live, blocks PRs (#219) |
+| test | Gitleaks → Semgrep → Trivy → Checkov → ZAP | secrets → SAST → dependency + image CVEs → Dockerfile misconfig → DAST on an ephemeral stack | ✅ live, blocks PRs (#219) |
 | release | Docker Hub | `fiatthanapon/mobile-final-project:<sha7>` + `latest`, pushed on `main` after a `dev → main` merge — the image that passed the scans, never rebuilt | 🟡 wired, first push pending (#220) |
 | deploy | Docker Compose | `docker-compose.prod.yml`: nginx → nest ×3 → Redis, Postgres primary/replica | 🟡 dev compose only (#221) |
 | config | Ansible | `infra/ansible/`: Jenkins VM provisioned + configured; app deploy playbook next | 🟡 partly (#222) |

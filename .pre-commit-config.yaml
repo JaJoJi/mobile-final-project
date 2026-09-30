@@ -1,7 +1,7 @@
 # pip install pre-commit && pre-commit install
 #
-# Fast, local checks before a commit lands — CI (backend-ci.yml,
-# mobile-ci.yml) is the real gate; this just gives faster feedback.
+# Fast, local checks before a commit lands — Jenkins (Jenkinsfile) is the
+# real gate; this just gives faster feedback.
 repos:
   - repo: https://github.com/pre-commit/pre-commit-hooks
     rev: v4.6.0

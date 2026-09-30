@@ -9,7 +9,7 @@
 //     ├─ Mobile   format + analyze + test + coverage     PRs into dev/main, dev, main
 //     ├─ Semgrep  SAST                                   every branch
 //     ├─ Trivy fs deps + secrets + IaC                   every branch
-//     └─ Checkov  Dockerfiles + workflows                every branch
+//     └─ Checkov  Dockerfiles                            every branch
 //   Backend image  build → SBOM → Trivy image scan       PRs into dev/main, dev, main
 //   Ephemeral stack  PG + Redis + 3×Nest from that image
 //     ├─ integration smoke (real infra)
@@ -174,7 +174,7 @@ pipeline {
               sh 'dart format --output=none --set-exit-if-changed .'
               sh 'flutter analyze'
               sh 'mkdir -p reports && flutter test --coverage --file-reporter json:reports/flutter-tests.json'
-              // Same 84% floor as mobile-ci.yml (#274).
+              // 84% floor, set from the measured baseline (#274).
               sh 'bash ../ci/scripts/lcov-floor.sh coverage/lcov.info 84'
             }
           }
@@ -235,7 +235,7 @@ pipeline {
             // No docker_compose framework exists in Checkov — the old
             // `--framework ...,docker_compose,...` made this stage fail on
             // every run. Skips are inline in the scanned file, with a reason.
-            sh 'checkov -d . --framework dockerfile github_actions --compact --quiet --skip-path .cache --skip-path node_modules'
+            sh 'checkov -d . --framework dockerfile --compact --quiet --skip-path .cache --skip-path node_modules'
           }
         }
       }
@@ -295,7 +295,7 @@ pipeline {
         stage('Stack · up') {
           steps { sh 'bash ci/scripts/stack-up.sh' }
         }
-        // Same suite as backend-ci.yml's backend-integration job (#283).
+        // Cross-instance integration suite (#283).
         stage('Backend · integration smoke') {
           when { expression { params.ENABLE_INTEGRATION_TESTS != false } }
           steps {
