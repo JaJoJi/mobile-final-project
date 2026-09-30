@@ -165,11 +165,11 @@ log. Hardening checklist: #288.
    Semgrep, Trivy, Checkov, ZAP, Postgres, Redis) runs as a container
    pinned by version + digest in the `Jenkinsfile` (`IMAGES` map). Keep
    **≥ 30 GB free disk** and **≥ 4 GB RAM**.
-2. **Open the UI** (SSH tunnel; your IP must be in the NSG allow-list —
-   add it via `admin_cidrs` + re-run `provision.yml`):
-   ```bash
-   ssh -L 8080:127.0.0.1:8080 azureuser@<vm-ip>    # then http://localhost:8080
-   ```
+2. **Open the UI:** https://mfp-jenkins-psu.malaysiawest.cloudapp.azure.com (Caddy + Let's Encrypt in
+   front of Jenkins on loopback; log in with your Jenkins account).
+   Keep **anonymous read** and **Allow users to sign up** off in
+   Manage Jenkins → Security — `jenkins-host.yml` won't publish Jenkins
+   otherwise. SSH (admin only) still needs your IP in `admin_cidrs`.
 3. **Plugins:** Pipeline, Pipeline: Multibranch, Git, **GitHub Branch
    Source**, **Docker Pipeline**, JUnit, **HTML Publisher**, Timestamper,
    Credentials Binding, **Email Extension**.

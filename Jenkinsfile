@@ -44,7 +44,7 @@ IMAGES = [
 ]
 
 // Email with the result; on failure the tail of the log inline + the full
-// log attached, so nobody needs the (private, SSH-tunnel-only) Jenkins UI
+// log attached, so nobody needs to open the Jenkins UI
 // just to see why a build broke.
 def notifyEmail(String status) {
   withCredentials([string(credentialsId: 'notify-email', variable: 'NOTIFY_TO')]) {
@@ -60,7 +60,7 @@ def notifyEmail(String status) {
       body: """Result: ${status}
 Branch: ${env.BRANCH_NAME}${env.CHANGE_ID ? " (PR #${env.CHANGE_ID}: ${env.CHANGE_TITLE})" : ''}
 Commit: ${env.GIT_COMMIT}
-Build:  ${env.BUILD_URL}   (open through the SSH tunnel)
+Build:  ${env.BUILD_URL}
 """ + (failed ? '\nLast 80 log lines:\n${BUILD_LOG, maxLines=80, escapeHtml=false}\n' : '')
     )
   }

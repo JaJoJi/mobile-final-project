@@ -65,8 +65,8 @@
       failed_when: false
 
     # --nsg-rule NONE: the NSG starts with no inbound allow at all; SSH is
-    # added below, scoped to ssh_cidrs. Jenkins (8080) is never opened --
-    # a Cloudflare Tunnel carries the GitHub webhook instead (README).
+    # added below, scoped to ssh_cidrs, plus 80/443 for Caddy. Jenkins
+    # (8080) itself is never opened -- it listens on 127.0.0.1 only.
     - name: Create VM
       ansible.builtin.command: >
         az vm create
@@ -106,6 +106,40 @@
         --protocol Tcp --destination-port-ranges 22
         --source-address-prefixes {{ ssh_cidrs | join(' ') }} -o none
       when: ssh_rule_cidrs != ssh_cidrs
+
+    # ── Public HTTPS for the Jenkins UI (Caddy on the VM) ──────────────
+    # 443 serves the UI; 80 only answers Let's Encrypt's HTTP-01 challenge
+    # and redirects to HTTPS. Access control is the Jenkins login.
+    - name: Check HTTPS rule
+      ansible.builtin.command: >
+        az network nsg rule show -g {{ resource_group }} --nsg-name {{ vm_name }}NSG
+        -n AllowWebFromInternet -o none
+      register: web_rule
+      changed_when: false
+      failed_when: false
+
+    - name: Create HTTPS rule
+      ansible.builtin.command: >
+        az network nsg rule create -g {{ resource_group }} --nsg-name {{ vm_name }}NSG
+        -n AllowWebFromInternet --priority 110 --direction Inbound --access Allow
+        --protocol Tcp --destination-port-ranges 80 443
+        --source-address-prefixes Internet -o none
+      when: web_rule.rc != 0
+
+    # Free <label>.<region>.cloudapp.azure.com name -> the cert needs a
+    # hostname, and we have no domain of our own.
+    - name: Read DNS label
+      ansible.builtin.command: >
+        az network public-ip show -g {{ resource_group }} -n {{ vm_name }}PublicIP
+        --query "dnsSettings.domainNameLabel" -o tsv
+      register: dns_current
+      changed_when: false
+
+    - name: Set DNS label
+      ansible.builtin.command: >
+        az network public-ip update -g {{ resource_group }} -n {{ vm_name }}PublicIP
+        --dns-name {{ dns_label }} -o none
+      when: dns_current.stdout | trim != dns_label
 
     # ── Budget alert (not a cap) ───────────────────────────────────────
     - name: Read budget
@@ -181,5 +215,6 @@
         msg:
           - "VM {{ vm_name }} ({{ vm_size }}) at {{ vm_ip.stdout | trim }}"
           - "SSH allowed from: {{ ssh_cidrs | join(', ') }}"
+          - "Jenkins UI (after jenkins-host.yml): {{ jenkins_url }}"
           - "Configure it:  ./run.sh ansible-playbook jenkins-host.yml"
           - "SSH manually:  ssh {{ admin_username }}@{{ vm_ip.stdout | trim }}"

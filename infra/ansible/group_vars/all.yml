@@ -20,9 +20,16 @@ ssh_public_key_file: /keys/id.pub       # mounted by run.sh from $SSH_KEY.pub
 # provision.yml (auto-detected). Never 0.0.0.0/0 -- the repo is public.
 admin_cidrs: []
 
-# Jenkins is private (SSH tunnel only). Links in GitHub statuses / emails
-# point here and open through `ssh -L 8080:127.0.0.1:8080 ...`.
-jenkins_url: "http://localhost:8080/"
+# Jenkins UI over HTTPS (decided 2026-09-30, replaces SSH-tunnel-only):
+# Caddy on the VM terminates TLS with a Let's Encrypt cert for Azure's
+# free DNS name and proxies to Jenkins, which still listens on 127.0.0.1
+# only. The label must be unique in the region. Access control = Jenkins
+# login (anonymous read and sign-up must stay off -- jenkins-host.yml
+# refuses to expose it otherwise). SSH stays limited to admin_cidrs.
+dns_label: mfp-jenkins-psu
+jenkins_fqdn: "{{ dns_label }}.{{ azure_location }}.cloudapp.azure.com"
+# Links in GitHub statuses and emails.
+jenkins_url: "https://{{ jenkins_fqdn }}/"
 
 # 4 GB VM: one build at a time + swap as a safety net (a 2-build run froze
 # the VM on 2026-09-28). Raise executors only after a bigger vm_size.
