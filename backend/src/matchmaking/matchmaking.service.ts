@@ -4,8 +4,9 @@ import { Match } from '../match/match.entity';
 import { MatchRepository } from '../match/match.repository';
 import { RedisService } from '../redis/redis.service';
 import { MatchRuntimeAdapter } from '../runtime/match.runtime.adapter';
+import { MATCHMAKING_QUEUE_KEY } from './matchmaking.keys';
 
-export const MATCHMAKING_QUEUE_KEY = 'matchmaking:queue';
+export { MATCHMAKING_QUEUE_KEY };
 export interface MatchmakingJoinResult {
   /** False means the user was already waiting; their original FIFO score is preserved. */
   queued: boolean;
@@ -137,6 +138,24 @@ export class MatchmakingService {
       p1State: this.initialPlayerState(),
       p2State: this.initialPlayerState(),
     });
+  }
+
+  /**
+   * Shared creation seam for room handoff (#259): persist the match row and
+   * initialize the normal runtime (phase event, state, shops, timer).
+   * No queue operations — callers own player selection. `tryPair` above is
+   * intentionally untouched (its requeue-on-PG-failure contract stays).
+   */
+  async createMatchForPlayers(
+    player1Id: string,
+    player2Id: string,
+  ): Promise<MatchPairResult> {
+    const match = await this.createMatch(player1Id, player2Id);
+    await this.runtime.initializeMatch(match);
+    this.logger.log(
+      `paired match=${match.id} player1=${player1Id} player2=${player2Id}`,
+    );
+    return { matchId: match.id, player1Id, player2Id };
   }
 
   private initialPlayerState(): InitialPlayerState {

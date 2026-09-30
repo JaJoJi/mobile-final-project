@@ -65,3 +65,52 @@ describe('PubsubBridge targeted delivery', () => {
     ]);
   });
 });
+
+describe('PubsubBridge room fan-out (#258)', () => {
+  it('delivers game:room:state to the listed users sockets on any replica', async () => {
+    const deliveries: Array<{ socketId: string; type: string; payload: unknown }> = [];
+    const bridge = new PubsubBridge({} as any);
+    bridge.setServer({
+      to: (socketId: string) => ({
+        emit: (type: string, payload: unknown) => deliveries.push({ socketId, type, payload }),
+      }),
+    } as any);
+    bridge.registerUserSocket('owner-1', 'socket-owner');
+    bridge.registerUserSocket('guest-1', 'socket-guest');
+    bridge.registerUserSocket('bystander', 'socket-other');
+
+    await (bridge as any).handleMessage(
+      'room:r1:events',
+      JSON.stringify({
+        type: 'game:room:state',
+        payload: { roomId: 'r1', status: 'full' },
+        targetUserIds: ['owner-1', 'guest-1'],
+      }),
+    );
+
+    expect(deliveries).toEqual([
+      { socketId: 'socket-owner', type: 'game:room:state', payload: { roomId: 'r1', status: 'full' } },
+      { socketId: 'socket-guest', type: 'game:room:state', payload: { roomId: 'r1', status: 'full' } },
+    ]);
+  });
+
+  it('drops room messages for offline users without touching match routing', async () => {
+    const deliveries: Array<{ socketId: string; type: string }> = [];
+    const bridge = new PubsubBridge({} as any);
+    bridge.setServer({
+      to: (socketId: string) => ({
+        emit: (type: string) => deliveries.push({ socketId, type }),
+      }),
+    } as any);
+
+    await (bridge as any).handleMessage(
+      'room:r1:events',
+      JSON.stringify({
+        type: 'game:room:state',
+        payload: {},
+        targetUserIds: ['offline-user'],
+      }),
+    );
+    expect(deliveries).toHaveLength(0);
+  });
+});
