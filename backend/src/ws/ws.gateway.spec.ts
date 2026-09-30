@@ -59,7 +59,7 @@ function harness() {
     emit: jest.fn(),
     disconnect: jest.fn(),
   };
-  return { gateway, pubsub, matchmaking, runtime, matches, logger, socket };
+  return { gateway, pubsub, auth, matchmaking, runtime, matches, logger, socket };
 }
 
 describe('WsGateway P0-BE-10 handlers', () => {
@@ -160,6 +160,83 @@ describe('WsGateway P0-BE-10 handlers', () => {
     h.gateway.handleDisconnect(h.socket as any);
     await new Promise((resolve) => setImmediate(resolve));
     expect(h.runtime.handleDisconnect).not.toHaveBeenCalled();
+  });
+
+  it('kicks previous sockets when the same user reconnects', async () => {
+    const h = harness();
+    const oldSocket = {
+      id: 'socket-old',
+      connected: true,
+      data: { user: { sub: 'user-1', type: 'access' } },
+      emit: jest.fn(),
+      disconnect: jest.fn(),
+    };
+    h.gateway.handleConnection(oldSocket as any);
+    h.gateway.handleConnection(h.socket as any);
+    expect(oldSocket.disconnect).toHaveBeenCalledWith(true);
+    expect((oldSocket.data as any).superseded).toBe(true);
+    // The kicked socket's cleanup must not trigger a forfeit.
+    h.gateway.handleDisconnect(oldSocket as any);
+    await new Promise((resolve) => setImmediate(resolve));
+    expect(h.runtime.handleDisconnect).not.toHaveBeenCalled();
+  });
+
+  it('rejects unauthenticated sockets with game:error and disconnect', async () => {
+    const h = harness();
+    h.auth.authenticate.mockImplementationOnce(() => {
+      throw new WsException('auth.invalid');
+    });
+    const socket = {
+      id: 'socket-bad',
+      connected: true,
+      data: {},
+      emit: jest.fn(),
+      disconnect: jest.fn(),
+    };
+    h.gateway.handleConnection(socket as any);
+    expect(socket.emit).toHaveBeenCalledWith('game:error', { code: 'auth.invalid' });
+    expect(socket.disconnect).toHaveBeenCalledWith(true);
+    expect(h.pubsub.registerUserSocket).not.toHaveBeenCalled();
+  });
+
+  it('replays cached combat events to a battle-phase reconnect', async () => {
+    const h = harness();
+    h.matches.findActiveByUserId.mockResolvedValueOnce({ id: 'match-1' });
+    h.runtime.getCombatResultForReconnect.mockResolvedValueOnce({
+      round: 3,
+      events: [{ type: 'attack' }, { type: 'battle_end', cycle: 4, winner: 'p1' }],
+    });
+    h.gateway.handleConnection(h.socket as any);
+    await new Promise((resolve) => setImmediate(resolve));
+    expect(h.socket.emit).toHaveBeenCalledWith('game:match:state', expect.anything());
+    expect(h.socket.emit).toHaveBeenCalledWith(
+      'game:combat:events',
+      expect.objectContaining({ matchId: 'match-1', round: 3, cycleCount: 4 }),
+    );
+  });
+
+  it('skips resume work when the socket drops mid-resume or has no match', async () => {
+    const h = harness();
+    h.matches.findActiveByUserId.mockResolvedValueOnce({ id: 'match-1' });
+    (h.socket as any).connected = false;
+    h.gateway.handleConnection(h.socket as any);
+    await new Promise((resolve) => setImmediate(resolve));
+    expect(h.socket.emit).not.toHaveBeenCalled();
+
+    const h2 = harness();
+    h2.matches.findActiveByUserId.mockResolvedValueOnce(null);
+    h2.gateway.handleConnection(h2.socket as any);
+    await new Promise((resolve) => setImmediate(resolve));
+    expect(h2.runtime.statePayloadForUser).not.toHaveBeenCalled();
+    expect(h2.socket.emit).not.toHaveBeenCalled();
+  });
+
+  it('unsubscribing a never-subscribed socket is a safe no-op', () => {
+    const h = harness();
+    expect(() =>
+      h.gateway.unsubscribeFromMatch(h.socket as any, 'match-9'),
+    ).not.toThrow();
+    expect(h.pubsub.unsubscribe).toHaveBeenCalledWith('match-9', 'socket-1');
   });
 });
 
