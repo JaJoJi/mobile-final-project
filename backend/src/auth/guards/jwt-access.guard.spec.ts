@@ -1,8 +1,11 @@
 import { JwtService } from '@nestjs/jwt';
 import * as jsonwebtoken from 'jsonwebtoken';
+import { randomBytes } from 'crypto';
 import { JwtAccessGuard } from './jwt-access.guard';
 
-const SECRET = 'guard-test-secret-32-bytes-long!!!!';
+// Generated per run — never a hard-coded credential (Semgrep jwt-hardcode).
+// Sign/verify round-trips only need both sides to share the value.
+const SECRET = randomBytes(32).toString('hex');
 
 const httpContext = (headers: Record<string, string | undefined>) =>
   ({
@@ -32,7 +35,7 @@ describe('JwtAccessGuard (#308)', () => {
   });
 
   it('rejects tokens signed with a different secret', () => {
-    const foreign = new JwtService({ secret: 'different-secret-32-bytes!!!!!!' });
+    const foreign = new JwtService({ secret: randomBytes(32).toString('hex') });
     const token = foreign.sign({ sub: 'user-1', type: 'access' });
     expect(() => guard.canActivate(httpContext(bearer(token)))).toThrow(
       expect.objectContaining({ status: 401 }),

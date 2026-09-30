@@ -1,9 +1,12 @@
 import { JwtService } from '@nestjs/jwt';
 import * as jsonwebtoken from 'jsonwebtoken';
+import { randomBytes } from 'crypto';
 import { WsException } from '@nestjs/websockets';
 import { WsAuthGuard } from './ws-auth.guard';
 
-const SECRET = 'ws-guard-test-secret-32-bytes-long!';
+// Generated per run — never a hard-coded credential (Semgrep jwt-hardcode).
+// Sign/verify round-trips only need both sides to share the value.
+const SECRET = randomBytes(32).toString('hex');
 
 const socketWith = (token: unknown) =>
   ({
@@ -36,7 +39,7 @@ describe('WsAuthGuard (#308)', () => {
   );
 
   it('rejects bad signatures as auth.expired', () => {
-    const foreign = new JwtService({ secret: 'different-secret-32-bytes!!!!!!' });
+    const foreign = new JwtService({ secret: randomBytes(32).toString('hex') });
     const client = socketWith(foreign.sign({ sub: 'user-1', type: 'access' }));
     try {
       guard.authenticate(client);
