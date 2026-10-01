@@ -111,16 +111,39 @@ services:
       <<: *nest-env
       HOSTNAME: nest-3
 
-  # Stock image + the repo's config (no build on the VM). Replaced by the
-  # nginx + ModSecurity WAF image in #224.
+  # nginx + ModSecurity WAF with OWASP CRS (#224): the official image,
+  # pinned LTS release + digest, configured by mounting our templates (no
+  # build on the VM). Unprivileged: listens on 8080 inside, published on 80.
+  # Starts in DetectionOnly: attacks are logged (JSON audit log on stdout,
+  # `docker compose logs nginx`) but not blocked, until the logs show no
+  # false positives; then set MODSEC_RULE_ENGINE=On in app.env + up -d.
   nginx:
-    image: nginx:1.27-alpine
+    image: owasp/modsecurity-crs:4.25.1-nginx-alpine-202609301109-lts@sha256:486b90815ad28f584a84fcd308259d0c8962b5a67f770e63730ab654595f360a
     restart: unless-stopped
     depends_on: [nest-1, nest-2, nest-3]
     ports:
-      - "80:80"
+      - "80:8080"
+    environment:
+      MODSEC_RULE_ENGINE: ${MODSEC_RULE_ENGINE:-DetectionOnly}
+      BLOCKING_PARANOIA: 1
+      # Fixed, not `auto`: the VM is shared with nest x3, Postgres, monitoring.
+      NGINX_WORKER_PROCESSES: 2
+      SERVER_TOKENS: "off"
+      MODSEC_AUDIT_LOG: /dev/stdout
+      MODSEC_AUDIT_LOG_FORMAT: JSON
     volumes:
-      - ../../../nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ../../../nginx/modsec/default.conf.template:/etc/nginx/templates/conf.d/default.conf.template:ro
+      - ../../../nginx/modsec/setup.conf.template:/etc/nginx/templates/modsecurity.d/setup.conf.template:ro
+    # CRS workers can grow under load (#224): cap it so a runaway worker
+    # gets the WAF restarted instead of starving the app.
+    mem_limit: 512m
+    # The image's own healthcheck probes https://:8443, which our server
+    # block doesn't serve -- probe the plain-HTTP /healthz instead.
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:8080/healthz"]
+      interval: 15s
+      timeout: 3s
+      retries: 3
 
 volumes:
   pg_primary_data:

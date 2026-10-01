@@ -64,6 +64,27 @@ curl -s http://127.0.0.1/health | head -c 300
 | Stop (keep data) / wipe DB | `... down` / `... down -v` |
 | Update scripts/config | `git pull && sudo ansible-playbook -i localhost, -c local infra/uni-vm/site.yml` |
 
+## WAF (nginx + ModSecurity, #224)
+
+The `nginx` service is the official `owasp/modsecurity-crs` image (LTS,
+pinned) with our server block (`nginx/modsec/default.conf.template`, same
+least_conn / WebSocket / `/health` routing as dev) and a **curated** CRS
+rule list (`nginx/modsec/setup.conf.template`), paranoia level 1.
+
+It starts in **DetectionOnly**: suspicious requests are logged, not blocked.
+
+```bash
+# Watch what it would block (JSON audit records)
+sudo docker compose -f infra/uni-vm/app/compose.yml logs -f nginx | grep -i '"messages"'
+# Quick check it sees attacks (should log a 942 SQLi hit, still 200/404 in DetectionOnly)
+curl -s -o /dev/null -w '%{http_code}
+' "http://127.0.0.1/?id=1%27%20OR%201=1--"
+```
+
+After a day of normal use with no false positives, set
+`MODSEC_RULE_ENGINE=On` in `/etc/auto-chess/app.env` and run `up -d`.
+The same curl then returns `403`. To roll back, set it back to `DetectionOnly`.
+
 ## Notes
 
 - **Secrets** stay in `/etc/auto-chess/app.env` (root, 0600) until Vault (#223)
