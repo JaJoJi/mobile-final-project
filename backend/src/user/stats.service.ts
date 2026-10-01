@@ -1,5 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { DataSource } from 'typeorm';
+import { queryOnSlave } from '../database/postgres-replication';
 import { RedisService } from '../redis/redis.service';
 import { UserService } from './user.service';
 
@@ -30,6 +31,10 @@ export const STATS_CACHE_TTL_SECONDS = 60;
  * + TTL fallback. Redis failures fail OPEN to PostgreSQL; PostgreSQL errors
  * propagate and are never masked as `currentRank: null` (`null` rank means
  * only: user not found / no rating).
+ *
+ * Read routing: aggregate SQL goes to the REPLICA via `queryOnSlave`
+ * (eventual consistency is acceptable — cached for 60 s anyway). The
+ * per-user rating lookup stays on PRIMARY (`UserService.findById`).
  */
 @Injectable()
 export class StatsService {
@@ -85,7 +90,10 @@ export class StatsService {
   }
 
   private async computeStats(userId: string): Promise<PlayerStats> {
-    const rows = (await this.dataSource.query(
+    const rows = (await queryOnSlave<
+      Array<{ matches: string; wins: string; losses: string }>
+    >(
+      this.dataSource,
       `SELECT
          COUNT(*) FILTER (
            WHERE "status" IN ('finished', 'forfeited')
@@ -102,9 +110,9 @@ export class StatsService {
              AND "winnerId" IS NOT NULL
              AND "winnerId" <> $1
          ) AS "losses"
-       FROM "matches"`,
+        FROM "matches"`,
       [userId],
-    )) as Array<{ matches: string; wins: string; losses: string }>;
+    ));
     const row = rows[0] ?? { matches: '0', wins: '0', losses: '0' };
     const matches = Number(row.matches);
     const wins = Number(row.wins);
@@ -117,10 +125,11 @@ export class StatsService {
     if (!user) {
       return { matches, wins, losses, winRate, currentRank: null };
     }
-    const greater = (await this.dataSource.query(
+    const greater = await queryOnSlave<Array<{ count: string }>>(
+      this.dataSource,
       `SELECT COUNT(*) AS "count" FROM "users" WHERE "rating" > $1`,
       [user.rating],
-    )) as Array<{ count: string }>;
+    );
     return {
       matches,
       wins,

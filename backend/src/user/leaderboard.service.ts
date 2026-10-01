@@ -1,5 +1,6 @@
 import { ConflictException, Injectable, Logger } from '@nestjs/common';
 import { DataSource } from 'typeorm';
+import { queryOnSlave } from '../database/postgres-replication';
 import { RedisService } from '../redis/redis.service';
 
 export interface LeaderboardEntry {
@@ -39,6 +40,10 @@ const INITIAL_VERSION = '0';
  * `RANK() OVER (ORDER BY rating DESC)` (ties share a rank, gaps follow),
  * page order is deterministic (`rating DESC, id ASC`). No new table, no
  * Redis ZSET; Redis holds only versioned cache entries.
+ *
+ * Read routing: raw SQL goes to the REPLICA via `queryOnSlave` (eventual
+ * consistency is acceptable — results are additionally cached for 30 s, so
+ * sub-second WAL lag is negligible). Writes/ratings still land on PRIMARY.
  *
  * Invalidation is a version bump (`INCR leaderboard:version`) from
  * `MatchService.finalize`, so no `KEYS`/`SCAN + DEL` over pagination keys.
@@ -121,25 +126,32 @@ export class LeaderboardService {
     limit: number,
     offset: number,
   ): Promise<LeaderboardResponse> {
-    const totalRows = (await this.dataSource.query(
+    const totalRows = (await queryOnSlave<Array<{ count: string }>>(
+      this.dataSource,
       `SELECT COUNT(*) AS "count" FROM "users"`,
-    )) as Array<{ count: string }>;
-    const pageRows = (await this.dataSource.query(
+    ));
+    const pageRows = (await queryOnSlave<
+      Array<{ username: string; rating: number; rank: string }>
+    >(
+      this.dataSource,
       `SELECT "username", "rating",
               RANK() OVER (ORDER BY "rating" DESC) AS "rank"
          FROM "users"
         ORDER BY "rating" DESC, "id" ASC
         LIMIT $1 OFFSET $2`,
       [limit, offset],
-    )) as Array<{ username: string; rating: number; rank: string }>;
-    const meRows = (await this.dataSource.query(
+    ));
+    const meRows = (await queryOnSlave<
+      Array<{ username: string; rating: number; rank: string }>
+    >(
+      this.dataSource,
       `SELECT "username", "rating",
               (SELECT COUNT(*) FROM "users" AS "u2"
                 WHERE "u2"."rating" > "u1"."rating") + 1 AS "rank"
          FROM "users" AS "u1"
         WHERE "u1"."id" = $1`,
       [userId],
-    )) as Array<{ username: string; rating: number; rank: string }>;
+    ));
     const me = meRows[0];
     if (!me) {
       // Same convention as GET /user/me for an unknown caller.

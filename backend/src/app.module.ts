@@ -7,6 +7,7 @@ import { HealthController } from './common/health.controller';
 import { AllExceptionsFilter } from './common/filters/all-exceptions.filter';
 import { LoggerModule } from './common/logger/logger.module';
 import { ENTITIES } from './database/entities';
+import { buildPostgresConnectionFragment } from './database/postgres-replication';
 import { MatchModule } from './match/match.module';
 import { MatchmakingModule } from './matchmaking/matchmaking.module';
 import { QueueModule } from './queue/queue.module';
@@ -23,7 +24,10 @@ import { WsModule } from './ws/ws.module';
     TypeOrmModule.forRootAsync({
       useFactory: () => ({
         type: 'postgres',
-        url: process.env.DATABASE_URL,
+        // Primary = ALL writes + transactions. Replica = reads (see
+        // `database/postgres-replication.ts`). Without DATABASE_REPLICA_URL
+        // this degrades to the legacy single-URL connection.
+        ...buildPostgresConnectionFragment(),
         entities: ENTITIES,
         // Migrations are compiled to dist/migrations/*.js by `npm run build`.
         migrations: [join(__dirname, 'migrations', '*.js')],

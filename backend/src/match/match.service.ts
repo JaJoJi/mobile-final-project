@@ -6,6 +6,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { DataSource } from 'typeorm';
+import { runOnMaster } from '../database/postgres-replication';
 import { PubsubBridge } from '../runtime/pubsub.bridge';
 import { LeaderboardService } from '../user/leaderboard.service';
 import { StatsService } from '../user/stats.service';
@@ -44,8 +45,15 @@ export class MatchService {
     return this.matches.findActiveByUserId(userId);
   }
 
+  /**
+   * Resolve player usernames for phase payloads. Reads from the PRIMARY:
+   * called from `initializeMatch` immediately after the match row is
+   * created, so a replica read could miss under WAL lag.
+   */
   async usernamesForPlayers(player1Id: string, player2Id: string) {
-    const players = await this.users.findByIds([player1Id, player2Id]);
+    const players = await runOnMaster(this.dataSource, (manager) =>
+      this.users.findByIds([player1Id, player2Id], manager),
+    );
     const names = new Map(players.map((player) => [player.id, player.username]));
     return {
       player1Name: names.get(player1Id) ?? 'ผู้เล่น 1',
@@ -76,7 +84,11 @@ export class MatchService {
   }
 
   async forfeitDisconnectedPlayer(matchId: string, userId: string): Promise<boolean> {
-    const match = await this.matches.findById(matchId);
+    // PRIMARY read: the disconnect handler must observe the latest match
+    // status before deciding to finalize (no WAL-lag staleness).
+    const match = await runOnMaster(this.dataSource, (manager) =>
+      this.matches.findById(matchId, manager),
+    );
     if (!match || match.status !== 'in_progress') return false;
     if (userId !== match.player1Id && userId !== match.player2Id) return false;
     const winnerId = userId === match.player1Id ? match.player2Id : match.player1Id;

@@ -15,6 +15,15 @@ interface UserRow {
 class FakeDataSource {
   constructor(public users: UserRow[]) {}
   readonly queries: Array<{ sql: string; params: unknown[] }> = [];
+  readonly runnerModes: string[] = [];
+
+  createQueryRunner(mode: string) {
+    this.runnerModes.push(mode);
+    return {
+      query: (sql: string, params: unknown[] = []) => this.query(sql, params),
+      release: async () => undefined,
+    };
+  }
 
   async query(sql: string, params: unknown[] = []): Promise<unknown[]> {
     this.queries.push({ sql, params });
@@ -190,5 +199,16 @@ describe('LeaderboardService (#256)', () => {
     const { client, service } = makeService();
     client.failIncr = true;
     await expect(service.bumpVersion()).resolves.toBeUndefined();
+  });
+
+  it('routes raw SQL reads through "slave" runners (replica)', async () => {
+    const { pg, service } = makeService();
+    await service.getLeaderboard('u4', 20, 0);
+    expect(pg.queries.length).toBeGreaterThan(0);
+    expect(pg.runnerModes.length).toBe(pg.queries.length);
+    expect(pg.runnerModes).toEqual(
+      expect.arrayContaining(['slave']),
+    );
+    expect(pg.runnerModes).not.toContain('master');
   });
 });
