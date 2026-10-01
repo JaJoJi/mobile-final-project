@@ -1,8 +1,8 @@
 # University VM — app + monitoring host
 
 The game backend runs here: nginx → nest ×3 → Redis + Postgres
-primary/replica. ModSecurity (#224), Vault (#223) and the Grafana stack
-(#225) are added later on the same VM.
+primary/replica, behind ModSecurity (#224), with secrets in Vault (#223)
+and the Grafana stack (#225) on the same VM.
 
 ```
  Jenkins (Azure) ── release on main ──► Docker Hub  fiatthanapon/mobile-final-project:<commit>
@@ -21,9 +21,11 @@ healthy.
 | Path | What |
 |---|---|
 | `site.yml` | Ansible, run **on the VM itself**: auto-login, Docker Engine + compose, log rotation, `/etc/auto-chess/app.env`, `auto-chess-deploy` command |
-| `app/compose.yml` | production stack, using the Docker Hub image + pinned Postgres/Redis |
+| `app/compose.yml` | production stack: app + WAF + Postgres/Redis + Vault + monitoring |
+| `vault/` | Vault config, policies, `bootstrap.sh` (one-time), `unseal.sh`, `backup.sh` |
+| `monitoring/` | Prometheus, Loki, Tempo, Alloy config + Grafana provisioning/dashboard |
 | `app/deploy.sh` | `auto-chess-deploy <tag>`: pull → up → health check → keep or roll back |
-| `app/app.env.example` | template for the production secrets |
+| `app/app.env.example` | template for the non-secret settings (secrets live in Vault) |
 | `psu-autologin/` | captive-portal auto-login ([README](psu-autologin/README.md)) |
 
 ## First-time setup
@@ -37,8 +39,7 @@ cd mobile-final-project
 # 1. Configure the VM (safe to re-run)
 sudo ansible-playbook -i localhost, -c local infra/uni-vm/site.yml
 
-# 2. Secrets -- replace every CHANGE_ME (openssl rand -hex 32)
-sudo nano /etc/auto-chess/app.env
+# 2. PSU portal credentials
 sudo nano /etc/psu-autologin.env          # PSU username / password
 sudo systemctl start psu-autologin.service
 
@@ -46,7 +47,11 @@ sudo systemctl start psu-autologin.service
 #    (hub.docker.com → Account settings → Personal access tokens → Read-only)
 sudo docker login -u fiatthanapon         # paste the token as the password
 
-# 4. Deploy (from the repo root; .env next to compose.yml -> /etc/auto-chess/app.env)
+# 4. Vault first (production mode, starts sealed)
+sudo docker compose -f infra/uni-vm/app/compose.yml up -d vault
+sudo infra/uni-vm/vault/bootstrap.sh      # ONCE -- see "Vault" below
+
+# 5. Everything else
 sudo docker compose -f infra/uni-vm/app/compose.yml pull
 sudo docker compose -f infra/uni-vm/app/compose.yml up -d
 curl -s http://127.0.0.1/health | head -c 300
@@ -61,16 +66,75 @@ curl -s http://127.0.0.1/health | head -c 300
 | Deploy with health check + auto-rollback | `sudo auto-chess-deploy <tag>` (history: `/var/lib/auto-chess/deploy.log`) |
 | What's running | `sudo docker compose -f infra/uni-vm/app/compose.yml ps` |
 | Logs | `sudo docker compose -f infra/uni-vm/app/compose.yml logs -f nest-1` |
+| After a VM reboot | `sudo auto-chess-vault-unseal` (2 of 3 keys), the rest comes up by itself |
 | Stop (keep data) / wipe DB | `... down` / `... down -v` |
 | Update scripts/config | `git pull && sudo ansible-playbook -i localhost, -c local infra/uni-vm/site.yml` |
 
+## Vault (#223)
+
+Production mode: Raft storage on a volume, TLS listener, **no published
+port**, sealed after every restart. Secrets (Postgres + replication
+passwords, JWT secret, Grafana admin password) live at
+`secret/auto-chess/prod/app`. Vault Agent logs in with an AppRole
+(read-only policy) and renders them into an **in-memory volume**; nest,
+Postgres and Grafana read them from there, nothing secret is on disk or in
+`app.env`.
+
+- `vault/bootstrap.sh` (once): init with 3 key shares / threshold 2, KV v2,
+  audit log (stdout → Alloy → Loki), policies + AppRoles, moves the secrets
+  from `app.env` (generates any that are missing), revokes the root token.
+  It prints the unseal keys **once** -- give each to a different teammate,
+  then `shred -u /root/vault-init.json`.
+- Reboot: `sudo auto-chess-vault-unseal`; Vault Agent retries, the app starts.
+- Rotate a secret: `vault kv patch secret/auto-chess/prod/app JWT_SECRET=...`
+  (needs a token; Agent re-renders within 5 min, restart nest to pick it up).
+  Changing the Postgres password also needs `ALTER ROLE`.
+- Backup: `auto-chess-vault-backup.timer` takes a daily Raft snapshot into
+  `/var/backups/vault` (last 7). Copy them off the VM.
+
+## Monitoring (#225)
+
+| Service | Role |
+|---|---|
+| Beyla | eBPF auto-instrumentation → RED metrics of nest + nginx |
+| Alloy | the one agent: container logs → Loki, host metrics → Prometheus |
+| Prometheus / Loki / Tempo | metrics (7 d) / logs / traces |
+| Grafana | `http://<vm>:3000`, user `admin`, password from Vault (`GRAFANA_ADMIN_PASSWORD`) |
+
+Datasources and the *Auto Chess overview* dashboard are provisioned from
+`monitoring/`. nest sends traces through the OTel SDK
+(`OTEL_EXPORTER_OTLP_ENDPOINT`); log lines carry `trace_id`, so Grafana
+jumps from a log line to its trace. ModSecurity audit records and Vault
+audit records arrive in Loki with `log_type=modsec_audit` / `vault_audit`.
+
+## WAF (nginx + ModSecurity, #224)
+
+The `nginx` service is the official `owasp/modsecurity-crs` image (LTS,
+pinned) with our server block (`nginx/modsec/default.conf.template`, same
+least_conn / WebSocket / `/health` routing as dev) and a **curated** CRS
+rule list (`nginx/modsec/setup.conf.template`), paranoia level 1.
+
+It starts in **DetectionOnly**: suspicious requests are logged, not blocked.
+
+```bash
+# Watch what it would block (JSON audit records)
+sudo docker compose -f infra/uni-vm/app/compose.yml logs -f nginx | grep -i '"messages"'
+# Quick check it sees attacks (should log a 942 SQLi hit, still 200/404 in DetectionOnly)
+curl -s -o /dev/null -w '%{http_code}
+' "http://127.0.0.1/?id=1%27%20OR%201=1--"
+```
+
+After a day of normal use with no false positives, set
+`MODSEC_RULE_ENGINE=On` in `/etc/auto-chess/app.env` and run `up -d`.
+The same curl then returns `403`. To roll back, set it back to `DetectionOnly`.
+
 ## Notes
 
-- **Secrets** stay in `/etc/auto-chess/app.env` (root, 0600) until Vault (#223)
-  takes over. `POSTGRES_*` are only read the first time the database
-  volume is created; changing them later doesn't change the DB.
+- **Secrets** are in Vault; `/etc/auto-chess/app.env` has only non-secret
+  settings. `POSTGRES_*` user/db are only read the first time the database
+  volume is created.
 - **Data** lives in the Docker volumes `auto-chess_pg_primary_data` /
   `auto-chess_pg_replica_data`. `docker compose down` keeps them;
   `down -v` deletes the database.
-- **Port 80** is the only published port. Who can reach it depends on the
+- **Ports 80 (app) and 3000 (Grafana)** are the only published ports. Who can reach it depends on the
   campus network (ask IT if it must be reachable from outside PSU).

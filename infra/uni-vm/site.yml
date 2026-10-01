@@ -140,6 +140,97 @@
         path: "{{ repo_dir }}/infra/uni-vm/app/deploy.sh"
         mode: "0755"
 
+    # ── Vault (#223) ────────────────────────────────────────────────────
+    # Self-signed TLS for Vault's listener (only compose services talk to
+    # it, they pin this cert as their CA). The key stays readable only by
+    # the container's `vault` user (uid 100).
+    - name: Vault TLS dir
+      ansible.builtin.file:
+        path: /etc/auto-chess/vault-tls
+        state: directory
+        owner: root
+        group: root
+        mode: "0755"
+
+    - name: Vault TLS key + certificate (once)
+      ansible.builtin.command: >
+        openssl req -x509 -newkey rsa:4096 -sha256 -nodes -days 3650
+        -subj "/CN=vault"
+        -addext "subjectAltName=DNS:vault,DNS:localhost,IP:127.0.0.1"
+        -keyout /etc/auto-chess/vault-tls/vault.key
+        -out /etc/auto-chess/vault-tls/vault.crt
+      args:
+        creates: /etc/auto-chess/vault-tls/vault.crt
+
+    - name: Vault TLS key readable by the vault user only
+      ansible.builtin.file:
+        path: /etc/auto-chess/vault-tls/vault.key
+        owner: "100"
+        group: "1000"
+        mode: "0600"
+
+    - name: Vault TLS certificate is public
+      ansible.builtin.file:
+        path: /etc/auto-chess/vault-tls/vault.crt
+        mode: "0644"
+
+    - name: Vault credential dirs (filled by bootstrap.sh)
+      ansible.builtin.file:
+        path: "/etc/auto-chess/{{ item }}"
+        state: directory
+        owner: root
+        group: root
+        mode: "0700"
+      loop: [vault-agent, vault-backup]
+
+    - name: Vault scripts are executable
+      ansible.builtin.file:
+        path: "{{ repo_dir }}/infra/uni-vm/vault/{{ item }}"
+        mode: "0755"
+      loop: [bootstrap.sh, unseal.sh, backup.sh]
+
+    - name: auto-chess-vault-unseal command
+      ansible.builtin.file:
+        src: "{{ repo_dir }}/infra/uni-vm/vault/unseal.sh"
+        dest: /usr/local/bin/auto-chess-vault-unseal
+        state: link
+        force: true
+
+    - name: Vault snapshot backup service
+      ansible.builtin.copy:
+        dest: /etc/systemd/system/auto-chess-vault-backup.service
+        mode: "0644"
+        content: |
+          [Unit]
+          Description=Daily Vault Raft snapshot (auto-chess)
+          After=docker.service
+
+          [Service]
+          Type=oneshot
+          ExecStart={{ repo_dir }}/infra/uni-vm/vault/backup.sh
+
+    - name: Vault snapshot backup timer
+      ansible.builtin.copy:
+        dest: /etc/systemd/system/auto-chess-vault-backup.timer
+        mode: "0644"
+        content: |
+          [Unit]
+          Description=Daily Vault Raft snapshot (auto-chess)
+
+          [Timer]
+          OnCalendar=*-*-* 03:30:00
+          Persistent=true
+
+          [Install]
+          WantedBy=timers.target
+
+    - name: Enable Vault backup timer
+      ansible.builtin.systemd_service:
+        name: auto-chess-vault-backup.timer
+        state: started
+        enabled: true
+        daemon_reload: true
+
     - name: Docker Hub login present?
       ansible.builtin.stat:
         path: /root/.docker/config.json
@@ -148,7 +239,9 @@
     - name: Next steps
       ansible.builtin.debug:
         msg:
-          - "1. sudo nano /etc/auto-chess/app.env       (replace every CHANGE_ME: openssl rand -hex 32)"
-          - "2. sudo nano /etc/psu-autologin.env        (PSU username/password)"
-          - "{{ '3. done: docker login present' if docker_login.stat.exists else '3. sudo docker login -u fiatthanapon   (paste a READ-ONLY Docker Hub token)' }}"
-          - "4. sudo auto-chess-deploy <tag>            (tag = commit from the Jenkins main build)"
+          - "1. sudo nano /etc/psu-autologin.env        (PSU username/password)"
+          - "{{ '2. done: docker login present' if docker_login.stat.exists else '2. sudo docker login -u fiatthanapon   (paste a READ-ONLY Docker Hub token)' }}"
+          - "3. docker compose -f infra/uni-vm/app/compose.yml up -d vault"
+          - "4. sudo infra/uni-vm/vault/bootstrap.sh    (once: init, unseal, secrets -> Vault; save the unseal keys)"
+          - "5. sudo auto-chess-deploy <tag>            (tag = commit from the Jenkins main build)"
+          - "After a VM reboot: sudo auto-chess-vault-unseal   (Vault starts sealed)"
