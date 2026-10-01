@@ -1,0 +1,123 @@
+# Configures the university VM (app + monitoring host, #222). Runs ON the
+# VM against itself -- the VM sits behind the campus NAT, so nothing
+# (Jenkins included) connects in; it only reaches out to GitHub and
+# Docker Hub. Idempotent: re-run after every `git pull`.
+#
+#   sudo apt-get install -y ansible-core git
+#   git clone https://github.com/JaJoJi/mobile-final-project.git && cd mobile-final-project
+#   sudo ansible-playbook -i localhost, -c local infra/uni-vm/site.yml
+#
+# Then (README): fill /etc/auto-chess/app.env + /etc/psu-autologin.env,
+# `docker login` with a read-only token, `sudo auto-chess-deploy <tag>`.
+- name: Configure the university VM
+  hosts: localhost
+  connection: local
+  become: true
+  gather_facts: true
+
+  vars:
+    repo_dir: "{{ playbook_dir | dirname | dirname }}"
+
+  tasks:
+    - name: Supported OS
+      ansible.builtin.assert:
+        that: ansible_facts.distribution in ['Ubuntu', 'Debian']
+        fail_msg: "site.yml supports Ubuntu/Debian (found {{ ansible_facts.distribution }})"
+        quiet: true
+
+    # ── Keep the VM online (PSU captive portal) ─────────────────────────
+    - name: PSU portal auto-login
+      ansible.builtin.command: "{{ repo_dir }}/infra/uni-vm/psu-autologin/install.sh"
+      args:
+        creates: /usr/local/bin/psu-autologin
+
+    # ── Docker Engine + compose plugin (upstream repo) ──────────────────
+    - name: Base packages
+      ansible.builtin.apt:
+        name: [ca-certificates, curl, python3-debian]
+        update_cache: true
+        cache_valid_time: 3600
+
+    - name: Docker apt repo
+      ansible.builtin.deb822_repository:
+        name: docker
+        types: deb
+        uris: "https://download.docker.com/linux/{{ ansible_facts.distribution | lower }}"
+        suites: "{{ ansible_facts.distribution_release }}"
+        components: stable
+        signed_by: "https://download.docker.com/linux/{{ ansible_facts.distribution | lower }}/gpg"
+
+    - name: Docker Engine
+      ansible.builtin.apt:
+        name: [docker-ce, docker-ce-cli, containerd.io, docker-compose-plugin]
+        update_cache: true
+
+    - name: Docker running
+      ansible.builtin.systemd_service:
+        name: docker
+        state: started
+        enabled: true
+
+    # Container logs would otherwise grow without limit on the VM disk.
+    - name: Docker log rotation
+      ansible.builtin.copy:
+        dest: /etc/docker/daemon.json
+        mode: "0644"
+        content: |
+          {"log-driver": "json-file", "log-opts": {"max-size": "20m", "max-file": "3"}}
+      register: daemon_json
+
+    - name: Restart docker for log settings
+      ansible.builtin.systemd_service:
+        name: docker
+        state: restarted
+      when: daemon_json is changed
+
+    # ── App config + deploy command ─────────────────────────────────────
+    - name: Secrets dir
+      ansible.builtin.file:
+        path: /etc/auto-chess
+        state: directory
+        owner: root
+        group: root
+        mode: "0700"
+
+    - name: App env file (only if missing -- never overwrites secrets)
+      ansible.builtin.copy:
+        src: "{{ repo_dir }}/infra/uni-vm/app/app.env.example"
+        dest: /etc/auto-chess/app.env
+        owner: root
+        group: root
+        mode: "0600"
+        force: false
+
+    - name: Deploy state dir
+      ansible.builtin.file:
+        path: /var/lib/auto-chess
+        state: directory
+        mode: "0755"
+
+    - name: auto-chess-deploy command
+      ansible.builtin.file:
+        src: "{{ repo_dir }}/infra/uni-vm/app/deploy.sh"
+        dest: /usr/local/bin/auto-chess-deploy
+        state: link
+        force: true
+
+    - name: deploy.sh is executable
+      ansible.builtin.file:
+        path: "{{ repo_dir }}/infra/uni-vm/app/deploy.sh"
+        mode: "0755"
+
+    - name: Docker Hub login present?
+      ansible.builtin.stat:
+        path: /root/.docker/config.json
+      register: docker_login
+
+    - name: Next steps
+      ansible.builtin.debug:
+        msg:
+          - "1. sudo nano /etc/auto-chess/app.env       (replace every CHANGE_ME: openssl rand -hex 32)"
+          - "2. sudo nano /etc/psu-autologin.env        (PSU username/password)"
+          - "{{ '3. done: docker login present' if docker_login.stat.exists else '3. sudo docker login -u fiatthanapon   (paste a READ-ONLY Docker Hub token)' }}"
+          - "4. sudo auto-chess-deploy <tag>            (tag = commit from the Jenkins main build)"
