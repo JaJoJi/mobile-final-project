@@ -19,9 +19,8 @@ class FakeDataSource {
 
   createQueryRunner(mode: string) {
     this.runnerModes.push(mode);
-    const pg = this;
     return {
-      query: (sql: string, params: unknown[]) => pg.query(sql, params),
+      query: (sql: string, params: unknown[]) => this.query(sql, params),
       release: async () => undefined,
     };
   }
