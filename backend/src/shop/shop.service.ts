@@ -8,6 +8,7 @@ import {
   MatchRuntimeState,
   RuntimePlayerState,
   RuntimeUnitState,
+  matchStatePayload,
   parseRuntimeHash,
   runtimeKey,
 } from '../runtime/match.runtime-state';
@@ -386,13 +387,13 @@ export class ShopService {
         runtime.matchId,
         runtime.player1Id,
         'game:match:state',
-        statePayload(runtime, 'p1', p1, p2, readyCount),
+        matchStatePayload(runtime, 'p1', p1, p2, readyCount),
       ),
       this.pubsub.publishToUser(
         runtime.matchId,
         runtime.player2Id,
         'game:match:state',
-        statePayload(runtime, 'p2', p2, p1, readyCount),
+        matchStatePayload(runtime, 'p2', p2, p1, readyCount),
       ),
     ]);
   }
@@ -443,34 +444,6 @@ function investedGold(unit: RuntimeUnitState): number {
   const stored = unit.investedGold;
   if (typeof stored === 'number' && Number.isFinite(stored) && stored >= 0) return stored;
   return UNIT_COST[unit.unitId] * (2 ** unit.star);
-}
-
-function statePayload(
-  runtime: MatchRuntimeState,
-  side: 'p1' | 'p2',
-  own: RuntimePlayerState,
-  opponent: RuntimePlayerState,
-  readyCount: number,
-) {
-  return {
-    matchId: runtime.matchId,
-    round: runtime.round,
-    yourSide: side,
-    roster: {
-      board: own.board,
-      bench: own.bench,
-      gold: own.gold,
-      hp: own.hp,
-    },
-    opponent: {
-      gold: opponent.gold,
-      hp: opponent.hp,
-      boardSummary: opponent.board.map((unit) => unit
-        ? { unitId: unit.unitId, star: unit.star }
-        : null),
-    },
-    readyCount,
-  };
 }
 
 function deterministicOfferId(seed: string, index: number): string {

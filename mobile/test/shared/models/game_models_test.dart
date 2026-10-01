@@ -78,8 +78,13 @@ void main() {
         'opponent': {
           'gold': 3,
           'hp': 70,
+          'scoutRound': 3,
           'boardSummary': [
             {'unitId': 'healer', 'star': 0},
+            ...List.filled(8, null),
+          ],
+          'battleBoardSummary': [
+            {'unitId': 'ranger', 'star': 2},
             ...List.filled(8, null),
           ],
         },
@@ -91,6 +96,8 @@ void main() {
       expect(s.roster.bench, hasLength(8));
       expect(s.roster.gold, 7);
       expect(s.opponent.boardSummary.first!.unitId, UnitId.healer);
+      expect(s.opponent.scoutRound, 3);
+      expect(s.opponent.battleBoardSummary!.first!.unitId, UnitId.ranger);
       expect(s.opponent.boardSummary, hasLength(9));
       expect(s.readyCount, 1);
     });
@@ -100,6 +107,8 @@ void main() {
       expect(s.roster.board, hasLength(9));
       expect(s.roster.board.every((e) => e == null), isTrue);
       expect(s.opponent.boardSummary, hasLength(9));
+      expect(s.opponent.scoutRound, isNull);
+      expect(s.opponent.battleBoardSummary, isNull);
       expect(s.yourSide, MatchSide.p1);
     });
   });

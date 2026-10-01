@@ -1,8 +1,9 @@
-import { Injectable } from '@nestjs/common';
-import { InjectRepository } from '@nestjs/typeorm';
-import { EntityManager, Repository } from 'typeorm';
+import { Injectable, Optional } from '@nestjs/common';
+import { InjectDataSource, InjectRepository } from '@nestjs/typeorm';
+import { DataSource, EntityManager, Repository } from 'typeorm';
 import { Match, MatchStatus } from './match.entity';
 import { MatchRound } from './match-round.entity';
+import { runOnMaster } from '../database/postgres-replication';
 
 /**
  * Data access for the `matches` table.
@@ -25,6 +26,10 @@ export class MatchRepository {
     private readonly repo: Repository<Match>,
     @InjectRepository(MatchRound)
     private readonly roundRepo: Repository<MatchRound>,
+    // Optional so unit/smoke fakes (`new MatchRepository(a, b)`) keep working.
+    // In the Nest runtime the DataSource is always present.
+    @Optional() @InjectDataSource()
+    private readonly dataSource?: DataSource,
   ) {}
 
   private matches(manager?: EntityManager): Repository<Match> {
@@ -84,16 +89,28 @@ export class MatchRepository {
    * P0-BE-12 to resume a match after a WS reconnect to a different
    * replica, and by the auth flow to refuse matchmaking when a
    * player already has a live match.
+   *
+   * ALWAYS reads from the PRIMARY: matchmaking/room guards rely on this to
+   * refuse double-queueing and double-matching, so a stale replica read
+   * (async WAL lag right after match creation) is not acceptable here.
    */
   findActiveByUserId(userId: string): Promise<Match | null> {
-    return this.repo
+    if (this.dataSource) {
+      return runOnMaster(this.dataSource, (manager) =>
+        this.activeMatchQuery(manager.getRepository(Match), userId).getOne(),
+      );
+    }
+    return this.activeMatchQuery(this.repo, userId).getOne();
+  }
+
+  private activeMatchQuery(repository: Repository<Match>, userId: string) {
+    return repository
       .createQueryBuilder('m')
       // Keep the player alternatives grouped. Without these parentheses SQL
       // evaluates AND before OR and any historical match where the user was
       // player1 is incorrectly treated as active.
       .where('(m.player1Id = :uid OR m.player2Id = :uid)', { uid: userId })
-      .andWhere("m.status = 'in_progress'")
-      .getOne();
+      .andWhere("m.status = 'in_progress'");
   }
 
   async updateState(

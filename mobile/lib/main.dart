@@ -77,11 +77,14 @@ class _AutoChessAppState extends ConsumerState<AutoChessApp> {
     final settings = ref.watch(settingsProvider);
     ref.read(gameAudioProvider).enabled = settings.soundEnabled;
     return MaterialApp.router(
-      title: 'Auto Chess',
+      title: 'ออโต้เชส',
       debugShowCheckedModeBanner: false,
       theme: buildTheme(Brightness.light),
       darkTheme: buildTheme(Brightness.dark),
       themeMode: settings.themeMode,
+      scrollBehavior: const MaterialScrollBehavior().copyWith(
+        scrollbars: false,
+      ),
       routerConfig: _router,
     );
   }

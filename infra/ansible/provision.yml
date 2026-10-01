@@ -1,0 +1,220 @@
+# Creates the Jenkins VM on Azure with the Azure CLI (#218). Idempotent:
+# every resource is checked first and only created/updated when missing
+# or different, so re-running is safe (e.g. to update SSH source IPs).
+#
+#   ./run.sh ansible-playbook provision.yml -e @vars.yml
+#
+# Then configure it: ./run.sh ansible-playbook jenkins-host.yml
+- name: Provision the Jenkins VM on Azure
+  hosts: localhost
+  gather_facts: false
+
+  tasks:
+    - name: Require an Azure CLI login
+      ansible.builtin.command: az account show -o json
+      register: az_account
+      changed_when: false
+      failed_when: false
+
+    - name: Stop if not logged in
+      ansible.builtin.assert:
+        that: az_account.rc == 0
+        fail_msg: "Not logged in to Azure. Run: ./run.sh az login --use-device-code"
+        quiet: true
+
+    - name: Require at least one budget alert email
+      ansible.builtin.assert:
+        that: budget_alert_emails | length > 0
+        fail_msg: "Set budget_alert_emails in vars.yml (copy vars.example.yml) and pass -e @vars.yml"
+        quiet: true
+
+    - name: Show target subscription
+      ansible.builtin.debug:
+        msg: "Subscription: {{ (az_account.stdout | from_json).name }} ({{ (az_account.stdout | from_json).id }})"
+
+    # SSH is opened only to whoever runs this + admin_cidrs. api.ipify.org
+    # answers over IPv4 only, which is what matters: the VM's public IP is
+    # IPv4, so that's the source address Azure sees when you SSH in.
+    - name: Detect this machine's public IPv4
+      ansible.builtin.uri:
+        url: https://api.ipify.org
+        return_content: true
+      register: my_ip
+
+    - name: Build the SSH allow-list
+      ansible.builtin.set_fact:
+        ssh_cidrs: "{{ (admin_cidrs + [my_ip.content | trim ~ '/32']) | unique | sort }}"
+
+    # ── Resource group ─────────────────────────────────────────────────
+    - name: Check resource group
+      ansible.builtin.command: az group exists -n {{ resource_group }}
+      register: rg_exists
+      changed_when: false
+
+    - name: Create resource group
+      ansible.builtin.command: >
+        az group create -n {{ resource_group }} -l {{ azure_location }}
+        --tags {{ azure_tags }} -o none
+      when: rg_exists.stdout | trim == 'false'
+
+    # ── VM (az vm create also makes the VNet, NIC, public IP and NSG) ──
+    - name: Check VM
+      ansible.builtin.command: az vm show -g {{ resource_group }} -n {{ vm_name }} -o none
+      register: vm_show
+      changed_when: false
+      failed_when: false
+
+    # --nsg-rule NONE: the NSG starts with no inbound allow at all; SSH is
+    # added below, scoped to ssh_cidrs, plus 80/443 for Caddy. Jenkins
+    # (8080) itself is never opened -- it listens on 127.0.0.1 only.
+    - name: Create VM
+      ansible.builtin.command: >
+        az vm create
+        -g {{ resource_group }} -n {{ vm_name }} -l {{ azure_location }}
+        --image {{ vm_image }} --size {{ vm_size }}
+        --admin-username {{ admin_username }}
+        --ssh-key-values {{ ssh_public_key_file }}
+        --authentication-type ssh
+        --os-disk-size-gb {{ os_disk_gb }} --storage-sku StandardSSD_LRS
+        --public-ip-sku Standard --nsg-rule NONE
+        --tags {{ azure_tags }} -o none
+      when: vm_show.rc != 0
+
+    # ── NSG: SSH from the allow-list only ──────────────────────────────
+    # Azure stores ONE prefix in sourceAddressPrefix (singular) and leaves
+    # sourceAddressPrefixes empty; two or more go in the list. Read both,
+    # or a single-IP rule never compares equal and is re-applied every run.
+    - name: Read current SSH rule
+      ansible.builtin.command: >
+        az network nsg rule show -g {{ resource_group }} --nsg-name {{ vm_name }}NSG
+        -n AllowSSHFromAdmins
+        --query "{one: sourceAddressPrefix, many: sourceAddressPrefixes}" -o json
+      register: ssh_rule
+      changed_when: false
+      failed_when: false
+
+    - name: Current SSH allow-list
+      ansible.builtin.set_fact:
+        ssh_rule_cidrs: >-
+          {{ ((ssh_rule.stdout | from_json).many or [(ssh_rule.stdout | from_json).one])
+             | select | sort if ssh_rule.rc == 0 else [] }}
+
+    - name: Create/update SSH rule
+      ansible.builtin.command: >
+        az network nsg rule create -g {{ resource_group }} --nsg-name {{ vm_name }}NSG
+        -n AllowSSHFromAdmins --priority 100 --direction Inbound --access Allow
+        --protocol Tcp --destination-port-ranges 22
+        --source-address-prefixes {{ ssh_cidrs | join(' ') }} -o none
+      when: ssh_rule_cidrs != ssh_cidrs
+
+    # ── Public HTTPS for the Jenkins UI (Caddy on the VM) ──────────────
+    # 443 serves the UI; 80 only answers Let's Encrypt's HTTP-01 challenge
+    # and redirects to HTTPS. Access control is the Jenkins login.
+    - name: Check HTTPS rule
+      ansible.builtin.command: >
+        az network nsg rule show -g {{ resource_group }} --nsg-name {{ vm_name }}NSG
+        -n AllowWebFromInternet -o none
+      register: web_rule
+      changed_when: false
+      failed_when: false
+
+    - name: Create HTTPS rule
+      ansible.builtin.command: >
+        az network nsg rule create -g {{ resource_group }} --nsg-name {{ vm_name }}NSG
+        -n AllowWebFromInternet --priority 110 --direction Inbound --access Allow
+        --protocol Tcp --destination-port-ranges 80 443
+        --source-address-prefixes Internet -o none
+      when: web_rule.rc != 0
+
+    # Free <label>.<region>.cloudapp.azure.com name -> the cert needs a
+    # hostname, and we have no domain of our own.
+    - name: Read DNS label
+      ansible.builtin.command: >
+        az network public-ip show -g {{ resource_group }} -n {{ vm_name }}PublicIP
+        --query "dnsSettings.domainNameLabel" -o tsv
+      register: dns_current
+      changed_when: false
+
+    - name: Set DNS label
+      ansible.builtin.command: >
+        az network public-ip update -g {{ resource_group }} -n {{ vm_name }}PublicIP
+        --dns-name {{ dns_label }} -o none
+      when: dns_current.stdout | trim != dns_label
+
+    # ── Budget alert (not a cap) ───────────────────────────────────────
+    - name: Read budget
+      ansible.builtin.command: >
+        az rest --method get
+        --url /subscriptions/{{ (az_account.stdout | from_json).id }}/resourceGroups/{{ resource_group }}/providers/Microsoft.Consumption/budgets/{{ vm_name }}-budget?api-version=2023-05-01
+      register: budget_show
+      changed_when: false
+      failed_when: false
+
+    - name: Create/update budget alert
+      vars:
+        current: "{{ (budget_show.stdout | from_json).properties if budget_show.rc == 0 else {} }}"
+        body:
+          properties:
+            category: Cost
+            amount: "{{ budget_amount }}"
+            timeGrain: Monthly
+            timePeriod:
+              startDate: "{{ budget_start_date }}T00:00:00Z"
+              endDate: "{{ budget_end_date }}T00:00:00Z"
+            notifications:
+              actual80:
+                enabled: true
+                operator: GreaterThan
+                threshold: 80
+                thresholdType: Actual
+                contactEmails: "{{ budget_alert_emails }}"
+              actual100:
+                enabled: true
+                operator: GreaterThan
+                threshold: 100
+                thresholdType: Actual
+                contactEmails: "{{ budget_alert_emails }}"
+      ansible.builtin.command:
+        argv:
+          - az
+          - rest
+          - --method
+          - put
+          - --url
+          - "/subscriptions/{{ (az_account.stdout | from_json).id }}/resourceGroups/{{ resource_group }}/providers/Microsoft.Consumption/budgets/{{ vm_name }}-budget?api-version=2023-05-01"
+          - --body
+          - "{{ body | to_json }}"
+          - -o
+          - none
+      when: >-
+        budget_show.rc != 0
+        or (current.amount | float) != (budget_amount | float)
+        or (current.notifications.actual80.contactEmails | default([]) | sort) != (budget_alert_emails | sort)
+
+    # ── Hand-off to jenkins-host.yml ───────────────────────────────────
+    - name: Read VM public IP
+      ansible.builtin.command: >
+        az vm show -d -g {{ resource_group }} -n {{ vm_name }} --query publicIps -o tsv
+      register: vm_ip
+      changed_when: false
+
+    - name: Write inventory for jenkins-host.yml
+      ansible.builtin.copy:
+        dest: "{{ playbook_dir }}/inventory/azure.yml"
+        mode: "0644"
+        content: |
+          # Generated by provision.yml -- do not edit, gitignored.
+          jenkins:
+            hosts:
+              {{ vm_name }}:
+                ansible_host: {{ vm_ip.stdout | trim }}
+                ansible_user: {{ admin_username }}
+
+    - name: Next steps
+      ansible.builtin.debug:
+        msg:
+          - "VM {{ vm_name }} ({{ vm_size }}) at {{ vm_ip.stdout | trim }}"
+          - "SSH allowed from: {{ ssh_cidrs | join(', ') }}"
+          - "Jenkins UI (after jenkins-host.yml): {{ jenkins_url }}"
+          - "Configure it:  ./run.sh ansible-playbook jenkins-host.yml"
+          - "SSH manually:  ssh {{ admin_username }}@{{ vm_ip.stdout | trim }}"

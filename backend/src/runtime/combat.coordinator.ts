@@ -5,7 +5,10 @@ import { QueueService } from '../queue/queue.service';
 import { RedisService } from '../redis/redis.service';
 import { PubsubBridge } from './pubsub.bridge';
 import { RUN_BATTLE, RunBattle } from './combat-engine.provider';
-import { COMBAT_DONE_TIMEOUT_MS } from './combat-timing';
+import {
+  combatDoneTimeoutForEventCount,
+  combatResultTtlSeconds,
+} from './combat-timing';
 import {
   combatDoneKey,
   combatLockKey,
@@ -70,13 +73,25 @@ export class CombatCoordinator {
       }
       const battleEnd = events.at(-1);
       const cycleCount = battleEnd?.type === 'battle_end' ? battleEnd.cycle : 0;
+      const visibleEventCount = events.filter(
+        (event) =>
+          event.type !== 'cycle_end' &&
+          event.type !== 'battle_end' &&
+          event.type !== 'death',
+      ).length;
+      const combatDoneTimeoutMs =
+        combatDoneTimeoutForEventCount(visibleEventCount);
 
       await this.matches.appendRoundEvents(
         matchId,
         runtime.round,
         events as unknown as Record<string, unknown>[],
       );
-      await this.pubsub.writeCombatResult(matchId, events);
+      await this.pubsub.writeCombatResult(
+        matchId,
+        events,
+        combatResultTtlSeconds(combatDoneTimeoutMs),
+      );
       await this.redis.client.hset(runtimeKey(matchId), 'combatRound', String(runtime.round));
       await this.pubsub.publish(matchId, 'game:combat:events', {
         matchId,
@@ -92,7 +107,7 @@ export class CombatCoordinator {
       await this.queue.scheduleCombatDoneTimeout(
         matchId,
         runtime.round,
-        COMBAT_DONE_TIMEOUT_MS,
+        combatDoneTimeoutMs,
       );
       this.logger.log(
         `combat complete match=${matchId} round=${runtime.round} events=${events.length}`,

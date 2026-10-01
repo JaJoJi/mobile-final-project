@@ -3,6 +3,7 @@ import 'package:auto_chess_mobile/core/router.dart';
 import 'package:auto_chess_mobile/core/theme/app_theme.dart';
 import 'package:auto_chess_mobile/features/auth/login_screen.dart';
 import 'package:auto_chess_mobile/features/lobby/lobby_screen.dart';
+import 'package:auto_chess_mobile/features/player_hub/player_hub_fixture_provider.dart';
 import 'package:auto_chess_mobile/features/splash/splash_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -16,6 +17,11 @@ void main() {
     final router = buildRouter();
     await tester.pumpWidget(
       ProviderScope(
+        overrides: [
+          leaderboardSourceProvider.overrideWith(
+            (ref) async => PlayerHubFixtures.leaderboard,
+          ),
+        ],
         child: MaterialApp.router(
           theme: buildTheme(Brightness.light),
           routerConfig: router,
@@ -33,7 +39,7 @@ void main() {
     await tester.pump(); // first frame, before _resolve settles
 
     expect(find.byType(SplashScreen), findsOneWidget);
-    expect(find.text('Auto Chess'), findsOneWidget);
+    expect(find.text('ออโต้เชส'), findsOneWidget);
     expect(find.byType(CircularProgressIndicator), findsOneWidget);
 
     await tester.pumpAndSettle(); // drain the resolve future + fallback timer

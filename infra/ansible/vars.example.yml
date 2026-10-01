@@ -1,0 +1,11 @@
+# Copy to vars.yml (gitignored) -- run.sh passes it with -e @vars.yml.
+
+# Who gets the 80% / 100% budget alert emails.
+budget_alert_emails:
+  - you@example.com
+
+# Teammates' public IPv4s (curl -4 ifconfig.me), /32 each. Your own IP
+# is detected automatically. Re-run provision.yml after anyone's IP
+# changes -- it only updates the NSG rule.
+admin_cidrs: []
+#  - 203.0.113.10/32

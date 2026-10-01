@@ -34,4 +34,5 @@ flutter:
     - assets/images/backgrounds/
     - assets/images/board/
     - assets/images/ui/
+    - assets/images/vfx/
     - assets/audio/

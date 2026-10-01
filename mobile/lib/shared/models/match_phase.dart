@@ -33,6 +33,7 @@ enum GamePhase {
 /// Per-player public state carried on a phase event.
 class PhasePlayer {
   const PhasePlayer({
+    this.username,
     required this.id,
     required this.hp,
     required this.gold,
@@ -40,11 +41,13 @@ class PhasePlayer {
   });
 
   final String id;
+  final String? username;
   final int hp;
   final int gold;
   final bool ready;
 
   factory PhasePlayer.fromJson(Map<String, dynamic> j) => PhasePlayer(
+        username: j['username'] as String?,
         id: j['id'] as String? ?? '',
         hp: (j['hp'] as num?)?.toInt() ?? 0,
         gold: (j['gold'] as num?)?.toInt() ?? 0,

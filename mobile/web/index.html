@@ -18,7 +18,9 @@
 
   <meta charset="UTF-8">
   <meta content="IE=Edge" http-equiv="X-UA-Compatible">
-  <meta name="description" content="A new Flutter project.">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <meta name="description" content="ออโต้เชส — วางแผนจัดทีมและบัญชาการสนามรบ">
+  <meta name="theme-color" content="#071624">
 
   <!-- iOS meta tags & icons -->
   <meta name="mobile-web-app-capable" content="yes">
@@ -29,18 +31,200 @@
   <!-- Favicon -->
   <link rel="icon" type="image/png" href="favicon.png"/>
 
-  <title>auto_chess_mobile</title>
+  <title>ออโต้เชส</title>
   <link rel="manifest" href="manifest.json">
+  <style>
+    :root {
+      color-scheme: dark;
+      background: #071624;
+    }
+
+    html {
+      width: 100%;
+      height: 100%;
+      margin: 0;
+      overflow: hidden;
+      background: #071624;
+      overscroll-behavior: none;
+    }
+
+    body {
+      position: fixed;
+      inset: 0;
+      width: 100vw;
+      height: 100vh;
+      height: 100dvh;
+      max-width: 100vw;
+      max-height: 100dvh;
+      margin: 0;
+      overflow: hidden;
+      background: #071624;
+      overscroll-behavior: none;
+    }
+
+    #game-bootstrap {
+      position: fixed;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      box-sizing: border-box;
+      overflow: hidden;
+      z-index: 9999;
+      display: grid;
+      place-items: center;
+      padding:
+        max(24px, env(safe-area-inset-top))
+        max(24px, env(safe-area-inset-right))
+        max(24px, env(safe-area-inset-bottom))
+        max(24px, env(safe-area-inset-left));
+      overscroll-behavior: none;
+      touch-action: none;
+      color: #f5f1e7;
+      font-family: Inter, system-ui, -apple-system, "Segoe UI", sans-serif;
+      background:
+        radial-gradient(circle at 50% 38%, rgba(40, 126, 164, .28), transparent 34%),
+        linear-gradient(180deg, #102b40 0%, #081a2a 52%, #050f19 100%);
+      transition: opacity 280ms ease, visibility 280ms ease;
+    }
+
+    #game-bootstrap::before,
+    #game-bootstrap::after {
+      content: "";
+      position: absolute;
+      bottom: 0;
+      width: 42%;
+      height: 38%;
+      opacity: .28;
+      background: linear-gradient(145deg, transparent 24%, #020910 25% 62%, transparent 63%);
+      pointer-events: none;
+    }
+
+    #game-bootstrap::before { left: -8%; }
+    #game-bootstrap::after { right: -8%; transform: scaleX(-1); }
+
+    #game-bootstrap.is-ready {
+      opacity: 0;
+      visibility: hidden;
+      pointer-events: none;
+    }
+
+    .bootstrap-content {
+      position: relative;
+      z-index: 1;
+      width: min(82vw, 390px);
+      text-align: center;
+      animation: bootstrap-arrive 520ms ease-out both;
+    }
+
+    .bootstrap-emblem {
+      width: 86px;
+      height: 86px;
+      margin: 0 auto 22px;
+      display: grid;
+      place-items: center;
+      border: 1px solid rgba(91, 193, 235, .7);
+      border-radius: 24px;
+      color: #ffd45f;
+      background: linear-gradient(145deg, rgba(20, 62, 91, .92), rgba(7, 24, 39, .96));
+      box-shadow: 0 18px 46px rgba(0, 0, 0, .45), 0 0 28px rgba(42, 173, 224, .16);
+    }
+
+    .bootstrap-emblem svg { width: 54px; height: 54px; }
+
+    .bootstrap-kicker {
+      margin: 0 0 8px;
+      color: #77d8ff;
+      font-size: clamp(13px, 3.4vw, 15px);
+      font-weight: 700;
+      letter-spacing: .24em;
+      text-transform: uppercase;
+    }
+
+    .bootstrap-title {
+      margin: 0;
+      font-family: Georgia, "Times New Roman", serif;
+      font-size: clamp(40px, 10vw, 52px);
+      line-height: 1.08;
+      letter-spacing: .035em;
+      text-shadow: 0 4px 18px rgba(0, 0, 0, .7);
+    }
+
+    .bootstrap-status {
+      margin: 22px 0 12px;
+      color: #b9cee0;
+      font-size: clamp(15px, 3.8vw, 17px);
+      font-weight: 500;
+      letter-spacing: .015em;
+    }
+
+    .bootstrap-track {
+      height: 4px;
+      overflow: hidden;
+      border: 1px solid rgba(92, 184, 224, .3);
+      border-radius: 999px;
+      background: rgba(1, 8, 14, .62);
+    }
+
+    .bootstrap-progress {
+      width: 42%;
+      height: 100%;
+      border-radius: inherit;
+      background: linear-gradient(90deg, transparent, #4fc8f2 36%, #ffd45f 72%, transparent);
+      animation: bootstrap-load 1.15s ease-in-out infinite;
+    }
+
+    @keyframes bootstrap-load {
+      from { transform: translateX(-125%); }
+      to { transform: translateX(340%); }
+    }
+
+    @keyframes bootstrap-arrive {
+      from { opacity: 0; transform: translateY(10px) scale(.98); }
+      to { opacity: 1; transform: none; }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      .bootstrap-content, .bootstrap-progress { animation: none; }
+      .bootstrap-progress { width: 72%; margin: auto; }
+      #game-bootstrap { transition: none; }
+    }
+  </style>
 </head>
 <body>
-  <!--
-    You can customize the "flutter_bootstrap.js" script.
-    This is useful to provide a custom configuration to the Flutter loader
-    or to give the user feedback during the initialization process.
-
-    For more details:
-    * https://docs.flutter.dev/platform-integration/web/initialization
-  -->
+  <div id="game-bootstrap" role="status" aria-live="polite" aria-label="กำลังโหลดออโต้เชส">
+    <div class="bootstrap-content">
+      <div class="bootstrap-emblem" aria-hidden="true">
+        <svg viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <path d="M32 5 51 12v15c0 13-7.8 24.4-19 31C20.8 51.4 13 40 13 27V12L32 5Z" stroke="currentColor" stroke-width="3"/>
+          <path d="m21 42 22-22m-22 0 22 22M18 17l7 7m21-7-7 7" stroke="currentColor" stroke-width="3" stroke-linecap="round"/>
+          <path d="M28 31h8" stroke="#68D8FF" stroke-width="3" stroke-linecap="round"/>
+        </svg>
+      </div>
+      <p class="bootstrap-kicker">เตรียมเข้าสู่สนาม</p>
+      <h1 class="bootstrap-title">ออโต้เชส</h1>
+      <p class="bootstrap-status">กำลังเตรียมสนามรบ…</p>
+      <div class="bootstrap-track" aria-hidden="true">
+        <div class="bootstrap-progress"></div>
+      </div>
+    </div>
+  </div>
   <script src="flutter_bootstrap.js" async></script>
+  <script>
+    function dismissBootstrap() {
+      const splash = document.getElementById('game-bootstrap');
+      if (!splash) return;
+      splash.classList.add('is-ready');
+      window.setTimeout(function () { splash.remove(); }, 320);
+    }
+
+    // Flutter has an internal auth-resolution route. Keep this lightweight
+    // overlay visible above it and remove it only after Login / Lobby paints,
+    // so users see one continuous launch experience instead of two splashes.
+    window.addEventListener('auto-chess-ready', dismissBootstrap, { once: true });
+
+    // Never leave users trapped behind the overlay if startup throws before
+    // Flutter can signal readiness.
+    window.setTimeout(dismissBootstrap, 8000);
+  </script>
 </body>
 </html>

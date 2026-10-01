@@ -22,8 +22,8 @@ enum HealthBarSize {
 /// * Fill colour: `hp.high` > 50 % · `hp.mid` 20–50 % · `hp.low` < 20 %.
 /// * Width tweens over `short4` with `emphasized`.
 /// * A "ghost" of damage just taken lingers in `error @40 %` for 500 ms.
-/// * Below 20 % the bar pulses once per second and shows a warning icon —
-///   **[MUST]** never colour alone.
+/// * Below 20 % the bar pulses once per second without consuming horizontal
+///   space, so compact unit bars keep a stable width at every HP value.
 /// * Numerals are always shown (unless [showText] is false) with tabular
 ///   figures; the row carries a Thai semantics label.
 class HealthBar extends StatefulWidget {
@@ -35,6 +35,7 @@ class HealthBar extends StatefulWidget {
     this.width,
     this.showText = true,
     this.showTrack = true,
+    this.compactUnitStyle = false,
   }) : assert(max > 0);
 
   final int current;
@@ -43,12 +44,15 @@ class HealthBar extends StatefulWidget {
   final double? width;
   final bool showText;
   final bool showTrack;
+  final bool compactUnitStyle;
 
-  double get thickness => switch (size) {
-        HealthBarSize.sm => 4,
-        HealthBarSize.md => 8,
-        HealthBarSize.lg => 12,
-      };
+  double get thickness => compactUnitStyle
+      ? 6
+      : switch (size) {
+          HealthBarSize.sm => 4,
+          HealthBarSize.md => 8,
+          HealthBarSize.lg => 12,
+        };
 
   @override
   State<HealthBar> createState() => _HealthBarState();
@@ -129,15 +133,18 @@ class _HealthBarState extends State<HealthBar>
     final bar = LayoutBuilder(
       builder: (context, constraints) {
         final track = widget.width ?? constraints.maxWidth;
-        return SizedBox(
+        final content = SizedBox(
           width: widget.width,
           height: widget.thickness,
           child: Stack(
             children: [
               if (widget.showTrack)
                 DecoratedBox(
-                  decoration: BoxDecoration(
-                    color: t.colorScheme.outlineVariant,
+                  key: widget.compactUnitStyle
+                      ? const ValueKey('unit-health-bar-track')
+                      : const ValueKey('health-bar-track'),
+                  decoration: const BoxDecoration(
+                    color: Color(0xFF424242),
                     borderRadius: AppRadius.allFull,
                   ),
                   child: const SizedBox.expand(),
@@ -161,6 +168,16 @@ class _HealthBarState extends State<HealthBar>
             ],
           ),
         );
+        return Container(
+          key: widget.compactUnitStyle
+              ? const ValueKey('unit-health-bar-frame')
+              : const ValueKey('health-bar-frame'),
+          foregroundDecoration: BoxDecoration(
+            border: Border.all(),
+            borderRadius: AppRadius.allFull,
+          ),
+          child: content,
+        );
       },
     );
 
@@ -181,14 +198,6 @@ class _HealthBarState extends State<HealthBar>
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            if (_isLow) ...[
-              Icon(
-                Icons.warning_amber_rounded,
-                size: widget.thickness + 8,
-                color: game.hpLow,
-              ),
-              const SizedBox(width: AppSpacing.xs),
-            ],
             Flexible(child: animatedBar),
             if (widget.showText) ...[
               const SizedBox(width: AppSpacing.sm),

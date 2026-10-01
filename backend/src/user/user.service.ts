@@ -1,6 +1,7 @@
-import { Injectable, Logger, NotFoundException } from '@nestjs/common';
-import { InjectRepository } from '@nestjs/typeorm';
-import { EntityManager, In, Repository } from 'typeorm';
+import { Injectable, Logger, NotFoundException, Optional } from '@nestjs/common';
+import { InjectDataSource, InjectRepository } from '@nestjs/typeorm';
+import { DataSource, EntityManager, In, Repository } from 'typeorm';
+import { runOnMaster } from '../database/postgres-replication';
 import { User } from './user.entity';
 
 /**
@@ -9,19 +10,40 @@ import { User } from './user.entity';
  * Single place that talks to the `users` repository — keeps query
  * logic out of controllers and out of AuthService. AuthService uses
  * this for register/login/refresh; UserController uses it for /user/me.
+ *
+ * Read routing with PG read/write splitting:
+ *   - `findById` / `findByEmail` / `findByUsername` ALWAYS read from the
+ *     PRIMARY. These are tiny PK/unique lookups on the auth path
+ *     (register → login, token refresh, `/user/me`), where a stale
+ *     replica read right after registration would wrongly 401/404.
+ *   - `findByIds` (plural, used for opponent/username resolution) uses the
+ *     default routing (replica when configured); callers that need strong
+ *     consistency pass a master `EntityManager` instead.
  */
 @Injectable()
 export class UserService {
   private readonly logger = new Logger(UserService.name);
 
-  constructor(@InjectRepository(User) private readonly users: Repository<User>) {}
+  constructor(
+    @InjectRepository(User) private readonly users: Repository<User>,
+    // Optional so unit/smoke fakes (`new UserService(repo)`) keep working.
+    @Optional() @InjectDataSource()
+    private readonly dataSource?: DataSource,
+  ) {}
 
   private repository(manager?: EntityManager): Repository<User> {
     return manager?.getRepository(User) ?? this.users;
   }
 
+  /** PRIMARY read (see class comment). Honors an explicit tx manager. */
   findById(id: string, manager?: EntityManager): Promise<User | null> {
-    return this.repository(manager).findOne({ where: { id } });
+    if (manager) return manager.getRepository(User).findOne({ where: { id } });
+    if (this.dataSource) {
+      return runOnMaster(this.dataSource, (m) =>
+        m.getRepository(User).findOne({ where: { id } }),
+      );
+    }
+    return this.users.findOne({ where: { id } });
   }
 
   findByIds(ids: string[], manager?: EntityManager): Promise<User[]> {
@@ -39,11 +61,26 @@ export class UserService {
       .getMany();
   }
 
-  findByEmail(email: string): Promise<User | null> {
-    return this.users.findOne({ where: { email: email.toLowerCase() } });
+  /** PRIMARY read: login must observe just-registered users (no WAL lag). */
+  findByEmail(email: string, manager?: EntityManager): Promise<User | null> {
+    const where = { email: email.toLowerCase() };
+    if (manager) return manager.getRepository(User).findOne({ where });
+    if (this.dataSource) {
+      return runOnMaster(this.dataSource, (m) =>
+        m.getRepository(User).findOne({ where }),
+      );
+    }
+    return this.users.findOne({ where });
   }
 
-  findByUsername(username: string): Promise<User | null> {
+  /** PRIMARY read: same staleness reasoning as `findByEmail`. */
+  findByUsername(username: string, manager?: EntityManager): Promise<User | null> {
+    if (manager) return manager.getRepository(User).findOne({ where: { username } });
+    if (this.dataSource) {
+      return runOnMaster(this.dataSource, (m) =>
+        m.getRepository(User).findOne({ where: { username } }),
+      );
+    }
     return this.users.findOne({ where: { username } });
   }
 

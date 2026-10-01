@@ -1,0 +1,430 @@
+# Configures the VM from provision.yml as the Jenkins host (#218, #222):
+# Docker (every pipeline tool runs as a pinned container, see Jenkinsfile),
+# Jenkins LTS on 127.0.0.1, and Caddy in front of it for HTTPS. Idempotent.
+#
+# UI at https://<dns_label>.<region>.cloudapp.azure.com (decided
+# 2026-09-30; before that it was SSH-tunnel only). Caddy gets a Let's
+# Encrypt cert and proxies to 127.0.0.1:8080; the Jenkins login is the
+# access control, so this playbook refuses to start Caddy while anonymous
+# read or self sign-up is enabled. Jenkins still polls GitHub (no webhook),
+# reports ✅/❌ on the PR and emails results with the log.
+#
+#   ./run.sh ansible-playbook jenkins-host.yml
+#
+# Jenkins itself (plugins, job, credentials) is then set up through its UI
+# per docs/08-runbook.md §6; hardening checklist in #288.
+- name: Configure the Jenkins host
+  hosts: jenkins
+  become: true
+  gather_facts: true
+
+  handlers:
+    - name: Restart jenkins
+      ansible.builtin.systemd_service:
+        name: jenkins
+        state: restarted
+        daemon_reload: true
+
+    - name: Reload caddy
+      ansible.builtin.systemd_service:
+        name: caddy
+        state: reloaded
+
+  tasks:
+    - name: Wait for SSH (fresh VMs take a minute)
+      ansible.builtin.wait_for_connection:
+        timeout: 300
+
+    # ── Memory safety (2026-09-28: two parallel builds ran the 4 GB VM
+    # out of RAM; with no swap the whole machine froze, SSH included) ──
+    # Swap turns "frozen" into "slow"; low swappiness keeps it a last resort.
+    - name: Swap file
+      ansible.builtin.command: fallocate -l {{ swap_size }} /swapfile
+      args:
+        creates: /swapfile
+      register: swapfile
+
+    - name: Swap file permissions
+      ansible.builtin.file:
+        path: /swapfile
+        mode: "0600"
+
+    - name: Format swap
+      ansible.builtin.command: mkswap /swapfile
+      when: swapfile is changed
+
+    - name: Swap on at boot
+      ansible.builtin.lineinfile:
+        path: /etc/fstab
+        line: "/swapfile none swap sw 0 0"
+
+    - name: Swap active?
+      ansible.builtin.command: swapon --show=NAME --noheadings
+      register: swap_active
+      changed_when: false
+
+    - name: Enable swap
+      ansible.builtin.command: swapon /swapfile
+      when: "'/swapfile' not in swap_active.stdout"
+
+    - name: Low swappiness
+      ansible.builtin.copy:
+        dest: /etc/sysctl.d/99-mfp-swap.conf
+        mode: "0644"
+        content: "vm.swappiness = 10\n"
+      register: swappiness
+
+    - name: Apply swappiness
+      ansible.builtin.command: sysctl -p /etc/sysctl.d/99-mfp-swap.conf
+      when: swappiness is changed
+
+    - name: Base packages
+      ansible.builtin.apt:
+        name:
+          - ca-certificates
+          - curl
+          - python3-debian          # needed by deb822_repository
+          - fontconfig              # Jenkins requirement
+          - openjdk-21-jre-headless
+        update_cache: true
+        cache_valid_time: 3600
+
+    # ── Docker Engine (upstream repo, not the older distro docker.io) ──
+    - name: Docker apt repo
+      ansible.builtin.deb822_repository:
+        name: docker
+        types: deb
+        uris: https://download.docker.com/linux/ubuntu
+        suites: "{{ ansible_facts.distribution_release }}"
+        components: stable
+        architectures: amd64
+        signed_by: https://download.docker.com/linux/ubuntu/gpg
+
+    - name: Docker Engine
+      ansible.builtin.apt:
+        name:
+          - docker-ce
+          - docker-ce-cli
+          - containerd.io
+          - docker-buildx-plugin
+          - docker-compose-plugin
+        update_cache: true
+
+    - name: Docker running
+      ansible.builtin.systemd_service:
+        name: docker
+        state: started
+        enabled: true
+
+    - name: Admin user can use docker
+      ansible.builtin.user:
+        name: "{{ ansible_user }}"
+        groups: docker
+        append: true
+
+    # ── Jenkins LTS ────────────────────────────────────────────────────
+    # Signing key rotates -- 2026 key per jenkins.io/doc/book/installing/linux
+    # (checked 2026-09-28; the 2023 key no longer signs the repo).
+    - name: Jenkins apt repo
+      ansible.builtin.deb822_repository:
+        name: jenkins
+        types: deb
+        uris: https://pkg.jenkins.io/debian-stable
+        suites: binary/
+        signed_by: https://pkg.jenkins.io/debian-stable/jenkins.io-2026.key
+
+    - name: Jenkins
+      ansible.builtin.apt:
+        name: jenkins
+        update_cache: true
+
+    # Every Jenkinsfile stage is a docker container, so the jenkins user
+    # needs the docker socket (no separate build agent -- runbook §6).
+    - name: jenkins user can use docker
+      ansible.builtin.user:
+        name: jenkins
+        groups: docker
+        append: true
+      notify: Restart jenkins
+
+    # Loopback only: :8080 stays unreachable from outside even if an NSG
+    # rule were opened by mistake. Access = SSH tunnel.
+    - name: Jenkins systemd drop-in dir
+      ansible.builtin.file:
+        path: /etc/systemd/system/jenkins.service.d
+        state: directory
+        mode: "0755"
+
+    - name: Jenkins listens on 127.0.0.1 only
+      ansible.builtin.copy:
+        dest: /etc/systemd/system/jenkins.service.d/override.conf
+        mode: "0644"
+        content: |
+          # Managed by infra/ansible/jenkins-host.yml
+          [Service]
+          Environment="JENKINS_LISTEN_ADDRESS=127.0.0.1"
+          # First boot (unpacking the war + plugins) on a 2-vCPU VM can take
+          # longer than the unit's default 90 s and systemd would kill it.
+          TimeoutStartSec=300
+      notify: Restart jenkins
+
+    - name: Jenkins running
+      ansible.builtin.systemd_service:
+        name: jenkins
+        state: started
+        enabled: true
+        daemon_reload: true
+
+    # Links Jenkins puts in GitHub statuses and emails use this URL (the
+    # public https:// name Caddy serves). The Setup Wizard writes this file on first login; create it before
+    # that, only fix the URL after.
+    - name: Jenkins URL config exists?
+      ansible.builtin.stat:
+        path: /var/lib/jenkins/jenkins.model.JenkinsLocationConfiguration.xml
+      register: jenkins_location
+
+    - name: Create Jenkins URL config
+      ansible.builtin.copy:
+        dest: /var/lib/jenkins/jenkins.model.JenkinsLocationConfiguration.xml
+        owner: jenkins
+        group: jenkins
+        mode: "0644"
+        content: |
+          <?xml version='1.1' encoding='UTF-8'?>
+          <jenkins.model.JenkinsLocationConfiguration>
+            <jenkinsUrl>{{ jenkins_url }}</jenkinsUrl>
+          </jenkins.model.JenkinsLocationConfiguration>
+      when: not jenkins_location.stat.exists
+      notify: Restart jenkins
+
+    - name: Set Jenkins URL
+      ansible.builtin.replace:
+        path: /var/lib/jenkins/jenkins.model.JenkinsLocationConfiguration.xml
+        regexp: '<jenkinsUrl>.*</jenkinsUrl>'
+        replace: '<jenkinsUrl>{{ jenkins_url }}</jenkinsUrl>'
+      when: jenkins_location.stat.exists
+      notify: Restart jenkins
+
+    # One build at a time: each build already runs 5 tool containers in
+    # parallel + an ephemeral stack; two builds at once exceed 4 GB. Extra
+    # builds wait in the queue instead. (config.xml appears after Jenkins'
+    # first start; the wizard's default is 2.)
+    - name: Jenkins config present?
+      ansible.builtin.stat:
+        path: /var/lib/jenkins/config.xml
+      register: jenkins_config
+
+    - name: One executor on the built-in node
+      ansible.builtin.replace:
+        path: /var/lib/jenkins/config.xml
+        regexp: '<numExecutors>\d+</numExecutors>'
+        replace: '<numExecutors>{{ jenkins_executors }}</numExecutors>'
+      when: jenkins_config.stat.exists
+      notify: Restart jenkins
+
+    # ── Public HTTPS (Caddy -> 127.0.0.1:8080) ─────────────────────────
+    # The UI becomes reachable by anyone with the URL, so the Jenkins
+    # login must be the gate: security on, no anonymous read, no sign-up.
+    # Checked from config.xml before Caddy is ever started.
+    - name: Read Jenkins security config
+      ansible.builtin.slurp:
+        src: /var/lib/jenkins/config.xml
+      register: jenkins_config_xml
+      when: jenkins_config.stat.exists
+
+    - name: Jenkins is locked down before it goes public
+      vars:
+        cfg: "{{ jenkins_config_xml.content | b64decode }}"
+      ansible.builtin.assert:
+        that:
+          - "'<useSecurity>true</useSecurity>' in cfg"
+          - "'AuthorizationStrategy$Unsecured' not in cfg"
+          - "'<denyAnonymousReadAccess>false</denyAnonymousReadAccess>' not in cfg"
+          - "'<disableSignup>false</disableSignup>' not in cfg"
+        fail_msg: >-
+          Refusing to expose Jenkins: turn off anonymous read access and
+          "Allow users to sign up" (Manage Jenkins > Security), then re-run.
+        quiet: true
+      when: jenkins_config.stat.exists
+
+    - name: Caddy apt repo
+      ansible.builtin.deb822_repository:
+        name: caddy
+        types: deb
+        uris: https://dl.cloudsmith.io/public/caddy/stable/deb/debian
+        suites: any-version
+        components: main
+        signed_by: https://dl.cloudsmith.io/public/caddy/stable/gpg.key
+
+    - name: Caddy
+      ansible.builtin.apt:
+        name: caddy
+        update_cache: true
+
+    # Caddy obtains + renews the Let's Encrypt cert itself (HTTP-01 on
+    # :80, which it also redirects to HTTPS) and sets X-Forwarded-* so
+    # Jenkins builds correct https:// links.
+    - name: Caddyfile
+      ansible.builtin.copy:
+        dest: /etc/caddy/Caddyfile
+        mode: "0644"
+        content: |
+          # Managed by infra/ansible/jenkins-host.yml
+          {{ jenkins_fqdn }} {
+              encode gzip
+              header {
+                  Strict-Transport-Security "max-age=31536000"
+                  -Server
+              }
+              reverse_proxy 127.0.0.1:8080
+          }
+        validate: caddy validate --adapter caddyfile --config %s
+      notify: Reload caddy
+
+    - name: Caddy running
+      ansible.builtin.systemd_service:
+        name: caddy
+        state: started
+        enabled: true
+
+    # Earlier revisions installed cloudflared for a webhook tunnel; not
+    # needed now that Jenkins polls GitHub. Remove it (least software).
+    - name: No cloudflared
+      ansible.builtin.apt:
+        name: cloudflared
+        state: absent
+        purge: true
+
+    - name: No cloudflared apt repo
+      ansible.builtin.deb822_repository:
+        name: cloudflared
+        state: absent
+
+    # ── Disk hygiene (2026-10-01: the 61 GB disk hit 100%) ──────────────
+    # Builds now share one dependency cache outside the workspaces and
+    # wipe their workspace when done (Jenkinsfile). This daily job catches
+    # what's left: images/volumes/networks no build used for 3 days,
+    # workspaces untouched for 3 days (closed PRs), and an oversized cache.
+    - name: Shared CI cache dir
+      ansible.builtin.file:
+        path: /var/lib/jenkins/ci-cache
+        state: directory
+        owner: jenkins
+        group: jenkins
+        mode: "0755"
+
+    - name: Disk cleanup script
+      ansible.builtin.copy:
+        dest: /usr/local/sbin/jenkins-disk-cleanup
+        mode: "0755"
+        content: |
+          #!/usr/bin/env bash
+          # Managed by infra/ansible/jenkins-host.yml -- daily via systemd timer.
+          set -u
+          before=$(df --output=avail -BG / | tail -1 | tr -dc 0-9)
+          docker container prune -f --filter until=24h >/dev/null
+          # Dangling layers + our own backend images. NOT `image prune -a`:
+          # its `until` filter is image *creation* time, so it would delete
+          # the pinned scanner images (built upstream months ago) every day
+          # and re-pull GBs on the next build.
+          docker image prune -f >/dev/null
+          docker images --filter "reference={{ docker_image_name }}" --format '{{ '{{' }}.ID{{ '}}' }} {{ '{{' }}.CreatedSince{{ '}}' }}' \
+            | awk '/days|weeks|months/ {print $1}' | xargs -r docker rmi -f >/dev/null 2>&1
+          docker builder prune -af --filter until={{ disk_cleanup_age_hours }}h >/dev/null
+          docker network prune -f --filter until=24h >/dev/null
+          docker volume prune -f >/dev/null      # anonymous volumes only
+          find /var/lib/jenkins/workspace -mindepth 1 -maxdepth 1 -type d \
+            -mtime +{{ (disk_cleanup_age_hours / 24) | int }} -exec rm -rf {} + 2>/dev/null
+          cache_gb=$(du -s -BG /var/lib/jenkins/ci-cache 2>/dev/null | tr -dc 0-9)
+          if [ "${cache_gb:-0}" -gt {{ ci_cache_max_gb }} ]; then
+            rm -rf /var/lib/jenkins/ci-cache/npm /var/lib/jenkins/ci-cache/pub
+            echo "ci-cache was ${cache_gb} GB > {{ ci_cache_max_gb }} GB: dropped npm/pub caches"
+          fi
+          after=$(df --output=avail -BG / | tail -1 | tr -dc 0-9)
+          echo "free disk: ${before} GB -> ${after} GB"
+
+    - name: Disk cleanup service
+      ansible.builtin.copy:
+        dest: /etc/systemd/system/jenkins-disk-cleanup.service
+        mode: "0644"
+        content: |
+          [Unit]
+          Description=Prune Docker leftovers and stale Jenkins workspaces
+          [Service]
+          Type=oneshot
+          ExecStart=/usr/local/sbin/jenkins-disk-cleanup
+
+    - name: Disk cleanup timer
+      ansible.builtin.copy:
+        dest: /etc/systemd/system/jenkins-disk-cleanup.timer
+        mode: "0644"
+        content: |
+          [Unit]
+          Description=Daily Jenkins disk cleanup
+          [Timer]
+          OnCalendar=*-*-* 04:00:00
+          Persistent=true
+          RandomizedDelaySec=10m
+          [Install]
+          WantedBy=timers.target
+
+    - name: Disk cleanup timer enabled
+      ansible.builtin.systemd_service:
+        name: jenkins-disk-cleanup.timer
+        state: started
+        enabled: true
+        daemon_reload: true
+
+    - name: Apply pending handlers before verifying
+      ansible.builtin.meta: flush_handlers
+
+    # ── Verify (evidence, not assumptions) ─────────────────────────────
+    - name: jenkins user can actually talk to docker
+      ansible.builtin.command: docker info --format '{{ "{{" }} .ServerVersion {{ "}}" }}'
+      become_user: jenkins
+      register: jenkins_docker
+      changed_when: false
+
+    - name: Jenkins answers on :8080
+      ansible.builtin.uri:
+        url: http://127.0.0.1:8080/login
+        status_code: 200
+      register: jenkins_http
+      retries: 30
+      delay: 5
+      until: jenkins_http.status == 200
+
+    - name: Jenkins not listening on a public interface
+      ansible.builtin.command: ss -Htln 'sport = :8080'
+      register: jenkins_listen
+      changed_when: false
+      # Every :8080 listener must be loopback -- IPv4 `127.0.0.1:8080` or the
+      # Java dual-stack form `[::ffff:127.0.0.1]:8080` -- and there must be one.
+      failed_when: >-
+        jenkins_listen.stdout_lines | length == 0
+        or (jenkins_listen.stdout_lines
+            | reject('search', '(^|\s|\[::ffff:)127\.0\.0\.1\]?:8080\s')
+            | list | length) > 0
+
+    # Through Caddy with a real cert, resolved to this host so it doesn't
+    # depend on hairpinning via the public IP. Retries cover the first
+    # Let's Encrypt issuance.
+    - name: Jenkins answers over HTTPS through Caddy
+      ansible.builtin.command: >
+        curl -sS -o /dev/null -w '%{http_code}'
+        --resolve {{ jenkins_fqdn }}:443:127.0.0.1
+        https://{{ jenkins_fqdn }}/login
+      register: jenkins_https
+      changed_when: false
+      retries: 24
+      delay: 5
+      until: jenkins_https.rc == 0 and jenkins_https.stdout == '200'
+
+    - name: Summary
+      ansible.builtin.debug:
+        msg:
+          - "Docker {{ jenkins_docker.stdout }} usable by the jenkins user"
+          - "Jenkins on 127.0.0.1:8080, published by Caddy with a valid cert"
+          - "Open the UI:  {{ jenkins_url }}"
+          - "Initial admin password (fresh install only):  ssh {{ ansible_user }}@{{ ansible_host }} sudo cat /var/lib/jenkins/secrets/initialAdminPassword"
+          - "Then: docs/08-runbook.md §6 (plugins, periodic scan, GitHub status, email)"

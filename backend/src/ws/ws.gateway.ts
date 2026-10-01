@@ -338,6 +338,8 @@ export class WsGateway implements OnGatewayConnection, OnGatewayDisconnect, OnGa
       const match = await this.matches.findActiveByUserId(userId);
       if (match && client.connected) {
         this.subscribeToMatch(client, match.id);
+        const state = await this.runtime.statePayloadForUser(match.id, userId);
+        client.emit('game:match:state', state);
         const cached = await this.runtime.getCombatResultForReconnect(match.id);
         if (cached) {
           const battleEnd = cached.events.at(-1) as Record<string, unknown> | undefined;

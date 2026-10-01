@@ -132,9 +132,9 @@ affected, only the container's auth).
 ## 5. Incident Response
 
 No metrics/log aggregation exists yet
-([#138](https://github.com/JaJoJi/mobile-final-project/issues/138) —
-Prometheus + Grafana). Until then, first three things to check when
-something's wrong:
+([#225](https://github.com/JaJoJi/mobile-final-project/issues/225) —
+Beyla + mtail + Loki + Tempo → Prometheus/Loki/Tempo → Grafana). Until
+then, first three things to check when something's wrong:
 
 1. **Is it up?** `curl http://<host>/health/ready` — checks DB + Redis
    reachability from the app's perspective (see `backend/src/common/health.controller.ts`).
@@ -148,5 +148,71 @@ something's wrong:
    — useful since `nginx` load-balances across all three and a bad node can
    hide behind two healthy ones.
 
-Once #138 lands, step 2/3 become "open the Grafana dashboard" instead of
+Once #225 lands, step 2/3 become "open the Grafana dashboard" instead of
 grepping `docker compose logs` by hand — update this section then.
+
+## 6. Jenkins CI Setup
+
+Jenkins runs on the Azure VM `mfp-jenkins` and is **private**: nothing
+inbound except SSH from known IPs, Jenkins bound to `127.0.0.1:8080`
+(decided 2026-09-28, "option A"). It polls GitHub instead of receiving
+webhooks, posts ✅/❌ back to commits/PRs, and emails results with the
+log. Hardening checklist: #288.
+
+1. **Host:** created + configured by Ansible — `infra/ansible/`
+   (`provision.yml` makes the VM, `jenkins-host.yml` installs Docker +
+   Jenkins; see its README). Every build tool (Node, Flutter, Gitleaks,
+   Semgrep, Trivy, Checkov, ZAP, Postgres, Redis) runs as a container
+   pinned by version + digest in the `Jenkinsfile` (`IMAGES` map). Keep
+   **≥ 30 GB free disk** and **≥ 4 GB RAM**.
+2. **Open the UI:** https://mfp-jenkins-psu.malaysiawest.cloudapp.azure.com (Caddy + Let's Encrypt in
+   front of Jenkins on loopback; log in with your Jenkins account).
+   Keep **anonymous read** and **Allow users to sign up** off in
+   Manage Jenkins → Security — `jenkins-host.yml` won't publish Jenkins
+   otherwise. SSH (admin only) still needs your IP in `admin_cidrs`.
+3. **Plugins:** Pipeline, Pipeline: Multibranch, Git, **GitHub Branch
+   Source**, **Docker Pipeline**, JUnit, **HTML Publisher**, Timestamper,
+   Credentials Binding, **Email Extension**.
+4. **Credentials** (Manage Jenkins → Credentials → Global):
+   | ID | Kind | What |
+   |---|---|---|
+   | `github-token` | Username with password | GitHub username + **classic** PAT with `repo:status` + `public_repo` (classic because the repo belongs to another user; fine-grained tokens can't reach collaborator repos). Used to scan the repo and post commit statuses. |
+   | `notify-email` | Secret text | Recipient address(es), comma-separated — a credential because the repo is public |
+   | `smtp-gmail` | Username with password | Gmail address + **App Password** (Google Account → Security → App passwords; needs 2-Step Verification). Never the real Gmail password. |
+   | `dockerhub-token` | Username with password | Docker Hub user `fiatthanapon` + PAT (Read & Write). Pushes `fiatthanapon/mobile-final-project` (private) on `main`. |
+5. **SMTP** (Manage Jenkins → System → *Extended E-mail Notification*):
+   SMTP server `smtp.gmail.com`, port `465`, *Use SSL*, credentials
+   `smtp-gmail`, Default Content Type *plain text*. Use *Test
+   configuration* before relying on it. `ENABLE_NOTIFICATIONS` is on by
+   default, so both email credentials must exist or builds fail in `post`.
+6. **Job:** New Item → **Multibranch Pipeline** `mobile-final-project`
+   - Branch source **GitHub**, credentials `github-token`, URL
+     `https://github.com/JaJoJi/mobile-final-project`
+   - Behaviours: discover branches (all); discover PRs from origin
+     (merge with target); discover PRs from forks — trust **From users
+     with Admin or Write permission**; **Filter by name (with
+     wildcards)** include `dev main PR-*` (the repo has ~40 stale
+     feature branches; without the filter each gets built)
+   - **Scan Multibranch Pipeline Triggers → Periodically if not otherwise
+     run: 1 minute** (replaces the webhook)
+   - Orphaned items: discard after 7 days
+   The `Jenkinsfile` scopes stages: cheap scans on every discovered
+   branch; full build/test/image/ZAP on PRs into `dev`/`main` and on
+   `dev`/`main`; Docker Hub push on `main` only.
+7. **Verify:** push to a PR branch → build starts within ~1 min → the PR
+   shows the Jenkins status check → email arrives; JUnit, `Backend
+   coverage`, `ZAP` reports and `sbom.cdx.json` present on the build.
+
+**Disk (61 GB):** builds share one dependency cache at
+`/var/lib/jenkins/ci-cache` (npm, pub, Trivy DB) and delete their
+workspace when they finish; `jenkins-disk-cleanup.timer` (daily 04:00)
+prunes Docker leftovers, workspaces untouched for 3 days and an oversized
+cache. Every build starts with *Preflight · disk*, which fails below 5 GB
+free. If it trips: `df -h`, `sudo systemctl start jenkins-disk-cleanup`,
+`journalctl -u jenkins-disk-cleanup`.
+
+**Running pieces outside Jenkins** (from repo root, needs Docker + bash):
+build the image, then `CI_ID=local IMAGE=<image:tag> PG_IMAGE=postgres:16-alpine
+REDIS_IMAGE=redis:7-alpine bash ci/scripts/stack-up.sh`, run smoke / ZAP
+(`ZAP_IMAGE=zaproxy/zap-stable:2.17.0 bash ci/scripts/zap-scan.sh`), and
+`CI_ID=local bash ci/scripts/stack-down.sh` to clean up.

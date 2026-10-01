@@ -1,6 +1,9 @@
 import 'package:auto_chess_mobile/core/theme/app_theme.dart';
+import 'package:auto_chess_mobile/core/widgets/health_bar.dart';
+import 'package:auto_chess_mobile/core/widgets/unit_avatar.dart';
 import 'package:auto_chess_mobile/features/match/battle/combat_effects_math.dart';
 import 'package:auto_chess_mobile/features/match/battle/combat_effects_overlay.dart';
+import 'package:auto_chess_mobile/features/match/board/stone_board_tile.dart';
 import 'package:auto_chess_mobile/shared/models/combat_event.dart';
 import 'package:auto_chess_mobile/shared/models/match_state.dart';
 import 'package:auto_chess_mobile/shared/models/unit.dart';
@@ -67,12 +70,47 @@ void main() {
     events: [rangedAttack],
   );
 
-  Widget buildTree(double progress, {CombatEventBatch? eventsBatch}) {
+  const heal = HealEvent(
+    cycle: 1,
+    tick: 1,
+    by: 'healer',
+    target: 'fighter',
+    amount: 20,
+    targetHpAfter: 80,
+    bySide: MatchSide.p1,
+    bySlot: 0,
+    byUnitId: UnitId.healer,
+    targetSide: MatchSide.p1,
+    targetSlot: 4,
+    targetUnitId: UnitId.fighter,
+  );
+
+  const healBatch = CombatEventBatch(
+    matchId: 'm1',
+    round: 1,
+    cycleCount: 1,
+    endedAt: 0,
+    events: [heal],
+  );
+
+  Widget buildTree(
+    double progress, {
+    CombatEventBatch? eventsBatch,
+    Widget? restingPiece,
+  }) {
     return MaterialApp(
       theme: buildTheme(Brightness.light),
       home: Scaffold(
         body: Stack(
           children: [
+            if (restingPiece != null)
+              Positioned(
+                left: 300,
+                top: 0,
+                width: (300 - 8) / 3,
+                height: (300 - 8) / 3,
+                child: StoneBoardTile(slot: 0, child: restingPiece),
+              ),
             Positioned(
               left: 0,
               top: 0,
@@ -105,6 +143,126 @@ void main() {
     forcePortrait(tester);
     await tester.pumpWidget(buildTree(0.5));
     expect(find.byKey(const ValueKey('lunge-traveler')), findsOneWidget);
+  });
+
+  testWidgets('melee traveler keeps the attacker current health',
+      (tester) async {
+    forcePortrait(tester);
+    const damagedAttacker = AttackEvent(
+      cycle: 1,
+      tick: 1,
+      attacker: 'wounded-fighter',
+      target: 'target',
+      damage: 10,
+      targetHpAfter: 90,
+      attackerSide: MatchSide.p1,
+      attackerSlot: 0,
+      attackerUnitId: UnitId.fighter,
+      attackerStar: 1,
+      targetSide: MatchSide.p2,
+      targetSlot: 4,
+      unitStates: [
+        UnitSnapshot(
+          instanceId: 'wounded-fighter',
+          unitId: UnitId.fighter,
+          star: 1,
+          hp: 37,
+          maxHp: 100,
+          slot: 0,
+          side: MatchSide.p1,
+          alive: true,
+        ),
+      ],
+    );
+    await tester.pumpWidget(
+      buildTree(
+        0.5,
+        eventsBatch: const CombatEventBatch(
+          matchId: 'health-test',
+          round: 1,
+          cycleCount: 1,
+          endedAt: 0,
+          events: [damagedAttacker],
+        ),
+      ),
+    );
+
+    final traveler = find.descendant(
+      of: find.byKey(const ValueKey('lunge-traveler')),
+      matching: find.byType(UnitAvatar),
+    );
+    final avatar = tester.widget<UnitAvatar>(traveler);
+    expect(avatar.hp, 37);
+    expect(avatar.maxHp, 100);
+    final healthBar = tester.widget<HealthBar>(
+      find.descendant(of: traveler, matching: find.byType(HealthBar)),
+    );
+    expect(healthBar.current, 37);
+    expect(healthBar.max, 100);
+  });
+
+  testWidgets('fighter and tank retain resting size and anchor at every tier',
+      (tester) async {
+    forcePortrait(tester);
+    for (final unit in [UnitId.fighter, UnitId.tank]) {
+      for (var star = 0; star < 3; star++) {
+        final shots = CombatEventBatch(
+          matchId: 'size-test',
+          round: 1,
+          cycleCount: 1,
+          endedAt: 0,
+          events: [
+            AttackEvent(
+              cycle: 1,
+              tick: 1,
+              attacker: 'a',
+              target: 'b',
+              damage: 10,
+              targetHpAfter: 90,
+              attackerSide: MatchSide.p1,
+              attackerSlot: 0,
+              attackerUnitId: unit,
+              attackerStar: star,
+              targetSide: MatchSide.p2,
+              targetSlot: 4,
+            ),
+          ],
+        );
+        for (final progress in [0.0, 0.25, 0.5, 0.75, 1.0]) {
+          await tester.pumpWidget(
+            buildTree(
+              progress,
+              eventsBatch: shots,
+              restingPiece: UnitAvatar(
+                key: const ValueKey('resting-piece'),
+                unitId: unit.toJson(),
+                star: star,
+                variant: UnitAvatarVariant.replay,
+                hp: 1,
+                maxHp: 1,
+                expand: true,
+              ),
+            ),
+          );
+          final resting = find.byKey(const ValueKey('resting-piece'));
+          final travelling = find.descendant(
+            of: find.byKey(const ValueKey('lunge-traveler')),
+            matching: find.byType(UnitAvatar),
+          );
+          expect(tester.getSize(travelling), tester.getSize(resting));
+          if (progress == 0 || progress == 1) {
+            expect(
+              tester.getTopLeft(travelling).dy,
+              closeTo(tester.getTopLeft(resting).dy, 0.001),
+            );
+            expect(
+              tester.getTopLeft(travelling).dx,
+              closeTo(tester.getTopLeft(resting).dx - 300, 0.001),
+            );
+          }
+        }
+      }
+    }
   });
 
   testWidgets('melee traveler is gone once the batch has finished',
@@ -197,6 +355,27 @@ void main() {
     // assertion actually proves which branch ran.
     expect(iconCenter.dx, closeTo(expectedX, 5));
     expect(iconCenter.dy, closeTo(expectedY, 5));
+  });
+
+  testWidgets('heal energy identifies the caster until it reaches its target',
+      (tester) async {
+    forcePortrait(tester);
+    await tester.pumpWidget(
+      buildTree(kHealImpactFraction / 2, eventsBatch: healBatch),
+    );
+    expect(
+      find.byKey(const ValueKey('healer-source-transfer-vfx')),
+      findsOneWidget,
+    );
+    expect(find.byKey(const ValueKey('projectile-mark')), findsNothing);
+
+    await tester.pumpWidget(
+      buildTree(kHealImpactFraction, eventsBatch: healBatch),
+    );
+    expect(
+      find.byKey(const ValueKey('healer-source-transfer-vfx')),
+      findsNothing,
+    );
   });
 
   testWidgets('traveller scales and repositions with the board size',
@@ -319,14 +498,18 @@ void main() {
     expect(find.byKey(const ValueKey('projectile-mark')), findsNothing);
   });
 
-  testWidgets('a healer shoots a bolt, a ranger an arrow', (tester) async {
+  testWidgets('a healer uses its bolt asset and a ranger its arrow asset',
+      (tester) async {
     forcePortrait(tester);
     // The per-tile projectile this overlay replaced picked the icon by
     // unit; the distinction was lost in the move.
     await tester.pumpWidget(buildTree(0.25, eventsBatch: rangedBatch));
+    final rangerImage = tester.widget<Image>(
+      find.byKey(const ValueKey('projectile-rangerProjectile')),
+    );
     expect(
-      tester.widget<Icon>(find.byKey(const ValueKey('projectile-mark'))).icon,
-      Icons.arrow_forward,
+      (rangerImage.image as AssetImage).assetName,
+      'assets/images/vfx/ranger_projectile.png',
     );
 
     const healerAttack = AttackEvent(
@@ -354,10 +537,74 @@ void main() {
         ),
       ),
     );
-    expect(
-      tester.widget<Icon>(find.byKey(const ValueKey('projectile-mark'))).icon,
-      Icons.bolt,
+    final healerImage = tester.widget<Image>(
+      find.byKey(const ValueKey('projectile-healerAttackProjectile')),
     );
+    expect(
+      (healerImage.image as AssetImage).assetName,
+      'assets/images/vfx/healer_attack_projectile.png',
+    );
+  });
+
+  testWidgets('reduced motion preserves source-to-target ranged travel',
+      (tester) async {
+    forcePortrait(tester);
+    tester.binding.platformDispatcher.accessibilityFeaturesTestValue =
+        const FakeAccessibilityFeatures(disableAnimations: true);
+    addTearDown(
+      tester.binding.platformDispatcher.clearAccessibilityFeaturesTestValue,
+    );
+
+    for (final unitId in [UnitId.ranger, UnitId.healer]) {
+      for (final star in [0, 1, 2]) {
+        final shots = CombatEventBatch(
+          matchId: 'm1',
+          round: 1,
+          cycleCount: 1,
+          endedAt: 0,
+          events: [
+            AttackEvent(
+              cycle: 1,
+              tick: 1,
+              attacker: 'a',
+              target: 'b',
+              damage: 10,
+              targetHpAfter: 90,
+              attackerSide: MatchSide.p1,
+              attackerSlot: 0,
+              attackerUnitId: unitId,
+              attackerStar: star,
+              targetSide: MatchSide.p2,
+              targetSlot: 4,
+            ),
+          ],
+        );
+        final positions = <Offset>[];
+        for (final progress in [0.0, 0.3, 0.6, 0.89]) {
+          await tester.pumpWidget(buildTree(progress, eventsBatch: shots));
+          positions.add(
+            tester.getCenter(find.byKey(const ValueKey('projectile-mark'))),
+          );
+        }
+        expect(
+          (positions.first - const Offset(48.667, 48.667)).distance,
+          lessThan(2),
+          reason: '$unitId star $star must start at the shooter',
+        );
+        for (var i = 1; i < positions.length; i++) {
+          expect(
+            positions[i].dy,
+            greaterThan(positions[i - 1].dy),
+            reason: '$unitId star $star must move on every sample',
+          );
+        }
+        expect((positions.last - const Offset(150, 450)).distance, lessThan(8));
+        await tester.pumpWidget(
+          buildTree(kProjectileImpactFraction, eventsBatch: shots),
+        );
+        expect(find.byKey(const ValueKey('projectile-mark')), findsNothing);
+      }
+    }
   });
 
   testWidgets('an enemy projectile flies down toward the viewer',

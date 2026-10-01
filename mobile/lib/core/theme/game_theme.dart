@@ -94,8 +94,9 @@ class GameTheme extends ThemeExtension<GameTheme> {
   static GameTheme of(Brightness brightness) =>
       brightness == Brightness.light ? _light : _dark;
 
-  /// Star colour for a given star level (0 → 1★ tone, so a badge is still visible).
-  Color starColor(int star) => star >= 2 ? star2 : star1;
+  /// Star colour for the server's zero-based fusion tier (`0..2`).
+  /// Displayed star counts are converted separately and are always `1..3`.
+  Color starColor(int fusionTier) => fusionTier >= 2 ? star2 : star1;
 
   @override
   GameTheme copyWith({

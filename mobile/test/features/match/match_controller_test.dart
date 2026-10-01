@@ -122,6 +122,108 @@ void main() {
     expect(payload['unitId'], 'fighter');
     expect(payload['sourceInstanceId'], 'fighter-source');
     expect(payload['targetInstanceId'], 'fighter-target');
+
+    // Fusion is server-authoritative: both copies remain unchanged until the
+    // server publishes the resulting match snapshot.
+    expect(controller.state.match?.roster.bench[0]?.star, 0);
+    expect(controller.state.match?.roster.bench[1]?.star, 0);
+    expect(controller.state.pendingActionId, isNotNull);
+
+    transport.emitFromServer(
+      GameEvents.matchState,
+      _matchState(
+        bench: [
+          null,
+          _unit(
+            'fighter-target',
+            'fighter',
+            star: 1,
+            hp: 120,
+            maxHp: 120,
+          ),
+          ...List<Object?>.filled(6, null),
+        ],
+      ),
+    );
+    await Future<void>.delayed(Duration.zero);
+
+    expect(controller.state.match?.roster.bench[0], isNull);
+    expect(controller.state.match?.roster.bench[1]?.star, 1);
+    expect(controller.state.match?.roster.bench[1]?.hp, 120);
+    expect(controller.state.match?.roster.bench[1]?.maxHp, 120);
+    expect(controller.state.pendingActionId, isNull);
+  });
+
+  test('does not request fusion for a different type, tier, or max tier',
+      () async {
+    Future<void> expectRejected(List<Object?> bench) async {
+      transport.emitFromServer(
+        GameEvents.matchState,
+        _matchState(bench: bench),
+      );
+      await Future<void>.delayed(Duration.zero);
+      final before = transport.sent
+          .where((event) => event.event == GameActions.shopFuse)
+          .length;
+
+      controller.place(
+        RosterArea.bench,
+        1,
+        const UnitSelection(RosterArea.bench, 0),
+      );
+
+      expect(
+        transport.sent.where((event) => event.event == GameActions.shopFuse),
+        hasLength(before),
+      );
+      expect(controller.state.pendingActionId, isNull);
+    }
+
+    await expectRejected([
+      _unit('fighter', 'fighter'),
+      _unit('healer', 'healer'),
+      ...List<Object?>.filled(6, null),
+    ]);
+    await expectRejected([
+      _unit('fighter-1', 'fighter'),
+      _unit('fighter-2', 'fighter', star: 1),
+      ...List<Object?>.filled(6, null),
+    ]);
+    await expectRejected([
+      _unit('fighter-3a', 'fighter', star: 2),
+      _unit('fighter-3b', 'fighter', star: 2),
+      ...List<Object?>.filled(6, null),
+    ]);
+  });
+
+  test('rehydrates an upgraded unit from the latest server snapshot', () async {
+    controller.dispose();
+    transport.serverDisconnect();
+    transport.serverConnect();
+    transport.emitFromServer(
+      GameEvents.matchState,
+      _matchState(
+        bench: [
+          _unit(
+            'ranger-upgraded',
+            'ranger',
+            star: 2,
+            hp: 54,
+            maxHp: 60,
+          ),
+          ...List<Object?>.filled(7, null),
+        ],
+      ),
+    );
+
+    controller = MatchController(matchId: 'm1', client: client);
+    await Future<void>.delayed(Duration.zero);
+
+    final restored = controller.state.match?.roster.bench.first;
+    expect(restored?.instanceId, 'ranger-upgraded');
+    expect(restored?.star, 2);
+    expect(restored?.hp, 54);
+    expect(restored?.maxHp, 60);
   });
 
   test('ready can be submitted and cancelled before both players are ready',
@@ -225,10 +327,17 @@ Map<String, dynamic> _matchState({
       'readyCount': readyCount,
     };
 
-Map<String, dynamic> _unit(String id, String unitId) => {
+Map<String, dynamic> _unit(
+  String id,
+  String unitId, {
+  int star = 0,
+  int hp = 150,
+  int maxHp = 150,
+}) =>
+    {
       'instanceId': id,
       'unitId': unitId,
-      'star': 0,
-      'hp': 150,
-      'maxHp': 150,
+      'star': star,
+      'hp': hp,
+      'maxHp': maxHp,
     };

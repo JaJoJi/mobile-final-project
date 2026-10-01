@@ -41,6 +41,10 @@ async function harness() {
       client.eval(LUA_SCRIPTS[name], keys.length, ...keys, ...args.map(String)),
   };
   const matches = {
+    usernamesForPlayers: jest.fn(async () => ({
+      player1Name: 'player1',
+      player2Name: 'player2',
+    })),
     findActiveByUserId: jest.fn(async (userId: string) =>
       userId === match.player1Id || userId === match.player2Id ? match : null),
     updateState: jest.fn(async () => undefined),
@@ -68,6 +72,65 @@ async function harness() {
 }
 
 describe('MatchRuntimeAdapter WS action seam', () => {
+  it('returns no scout data in round one', async () => {
+    const h = await harness();
+    const resumed = await h.adapter.statePayloadForUser(match.id, match.player1Id);
+
+    expect(resumed.opponent.scoutRound).toBeNull();
+    expect(resumed.opponent.boardSummary).toEqual(Array(9).fill(null));
+    expect(resumed.opponent.battleBoardSummary).toBeNull();
+    expect(resumed.roster.username).toBe('player1');
+    expect(resumed.opponent.username).toBe('player2');
+    expect(h.matches.usernamesForPlayers).toHaveBeenCalledWith(
+      match.player1Id,
+      match.player2Id,
+    );
+    await expect(
+      h.client.hmget(runtimeKey(match.id), 'player1Name', 'player2Name'),
+    ).resolves.toEqual(['player1', 'player2']);
+  });
+
+  it('keeps the completed-round scout snapshot stable and exposes live units only in battle',
+    async () => {
+      const h = await harness();
+      const completedBoard = [
+        { unitId: 'healer', star: 0 },
+        ...Array(8).fill(null),
+      ];
+      const current = await h.adapter.getRuntime(match.id);
+      current.p2State.board[0] = {
+        instanceId: 'current-ranger',
+        unitId: 'ranger',
+        star: 1,
+        hp: 60,
+        maxHp: 60,
+      };
+      await h.client.hset(runtimeKey(match.id), {
+        round: '2',
+        p2State: JSON.stringify(current.p2State),
+        scoutRound: '1',
+        scoutP2Board: JSON.stringify(completedBoard),
+      });
+
+      const planning = await h.adapter.statePayloadForUser(match.id, match.player1Id);
+      expect(planning.opponent.scoutRound).toBe(1);
+      expect(planning.opponent.boardSummary[0]).toEqual({
+        unitId: 'healer',
+        star: 0,
+      });
+      expect(planning.opponent.battleBoardSummary).toBeNull();
+
+      await h.client.hset(runtimeKey(match.id), 'phase', 'battle');
+      const battle = await h.adapter.statePayloadForUser(match.id, match.player1Id);
+      expect(battle.opponent.boardSummary).toEqual(
+        planning.opponent.boardSummary,
+      );
+      expect(battle.opponent.battleBoardSummary?.[0]).toEqual({
+        unitId: 'ranger',
+        star: 1,
+      });
+    });
+
   it('resolves the active match and routes shop actions', async () => {
     const h = await harness();
     await h.adapter.handleAction('player-1', 'shop:buy', {

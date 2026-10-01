@@ -7,6 +7,7 @@ import '../../core/debug/combat_trace.dart';
 import '../../core/ws/ws_client.dart';
 import '../../core/ws/ws_providers.dart';
 import '../../shared/models/game_events.dart';
+import '../../shared/models/unit_catalog.dart';
 
 enum RosterArea { board, bench }
 
@@ -300,7 +301,7 @@ class MatchController extends StateNotifier<MatchViewState> {
   void ready() => toggleReady();
 
   /// Skips local playback by acknowledging the server's combat batch.
-  /// The server still waits for both players (or its 60-second fallback),
+  /// The server still waits for both players (or its replay-length fallback),
   /// so one player cannot force the other player to skip.
   void skipCombat() {
     final phase = state.phase;
@@ -389,9 +390,16 @@ class MatchController extends StateNotifier<MatchViewState> {
     });
   }
 
-  void fuse(Unit source, [Unit? target]) {
+  void fuse(Unit source, Unit target) {
     final match = state.match;
-    if (!state.canAct || match == null) return;
+    if (!state.canAct ||
+        match == null ||
+        source.instanceId == target.instanceId ||
+        source.unitId != target.unitId ||
+        source.star != target.star ||
+        source.star >= 2) {
+      return;
+    }
     final actionId = _actionId();
     _beginOptimistic();
     state = state.copyWith(
@@ -401,10 +409,8 @@ class MatchController extends StateNotifier<MatchViewState> {
     _client.emit(GameActions.shopFuse, {
       'round': match.round,
       'unitId': source.unitId.toJson(),
-      if (target != null) ...{
-        'sourceInstanceId': source.instanceId,
-        'targetInstanceId': target.instanceId,
-      },
+      'sourceInstanceId': source.instanceId,
+      'targetInstanceId': target.instanceId,
       'clientActionId': actionId,
     });
   }
@@ -465,17 +471,9 @@ class MatchController extends StateNotifier<MatchViewState> {
   }
 }
 
-int unitPrice(UnitId unitId) => switch (unitId) {
-      UnitId.fighter || UnitId.healer => 1,
-      UnitId.ranger || UnitId.tank => 2,
-    };
+int unitPrice(UnitId unitId) => UnitCatalogEntry.of(unitId).cost;
 
-int unitMaxHp(UnitId unitId) => switch (unitId) {
-      UnitId.fighter => 100,
-      UnitId.healer => 70,
-      UnitId.ranger => 60,
-      UnitId.tank => 150,
-    };
+int unitMaxHp(UnitId unitId) => UnitCatalogEntry.of(unitId).hp;
 
 String gameErrorMessage(String code) => switch (code) {
       'shop.insufficient_gold' => 'ทองไม่พอ',

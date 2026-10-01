@@ -1,7 +1,7 @@
-/// Shared overlay rendered above both boards in `BattleView`, driving the
-/// melee lunge and ranged projectile from the real on-screen position of
-/// the attacker and target tiles instead of a hardcoded direction/distance
-/// (P4-FE-01). See `docs/09-combat-effects-overlay-design.md`.
+/// Shared overlay rendered above both boards in `BattleView`, driving melee
+/// lunges, ranged projectiles, and healer transfers between the real
+/// on-screen positions of source and target tiles instead of a hardcoded
+/// direction/distance (P4-FE-01).
 ///
 /// Position resolution deliberately happens inside a [LayoutBuilder]'s
 /// `builder` callback rather than in `build()`. `Stack` lays out its
@@ -14,6 +14,8 @@
 /// sibling boards would never yet have a `size` to read.
 library;
 
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart' show RenderStack;
 
@@ -22,6 +24,8 @@ import '../../../core/widgets/unit_avatar.dart';
 import '../../../shared/models/combat_event.dart';
 import '../../../shared/models/match_state.dart';
 import '../../../shared/models/unit.dart';
+import '../board/stone_board_tile.dart';
+import 'combat_effect_assets.dart';
 import 'combat_effects_math.dart';
 
 /// Side length of one tile on the board behind [boardKey], or `null` if
@@ -30,6 +34,22 @@ double? _tileSize(GlobalKey boardKey) {
   final board = boardKey.currentContext?.findRenderObject() as RenderBox?;
   if (board == null || !board.hasSize) return null;
   return (board.size.width - 2 * AppSpacing.xs) / 3;
+}
+
+UnitSnapshot? _attackerSnapshot(AttackEvent event) {
+  final snapshots = event.unitStates;
+  if (snapshots == null) return null;
+
+  for (final snapshot in snapshots) {
+    if (snapshot.instanceId == event.attacker) return snapshot;
+  }
+  for (final snapshot in snapshots) {
+    if (snapshot.side == event.attackerSide &&
+        snapshot.slot == event.attackerSlot) {
+      return snapshot;
+    }
+  }
+  return null;
 }
 
 /// Center of board [slot], expressed in [ancestor]'s local coordinate
@@ -57,10 +77,9 @@ Offset? _tileCenterRelativeTo({
   return board.localToGlobal(local, ancestor: ancestor);
 }
 
-/// Renders at most one attack effect (melee lunge or ranged projectile) —
-/// whichever `AttackEvent` is active at the current playhead position —
-/// travelling between the attacker's and target's real tile positions on
-/// their respective boards.
+/// Renders at most one travelling combat effect for the event active at the
+/// current playhead position, using the source and target's real tile
+/// positions on their respective boards.
 class CombatEffectsOverlay extends StatelessWidget {
   const CombatEffectsOverlay({
     super.key,
@@ -103,6 +122,17 @@ class CombatEffectsOverlay extends StatelessWidget {
     if (current == null) return null;
 
     final event = current.event;
+    final ancestor = context.findAncestorRenderObjectOfType<RenderStack>();
+    if (ancestor == null) return null;
+
+    if (event is HealEvent) {
+      return _resolveHealEffect(
+        context: context,
+        event: event,
+        subProgress: current.subProgress,
+        ancestor: ancestor,
+      );
+    }
     if (event is! AttackEvent) return null;
     final attackerSlot = event.attackerSlot;
     final attackerSide = event.attackerSide;
@@ -134,9 +164,6 @@ class CombatEffectsOverlay extends StatelessWidget {
     //    `Stack` specifically. If this widget is ever nested one level
     //    deeper inside another `Stack` (or `IndexedStack`) later, it will
     //    silently resolve to that nearer, wrong ancestor instead.
-    final ancestor = context.findAncestorRenderObjectOfType<RenderStack>();
-    if (ancestor == null) return null;
-
     final landscape =
         MediaQuery.orientationOf(context) == Orientation.landscape;
     final attackerLocal = _tileCenterRelativeTo(
@@ -163,8 +190,13 @@ class CombatEffectsOverlay extends StatelessWidget {
     if (!isMelee && current.subProgress >= kProjectileImpactFraction) {
       return null;
     }
+    // Travel communicates who attacked whom, just like the melee lunge.
+    // Keep this functional motion on the preserved battle timeline even
+    // when the platform requests reduced decorative animations. Freezing
+    // progress at 0.85 made shots appear beside the victim for the whole
+    // event instead of travelling from their source.
     final progress = isMelee
-        ? triangleWave(current.subProgress)
+        ? meleeTravel(current.subProgress)
         : projectileTravel(current.subProgress);
     final position = Offset.lerp(attackerLocal, targetLocal, progress)!;
 
@@ -177,6 +209,7 @@ class CombatEffectsOverlay extends StatelessWidget {
         attackerSide == mySide ? myBoardKey : opponentBoardKey,
       );
       if (size == null) return null;
+      final attackerSnapshot = _attackerSnapshot(event);
       return Stack(
         children: [
           Positioned(
@@ -186,14 +219,23 @@ class CombatEffectsOverlay extends StatelessWidget {
             height: size,
             child: IgnorePointer(
               key: const ValueKey('lunge-traveler'),
-              child: UnitAvatar(
-                unitId: attackerUnitId.toJson(),
-                star: event.attackerStar ?? 0,
-                variant: UnitAvatarVariant.replay,
-                side: attackerSide == mySide ? UnitSide.ally : UnitSide.enemy,
-                hp: 1,
-                maxHp: 1,
-                expand: true,
+              child: BoardPiecePlacement(
+                child: RepaintBoundary(
+                  child: UnitAvatar(
+                    unitId: attackerUnitId.toJson(),
+                    star: attackerSnapshot?.star ?? event.attackerStar ?? 0,
+                    variant: UnitAvatarVariant.replay,
+                    side:
+                        attackerSide == mySide ? UnitSide.ally : UnitSide.enemy,
+                    // The travelling sprite replaces the copy on its home
+                    // tile, so it must carry the same health state. A legacy
+                    // event without snapshots omits the bar instead of
+                    // briefly lying that the unit is at full health.
+                    hp: attackerSnapshot?.hp,
+                    maxHp: attackerSnapshot?.maxHp,
+                    expand: true,
+                  ),
+                ),
               ),
             ),
           ),
@@ -203,10 +245,19 @@ class CombatEffectsOverlay extends StatelessWidget {
 
     // Sized against the measured tile rather than a fixed pixel count, so
     // the projectile keeps the same visual weight on a phone and a tablet.
-    final projectileSize =
-        (_tileSize(attackerSide == mySide ? myBoardKey : opponentBoardKey) ??
-                60) *
-            0.4;
+    final effectKind = combatEffectForEvent(event);
+    if (effectKind == null || effectKind == CombatEffectKind.healerHeal) {
+      return null;
+    }
+    final tileSize =
+        _tileSize(attackerSide == mySide ? myBoardKey : opponentBoardKey) ?? 60;
+    // The ranger asset is an elongated arrow, so it needs a smaller square
+    // than the healer's compact orb. Giving both the same 82% tile box made
+    // the arrow read as a slow spear that covered most of a unit.
+    final projectileSize = tileSize *
+        (effectKind == CombatEffectKind.rangerProjectile ? 0.72 : 0.82);
+    final direction = targetLocal - attackerLocal;
+    final angle = math.atan2(direction.dy, direction.dx);
 
     // A self-contained `Stack` + `Positioned` pair, scoped to this
     // widget's own subtree, so the `Positioned` below always has a valid
@@ -217,18 +268,168 @@ class CombatEffectsOverlay extends StatelessWidget {
         Positioned(
           left: position.dx - projectileSize / 2,
           top: position.dy - projectileSize / 2,
-          child: Icon(
+          child: Transform.rotate(
             key: const ValueKey('projectile-mark'),
-            // A ranger looses an arrow; a healer's basic attack is a bolt
-            // of magic. The per-tile projectile this overlay replaced drew
-            // that distinction and it was lost in the move (#215).
-            attackerUnitId == UnitId.ranger ? Icons.arrow_forward : Icons.bolt,
-            size: projectileSize,
-            color:
-                attackerSide == mySide ? Colors.blueAccent : Colors.redAccent,
+            angle: angle,
+            child: Image.asset(
+              effectKind.assetPath,
+              key: ValueKey('projectile-${effectKind.name}'),
+              width: projectileSize,
+              height: projectileSize,
+              fit: BoxFit.contain,
+            ),
           ),
         ),
       ],
     );
   }
+
+  Widget? _resolveHealEffect({
+    required BuildContext context,
+    required HealEvent event,
+    required double subProgress,
+    required RenderObject ancestor,
+  }) {
+    final sourceSide = event.bySide;
+    final sourceSlot = event.bySlot;
+    final targetSide = event.targetSide;
+    final targetSlot = event.targetSlot;
+    if (sourceSide == null ||
+        sourceSlot == null ||
+        targetSide == null ||
+        targetSlot == null ||
+        subProgress >= kHealImpactFraction) {
+      return null;
+    }
+
+    final landscape =
+        MediaQuery.orientationOf(context) == Orientation.landscape;
+    final sourceBoardKey = sourceSide == mySide ? myBoardKey : opponentBoardKey;
+    final targetBoardKey = targetSide == mySide ? myBoardKey : opponentBoardKey;
+    final source = _tileCenterRelativeTo(
+      boardKey: sourceBoardKey,
+      slot: sourceSlot,
+      reverseRows: sourceSide != mySide,
+      landscape: landscape,
+      ancestor: ancestor,
+    );
+    final target = _tileCenterRelativeTo(
+      boardKey: targetBoardKey,
+      slot: targetSlot,
+      reverseRows: targetSide != mySide,
+      landscape: landscape,
+      ancestor: ancestor,
+    );
+    final tileSize = _tileSize(sourceBoardKey);
+    if (source == null || target == null || tileSize == null) return null;
+
+    return RepaintBoundary(
+      child: CustomPaint(
+        key: const ValueKey('healer-source-transfer-vfx'),
+        painter: _HealTransferPainter(
+          source: source,
+          target: target,
+          tileSize: tileSize,
+          progress: healTravel(subProgress),
+        ),
+        child: const SizedBox.expand(),
+      ),
+    );
+  }
+}
+
+class _HealTransferPainter extends CustomPainter {
+  const _HealTransferPainter({
+    required this.source,
+    required this.target,
+    required this.tileSize,
+    required this.progress,
+  });
+
+  final Offset source;
+  final Offset target;
+  final double tileSize;
+  final double progress;
+
+  Offset _controlPoint() {
+    final delta = target - source;
+    if (delta.distance < 1) return source + Offset(0, -tileSize * 0.78);
+    final normal = Offset(-delta.dy, delta.dx) / delta.distance;
+    return Offset.lerp(source, target, 0.5)! +
+        normal * math.min(tileSize * 0.55, delta.distance * 0.18);
+  }
+
+  Offset _pointAt(double t) {
+    final control = _controlPoint();
+    final inverse = 1 - t;
+    return source * (inverse * inverse) +
+        control * (2 * inverse * t) +
+        target * (t * t);
+  }
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final control = _controlPoint();
+    final arc = Path()
+      ..moveTo(source.dx, source.dy)
+      ..quadraticBezierTo(control.dx, control.dy, target.dx, target.dy);
+    final metric = arc.computeMetrics().first;
+    final visibleArc = metric.extractPath(0, metric.length * progress);
+    final fade = 1 - ((progress - 0.82) / 0.18).clamp(0.0, 1.0);
+
+    canvas.drawPath(
+      visibleArc,
+      Paint()
+        ..color = const Color(0xFF79F2AE).withValues(alpha: 0.30 * fade)
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = tileSize * 0.10
+        ..strokeCap = StrokeCap.round,
+    );
+    canvas.drawPath(
+      visibleArc,
+      Paint()
+        ..color = const Color(0xFFFFE681).withValues(alpha: 0.72 * fade)
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = tileSize * 0.025
+        ..strokeCap = StrokeCap.round,
+    );
+
+    final sourcePulse = (progress / 0.42).clamp(0.0, 1.0);
+    final sourceFade = 1 - sourcePulse;
+    canvas.drawCircle(
+      source,
+      tileSize * (0.16 + sourcePulse * 0.28),
+      Paint()
+        ..color = const Color(0xFF74F2A7).withValues(alpha: 0.85 * sourceFade)
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 3.0,
+    );
+
+    for (var i = 0; i < 3; i++) {
+      final moteProgress = (progress * 1.18 - i * 0.11).clamp(0.0, 1.0);
+      if (moteProgress <= 0) continue;
+      final position = _pointAt(moteProgress);
+      final radius = tileSize * (0.055 - i * 0.009);
+      canvas.drawCircle(
+        position,
+        radius * 1.9,
+        Paint()..color = const Color(0xFF62EFA2).withValues(alpha: 0.20 * fade),
+      );
+      canvas.drawCircle(
+        position,
+        radius,
+        Paint()
+          ..color =
+              (i.isEven ? const Color(0xFFFFFFFF) : const Color(0xFFFFDF63))
+                  .withValues(alpha: 0.95 * fade),
+      );
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant _HealTransferPainter oldDelegate) =>
+      oldDelegate.source != source ||
+      oldDelegate.target != target ||
+      oldDelegate.tileSize != tileSize ||
+      oldDelegate.progress != progress;
 }

@@ -27,19 +27,19 @@ class FindMatchButton extends ConsumerWidget {
 
     final (label, onPressed) = switch (state) {
       MatchmakingState.idle => (
-          const Text('Find match'),
+          const Text('จับคู่ด่วน'),
           enabled ? () => notifier.beginSearch() : null,
         ),
       MatchmakingState.joining => (
-          const Text('Joining queue…'),
+          const Text('กำลังเข้าคิว…'),
           null,
         ),
       MatchmakingState.searching => (
-          const Text('Cancel'),
+          const Text('ยกเลิก'),
           notifier.cancelSearch,
         ),
       MatchmakingState.matched => (
-          const Text('Match found!'),
+          const Text('พบคู่แข่งแล้ว!'),
           null, // disabled — auto-nav takes over
         ),
     };
@@ -50,6 +50,7 @@ class FindMatchButton extends ConsumerWidget {
           ? AppButtonVariant.secondary
           : AppButtonVariant.primary,
       size: AppButtonSize.lg,
+      icon: state == MatchmakingState.idle ? Icons.sports_martial_arts : null,
       child: label,
     );
   }

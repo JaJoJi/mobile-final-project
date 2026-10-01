@@ -9,9 +9,12 @@ interface PubSubEnvelope {
   type: string;
   payload: unknown;
   targetUserId?: string;
+  /** Room fan-out (#258): deliver to every listed user's local sockets. */
+  targetUserIds?: string[];
 }
 
 const CHANNEL_PATTERN = 'match:*:events';
+const ROOM_CHANNEL_PATTERN = 'room:*:events';
 
 /**
  * Cross-instance Pub/Sub bridge for real-time game events.
@@ -69,12 +72,14 @@ export class PubsubBridge implements OnModuleInit, OnModuleDestroy {
       this.logger.error(`pubsub subscriber error: ${e.message}`),
     );
     await this.subscriber.psubscribe(CHANNEL_PATTERN);
+    await this.subscriber.psubscribe(ROOM_CHANNEL_PATTERN);
     this.subscriber.on('pmessage', (_pattern, channel, payload) => {
       this.handleMessage(channel, payload).catch((e: unknown) =>
         this.logger.error(`pmessage handler failed: ${(e as Error).message}`),
       );
     });
     this.logger.log(`PSUBSCRIBE ${CHANNEL_PATTERN} active`);
+    this.logger.log(`PSUBSCRIBE ${ROOM_CHANNEL_PATTERN} active`);
   }
 
   async onModuleDestroy(): Promise<void> {
@@ -175,7 +180,26 @@ export class PubsubBridge implements OnModuleInit, OnModuleDestroy {
     );
   }
 
-  // ─── 60 s late-subscriber cache (race R14) ─────────────────────────────
+  /**
+   * Publish a room event (#258, e.g. `game:room:state`). Rooms have no
+   * match-style subscription index — delivery resolves `targetUserIds`
+   * against each replica's live `localUserSockets`, so owner and guest on
+   * different replicas both receive it.
+   */
+  async publishToRoom(
+    roomId: string,
+    eventType: string,
+    payload: unknown,
+    targetUserIds: string[],
+  ): Promise<void> {
+    const envelope: PubSubEnvelope = { type: eventType, payload, targetUserIds };
+    await this.redis.client.publish(
+      `room:${roomId}:events`,
+      JSON.stringify(envelope),
+    );
+  }
+
+  // ─── Late-subscriber cache (race R14) ──────────────────────────────────
 
   /**
    * Cache the full combat-event batch for `matchId` so a client that
@@ -183,12 +207,16 @@ export class PubsubBridge implements OnModuleInit, OnModuleDestroy {
    * {@link getCombatResult}. The TTL includes a safety margin beyond the
    * combat-done timeout so the fallback worker can always read the result.
    */
-  async writeCombatResult(matchId: string, events: CombatEvent[]): Promise<void> {
+  async writeCombatResult(
+    matchId: string,
+    events: CombatEvent[],
+    ttlSeconds = COMBAT_RESULT_TTL_SECONDS,
+  ): Promise<void> {
     await this.redis.client.set(
       `match:${matchId}:combat-result`,
       JSON.stringify(events),
       'EX',
-      COMBAT_RESULT_TTL_SECONDS,
+      ttlSeconds,
     );
   }
 
@@ -218,9 +246,9 @@ export class PubsubBridge implements OnModuleInit, OnModuleDestroy {
    * sockets per replica and only the match they care about).
    */
   private async handleMessage(channel: string, payload: string): Promise<void> {
-    // channel = "match:<matchId>:events"
+    // channel = "match:<matchId>:events" | "room:<roomId>:events"
     const parts = channel.split(':');
-    if (parts.length !== 3 || parts[0] !== 'match' || parts[2] !== 'events') {
+    if (parts.length !== 3 || parts[2] !== 'events') {
       this.logger.warn(`ignoring unexpected channel: ${channel}`);
       return;
     }
@@ -232,6 +260,15 @@ export class PubsubBridge implements OnModuleInit, OnModuleDestroy {
       return;
     }
     if (!envelope?.type) return;
+
+    if (parts[0] === 'room') {
+      this.deliverToUsers(envelope);
+      return;
+    }
+    if (parts[0] !== 'match') {
+      this.logger.warn(`ignoring unexpected channel: ${channel}`);
+      return;
+    }
 
     const matchId = parts[1];
     // The first phase event is what tells a connected, queued player which
@@ -262,6 +299,23 @@ export class PubsubBridge implements OnModuleInit, OnModuleDestroy {
     for (const [sid, userId] of bucket) {
       if (envelope.targetUserId && envelope.targetUserId !== userId) continue;
       this.server.to(sid).emit(envelope.type, envelope.payload);
+    }
+  }
+
+  /**
+   * Room fan-out (#258). Unlike matches there is no per-match subscription
+   * index — the envelope names its recipients and each replica resolves
+   * them against its own live sockets (populated on WS connect).
+   */
+  private deliverToUsers(envelope: PubSubEnvelope): void {
+    if (!this.server) {
+      this.logger.warn('room message arrived before server injection; dropping');
+      return;
+    }
+    for (const userId of envelope.targetUserIds ?? []) {
+      for (const socketId of this.localUserSockets.get(userId) ?? []) {
+        this.server.to(socketId).emit(envelope.type, envelope.payload);
+      }
     }
   }
 }

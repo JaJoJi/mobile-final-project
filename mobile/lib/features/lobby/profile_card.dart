@@ -20,28 +20,30 @@ final currentUserProvider = FutureProvider<Map<String, dynamic>>((ref) async {
 /// Profile card. Reads [currentUserProvider]; renders nothing useful while
 /// the fetch is pending (just a skeleton of the same shape).
 class ProfileCard extends ConsumerWidget {
-  const ProfileCard({super.key});
+  const ProfileCard({super.key, this.embedded = false});
+
+  /// Omits the card surface when this content lives in a larger page header.
+  final bool embedded;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final userAsync = ref.watch(currentUserProvider);
 
-    return AppCard(
-      child: userAsync.when(
-        data: (user) => _ProfileContent(
-          username: user['username'] as String? ?? 'unknown',
-          rating: user['rating'] as int? ?? 0,
-        ),
-        loading: () => const _ProfileSkeleton(),
-        error: (_, __) => const Padding(
-          padding: EdgeInsets.symmetric(vertical: AppSpacing.sm),
-          child: Text(
-            'Couldn\u2019t load profile',
-            style: TextStyle(color: Colors.red),
-          ),
+    final content = userAsync.when(
+      data: (user) => _ProfileContent(
+        username: user['username'] as String? ?? 'unknown',
+        rating: user['rating'] as int? ?? 0,
+      ),
+      loading: () => const _ProfileSkeleton(),
+      error: (_, __) => const Padding(
+        padding: EdgeInsets.symmetric(vertical: AppSpacing.sm),
+        child: Text(
+          'โหลดข้อมูลผู้เล่นไม่สำเร็จ',
+          style: TextStyle(color: Colors.red),
         ),
       ),
     );
+    return embedded ? content : AppCard(child: content);
   }
 }
 
@@ -89,7 +91,7 @@ class _ProfileContent extends StatelessWidget {
                   borderRadius: BorderRadius.circular(AppRadius.sm),
                 ),
                 child: Text(
-                  'rating: $rating',
+                  'เรตติ้ง: $rating',
                   style: TextStyle(
                     color: scheme.onSecondaryContainer,
                     fontWeight: FontWeight.w500,

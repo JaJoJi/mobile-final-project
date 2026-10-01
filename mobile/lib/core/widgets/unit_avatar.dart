@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../theme/app_spacing.dart';
 import '../theme/app_typography.dart';
 import '../theme/game_theme.dart';
+import '../utils/unit_star_level.dart';
 import 'game_art_frame.dart';
 import 'health_bar.dart';
 
@@ -32,8 +33,15 @@ extension UnitKindDisplay on UnitKind {
         UnitKind.tank => 'tank',
       };
 
-  /// Illustration for this unit — `mobile/assets/images/units/`.
-  String get artPath => 'assets/images/units/$_assetName.png';
+  /// Illustration for this unit and the server's zero-based fusion tier.
+  ///
+  /// Keeping this mapping beside [UnitKind] makes every consumer use the
+  /// same evolution art instead of constructing asset paths independently.
+  String artPathForTier(int fusionTier) =>
+      'assets/images/units/${_assetName}_${displayStarLevel(fusionTier)}.png';
+
+  /// The safe fallback used when an evolved illustration cannot be decoded.
+  String get baseArtPath => artPathForTier(0);
 
   /// Fallback shape when the art can't load — design spec §6 (● / ✚ / ▲ / ■).
   /// Also the small type glyph shown at `sm` size where there's no name label.
@@ -44,6 +52,13 @@ extension UnitKindDisplay on UnitKind {
         UnitKind.tank => Icons.square,
       };
 }
+
+/// Every unit evolution image used in a match. The match screen precaches this
+/// collection before planning, battle, scouting, or results can display it.
+final List<String> allUnitArtPaths = List<String>.unmodifiable([
+  for (final kind in UnitKind.values)
+    for (var tier = 0; tier <= 2; tier++) kind.artPathForTier(tier),
+]);
 
 /// Where a [UnitAvatar] is being shown — design spec §3.5.
 enum UnitAvatarVariant { shop, bench, board, replay }
@@ -147,6 +162,7 @@ class UnitAvatar extends StatelessWidget {
     final isBoardPiece = variant == UnitAvatarVariant.board ||
         variant == UnitAvatarVariant.replay;
     final isReservePiece = variant == UnitAvatarVariant.bench;
+    final displayStar = displayStarLevel(star);
 
     final tint = side == UnitSide.ally ? game.ally : game.enemy;
     final borderColor = switch (state) {
@@ -207,6 +223,7 @@ class UnitAvatar extends StatelessWidget {
                       alignment: const Alignment(0.3, 0),
                       child: _UnitArt(
                         kind: kind,
+                        fusionTier: star,
                         tint: tint,
                         size: _width * 0.76,
                       ),
@@ -237,7 +254,10 @@ class UnitAvatar extends StatelessWidget {
               ),
               Align(
                 alignment: Alignment.topLeft,
-                child: _StarBadge(star: star, color: game.starColor(star)),
+                child: _StarBadge(
+                  star: displayStar,
+                  color: game.starColor(star),
+                ),
               ),
             ],
           ),
@@ -257,12 +277,16 @@ class UnitAvatar extends StatelessWidget {
             children: [
               Align(
                 alignment: Alignment.centerLeft,
-                child: _StarBadge(star: star, color: game.starColor(star)),
+                child: _StarBadge(
+                  star: displayStar,
+                  color: game.starColor(star),
+                ),
               ),
               Expanded(
                 child: Center(
                   child: _UnitArt(
                     kind: kind,
+                    fusionTier: star,
                     tint: tint,
                     size: _width * 0.76,
                   ),
@@ -300,6 +324,7 @@ class UnitAvatar extends StatelessWidget {
           ? (landscapeShop ? landscapeShopContent() : portraitShopContent())
           : Stack(
               fit: StackFit.expand,
+              clipBehavior: Clip.none,
               children: [
                 Padding(
                   // The board/bench/replay frame is a perfect square
@@ -318,36 +343,91 @@ class UnitAvatar extends StatelessWidget {
                     AppSpacing.xxs,
                     AppSpacing.xxs,
                   ),
-                  child: _UnitArt(kind: kind, tint: tint, size: _width),
+                  child: isBoardPiece && expand
+                      ? LayoutBuilder(
+                          builder: (context, constraints) {
+                            final responsiveSize =
+                                constraints.biggest.shortestSide;
+                            return Transform.translate(
+                              // Lift only the illustration so the piece's
+                              // foot sits near the centre of the magic ring;
+                              // stars and HP remain anchored to the slot.
+                              offset: Offset(0, -responsiveSize * 0.12),
+                              child: Transform.scale(
+                                // Board and replay slots grow with the stone
+                                // platform. Scaling from the feet makes the
+                                // extra size rise into the available headroom.
+                                scale: 1.24,
+                                alignment: Alignment.bottomCenter,
+                                child: _UnitArt(
+                                  kind: kind,
+                                  fusionTier: star,
+                                  tint: tint,
+                                  size: responsiveSize,
+                                ),
+                              ),
+                            );
+                          },
+                        )
+                      : _UnitArt(
+                          kind: kind,
+                          fusionTier: star,
+                          tint: tint,
+                          size: _width,
+                        ),
                 ),
-                if (star > 0)
-                  Positioned(
-                    left: AppSpacing.xxs,
-                    top: AppSpacing.xxs,
-                    child: DecoratedBox(
-                      decoration: BoxDecoration(
-                        color: Colors.black.withValues(alpha: 0.55),
-                        borderRadius: AppRadius.allFull,
+                if (isBoardPiece)
+                  Positioned.fill(
+                    key: const ValueKey('unit-star-layer'),
+                    child: Align(
+                      alignment: Alignment(
+                        0,
+                        hp != null && maxHp != null ? 1.45 : 1,
                       ),
-                      child: Padding(
-                        padding: const EdgeInsets.all(AppSpacing.xxs),
-                        child: _StarBadge(
-                          star: star,
-                          color: game.starColor(star),
+                      child: _StarBadge(
+                        key: const ValueKey('unit-star-indicator'),
+                        star: displayStar,
+                        color: game.starColor(star),
+                        size: 13,
+                        framed: true,
+                      ),
+                    ),
+                  ),
+                // Paint the health bar after the star badge so its frame can
+                // never cover the bar when both layers get close on a small
+                // tile. Their responsive positions remain unchanged.
+                if (isBoardPiece && hp != null && maxHp != null)
+                  Positioned.fill(
+                    key: const ValueKey('unit-health-layer'),
+                    child: Align(
+                      alignment: const Alignment(0, 0.84),
+                      child: FractionallySizedBox(
+                        widthFactor: 0.72,
+                        child: HealthBar(
+                          current: hp!,
+                          max: maxHp!,
+                          size: HealthBarSize.sm,
+                          showText: false,
+                          compactUnitStyle: true,
                         ),
                       ),
                     ),
                   ),
-                if (isBoardPiece && hp != null && maxHp != null)
+                if (isReservePiece)
                   Positioned(
-                    left: AppSpacing.xxs,
-                    right: AppSpacing.xxs,
-                    bottom: AppSpacing.xxs,
-                    child: HealthBar(
-                      current: hp!,
-                      max: maxHp!,
-                      size: HealthBarSize.sm,
-                      showText: false,
+                    left: 0,
+                    right: 0,
+                    top: AppSpacing.xxs,
+                    child: Center(
+                      child: FittedBox(
+                        fit: BoxFit.scaleDown,
+                        child: _StarBadge(
+                          key: const ValueKey('unit-star-indicator'),
+                          star: displayStar,
+                          color: game.starColor(star),
+                          framed: true,
+                        ),
+                      ),
                     ),
                   ),
               ],
@@ -445,7 +525,7 @@ class UnitAvatar extends StatelessWidget {
 
     return Semantics(
       button: onTap != null,
-      label: '${kind.label} ${star > 0 ? '$star ดาว' : ''}'
+      label: '${kind.label} $displayStar ดาว'
           '${price != null ? ' ราคา $price ทอง' : ''}'
           '${state == UnitAvatarState.fusable ? ' รวมได้' : ''}',
       child: SizedBox(
@@ -468,9 +548,15 @@ enum UnitSide { ally, enemy }
 /// if the asset is missing / fails to decode (e.g. in a widget test with no
 /// asset bundle).
 class _UnitArt extends StatelessWidget {
-  const _UnitArt({required this.kind, required this.tint, required this.size});
+  const _UnitArt({
+    required this.kind,
+    required this.fusionTier,
+    required this.tint,
+    required this.size,
+  });
 
   final UnitKind kind;
+  final int fusionTier;
   final Color tint;
   final double size;
 
@@ -479,33 +565,96 @@ class _UnitArt extends StatelessWidget {
     // The unit's identity is already announced by the parent
     // `UnitAvatar` Semantics label + the name text + star badge, so the
     // illustration itself is decorative to a screen reader.
+    Widget fallbackIcon() => Icon(kind.shape, size: size * 0.6, color: tint);
+
+    Widget art(String path, {required bool allowBaseFallback}) => Image.asset(
+          path,
+          width: size,
+          height: size,
+          fit: BoxFit.contain,
+          gaplessPlayback: true,
+          errorBuilder: (_, __, ___) => allowBaseFallback
+              ? Image.asset(
+                  kind.baseArtPath,
+                  width: size,
+                  height: size,
+                  fit: BoxFit.contain,
+                  gaplessPlayback: true,
+                  errorBuilder: (_, __, ___) => fallbackIcon(),
+                )
+              : fallbackIcon(),
+        );
+
     return ExcludeSemantics(
-      child: Image.asset(
-        kind.artPath,
-        width: size,
-        height: size,
-        fit: BoxFit.contain,
-        errorBuilder: (_, __, ___) =>
-            Icon(kind.shape, size: size * 0.6, color: tint),
+      child: art(
+        kind.artPathForTier(fusionTier),
+        allowBaseFallback: fusionTier > 0,
       ),
     );
   }
 }
 
 class _StarBadge extends StatelessWidget {
-  const _StarBadge({required this.star, required this.color});
+  const _StarBadge({
+    super.key,
+    required this.star,
+    required this.color,
+    this.size = 12,
+    this.framed = false,
+  });
 
   final int star;
   final Color color;
+  final double size;
+  final bool framed;
 
   @override
   Widget build(BuildContext context) {
-    // 0★ = base unit — no glyphs (the design mock only shows stars for 1★+).
-    return Row(
+    // This receives the one-based display level, never the server's 0..2 tier.
+    final stars = Row(
       mainAxisSize: MainAxisSize.min,
-      children: List.generate(
-        star.clamp(0, 2),
-        (_) => Icon(Icons.star, size: 12, color: color),
+      children: [
+        for (var index = 0; index < star.clamp(1, 3); index++) ...[
+          if (index > 0) const SizedBox(width: 1),
+          SizedBox.square(
+            dimension: size + 2,
+            child: Stack(
+              alignment: Alignment.center,
+              children: [
+                Icon(
+                  Icons.star_border,
+                  size: size + 2,
+                  color: Colors.black.withValues(alpha: 0.9),
+                ),
+                Icon(Icons.star, size: size, color: color),
+              ],
+            ),
+          ),
+        ],
+      ],
+    );
+    if (!framed) return stars;
+
+    return DecoratedBox(
+      key: const ValueKey('unit-star-frame'),
+      decoration: BoxDecoration(
+        color: const Color(0xFF071827).withValues(alpha: 0.88),
+        borderRadius: AppRadius.allFull,
+        border: Border.all(color: color.withValues(alpha: 0.82)),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.46),
+            blurRadius: 4,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(
+          horizontal: AppSpacing.xs,
+          vertical: 1,
+        ),
+        child: stars,
       ),
     );
   }

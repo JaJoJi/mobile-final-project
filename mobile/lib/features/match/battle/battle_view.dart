@@ -16,6 +16,7 @@
 library;
 
 import 'dart:async';
+import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart' show SchedulerBinding;
@@ -35,6 +36,7 @@ import '../board/stone_board_tile.dart';
 import '../match_controller.dart' show unitMaxHp;
 import 'battle_playback_controller.dart';
 import 'battle_visual_state.dart';
+import 'combat_effect_assets.dart';
 import 'combat_effects_math.dart';
 import 'combat_effects_overlay.dart';
 
@@ -44,6 +46,12 @@ final battlePlaybackProvider = StateNotifierProvider.autoDispose
     .family<BattlePlaybackController, BattleVisualState, String>(
   (ref, matchId) => BattlePlaybackController(),
 );
+
+String _visiblePlayerName(String? username, MatchSide side) {
+  final name = username?.trim();
+  if (name != null && name.isNotEmpty) return name;
+  return side == MatchSide.p1 ? 'ผู้เล่น 1' : 'ผู้เล่น 2';
+}
 
 /// `BattleView` — 2a skeleton.
 class BattleView extends ConsumerStatefulWidget {
@@ -86,6 +94,7 @@ class _BattleViewState extends ConsumerState<BattleView>
   /// untestable and the test for it flaky.
   Duration? _playbackStart;
   Duration _playbackTotal = Duration.zero;
+  int _playbackSpeed = 1;
 
   /// How far into the replay this client already was when it loaded the
   /// batch, measured from the server's own `endedAt` timestamp.
@@ -108,8 +117,23 @@ class _BattleViewState extends ConsumerState<BattleView>
   int? _cachedStatesIndex;
   bool? _cachedStatesLanded;
   Map<UnitKey, UnitVisualState>? _cachedStates;
+  Widget? _cachedStage;
+  Map<UnitKey, UnitVisualState>? _stageStates;
+  MatchState? _stageMatch;
+  GameTheme? _stageTheme;
   final GlobalKey _myBoardKey = GlobalKey();
   final GlobalKey _opponentBoardKey = GlobalKey();
+  bool _vfxPrecached = false;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (_vfxPrecached) return;
+    _vfxPrecached = true;
+    for (final path in combatEffectAssetPaths) {
+      precacheImage(AssetImage(path), context);
+    }
+  }
 
   @override
   void initState() {
@@ -216,6 +240,7 @@ class _BattleViewState extends ConsumerState<BattleView>
     _staleTimer?.cancel();
     _staleDetected = false;
     _acked = false;
+    _playbackSpeed = 1;
     _controller.loadBatch(batch);
     final filtered = _controller.events!;
     final totalMs = combatPlaybackDuration(filtered.length).inMilliseconds;
@@ -249,19 +274,61 @@ class _BattleViewState extends ConsumerState<BattleView>
     );
     // The controller only drives repaints now — position comes from the
     // clock in [_pushPlayhead], so a throttled tab self-corrects.
+    _scheduleRemainingPlayback(remaining);
+    setState(() {}); // refresh the playhead listener binding below
+  }
+
+  Duration _realDurationAtCurrentSpeed(Duration playbackDuration) => Duration(
+        microseconds: (playbackDuration.inMicroseconds / _playbackSpeed).ceil(),
+      );
+
+  /// Restarts the repaint ticker and completion timer without changing the
+  /// logical playhead. Playback speed is local-only; completion still sends
+  /// the same idempotent `combat_done` acknowledgement to the server.
+  void _scheduleRemainingPlayback(Duration playbackRemaining) {
+    final realRemaining = _realDurationAtCurrentSpeed(playbackRemaining);
     _playhead
-      ..duration = remaining
+      ..stop()
+      ..duration = realRemaining
       ..forward(from: 0);
     // Ack on a timer, not on animation completion: a background tab gets
-    // no animation frames at all, so a frame-driven ack would never fire
-    // and the round would hang until the server's 60s combat timeout.
+    // no animation frames at all, so a frame-driven ack would never fire.
     // Browsers throttle background timers but do still run them.
     _ackTimer?.cancel();
     _ackTimer = Timer(
-      remaining + const Duration(milliseconds: 500),
+      realRemaining + const Duration(milliseconds: 500),
       () => _ack('ack-timer'),
     );
-    setState(() {}); // refresh the playhead listener binding below
+  }
+
+  Duration _elapsedPlaybackAt(Duration timestamp) {
+    final start = _playbackStart;
+    if (start == null) return _playbackOffset;
+    final realElapsed = timestamp - start;
+    final scaledElapsed = Duration(
+      microseconds: realElapsed.inMicroseconds * _playbackSpeed,
+    );
+    final elapsed = _playbackOffset + scaledElapsed;
+    return elapsed > _playbackTotal ? _playbackTotal : elapsed;
+  }
+
+  void _cyclePlaybackSpeed() {
+    if (_acked || _controller.events == null || _playbackStart == null) return;
+    final now = SchedulerBinding.instance.currentSystemFrameTimeStamp;
+    final elapsed = _elapsedPlaybackAt(now);
+    if (elapsed >= _playbackTotal) return;
+
+    _playbackOffset = elapsed;
+    _playbackStart = now;
+    setState(() {
+      _playbackSpeed = _playbackSpeed == 3 ? 1 : _playbackSpeed + 1;
+    });
+    _scheduleRemainingPlayback(_playbackTotal - elapsed);
+    combatTrace(
+      'playback SPEED x$_playbackSpeed round=$_loadedRound '
+      'elapsedMs=${elapsed.inMilliseconds} '
+      'remainingMs=${(_playbackTotal - elapsed).inMilliseconds}',
+    );
   }
 
   bool _acked = false;
@@ -326,7 +393,7 @@ class _BattleViewState extends ConsumerState<BattleView>
     // showed up as combat feeling sluggish. Cache it against the index —
     // plus the one other thing the result depends on, whether the event
     // being played has connected yet, which flips once per event too.
-    final unitStates = <UnitKey, UnitVisualState>{};
+    Map<UnitKey, UnitVisualState> unitStates = const {};
     if (view.batch != null) {
       final current = currentEventEffect(
         view.batch!.events,
@@ -346,8 +413,11 @@ class _BattleViewState extends ConsumerState<BattleView>
           playheadIndex: view.playheadIndex,
           currentEventLanded: landed,
           playerBoard: widget.match.roster.board,
-          opponentBoard:
-              widget.match.opponent.boardSummary.asMap().entries.map((entry) {
+          opponentBoard: (widget.match.opponent.battleBoardSummary ??
+                  widget.match.opponent.boardSummary)
+              .asMap()
+              .entries
+              .map((entry) {
             final o = entry.value;
             if (o == null) return null;
             return Unit(
@@ -359,9 +429,31 @@ class _BattleViewState extends ConsumerState<BattleView>
             );
           }).toList(),
           mySide: widget.match.yourSide,
+          initialBoard: view.batch!.initialBoard,
         );
       }
-      unitStates.addAll(_cachedStates!);
+      unitStates = _cachedStates!;
+    }
+
+    // Reuse the board subtree between event/impact boundaries. Only the
+    // travelling overlay needs a rebuild on every playback tick. Local hit
+    // and heal controllers still animate independently inside the stage.
+    if (_cachedStage == null ||
+        !identical(_stageStates, unitStates) ||
+        !identical(_stageMatch, widget.match) ||
+        !identical(_stageTheme, game)) {
+      _stageStates = unitStates;
+      _stageMatch = widget.match;
+      _stageTheme = game;
+      _cachedStage = RepaintBoundary(
+        child: _BattleStage(
+          match: widget.match,
+          game: game,
+          unitStates: unitStates,
+          myBoardKey: _myBoardKey,
+          opponentBoardKey: _opponentBoardKey,
+        ),
+      );
     }
 
     return Padding(
@@ -371,19 +463,24 @@ class _BattleViewState extends ConsumerState<BattleView>
           Expanded(
             child: Stack(
               children: [
-                _BattleStage(
-                  match: widget.match,
-                  game: game,
-                  unitStates: unitStates,
-                  myBoardKey: _myBoardKey,
-                  opponentBoardKey: _opponentBoardKey,
-                ),
+                _cachedStage!,
                 CombatEffectsOverlay(
                   batch: view.batch,
                   playheadProgress: view.playheadProgress,
                   myBoardKey: _myBoardKey,
                   opponentBoardKey: _opponentBoardKey,
                   mySide: widget.match.yourSide,
+                ),
+                Positioned(
+                  top: AppSpacing.xs,
+                  right: AppSpacing.xs,
+                  child: _PlaybackSpeedButton(
+                    speed: _playbackSpeed,
+                    onPressed:
+                        view.batch == null || _acked || widget.skipSubmitted
+                            ? null
+                            : _cyclePlaybackSpeed,
+                  ),
                 ),
               ],
             ),
@@ -426,11 +523,11 @@ class _BattleViewState extends ConsumerState<BattleView>
   /// This — not the [AnimationController]'s own value — is the authority
   /// on how far the replay has actually got.
   double? _clockProgress() {
-    final start = _playbackStart;
     final totalMs = _playbackTotal.inMilliseconds;
-    if (start == null || totalMs <= 0) return null;
-    final elapsed = _playbackOffset +
-        (SchedulerBinding.instance.currentSystemFrameTimeStamp - start);
+    if (_playbackStart == null || totalMs <= 0) return null;
+    final elapsed = _elapsedPlaybackAt(
+      SchedulerBinding.instance.currentSystemFrameTimeStamp,
+    );
     return (elapsed.inMilliseconds / totalMs).clamp(0.0, 1.0);
   }
 
@@ -441,9 +538,9 @@ class _BattleViewState extends ConsumerState<BattleView>
       _controller.seekTo(_playhead.value);
       return;
     }
-    final elapsedMs = (_playbackOffset +
-            (SchedulerBinding.instance.currentSystemFrameTimeStamp - start))
-        .inMilliseconds;
+    final elapsedMs = _elapsedPlaybackAt(
+      SchedulerBinding.instance.currentSystemFrameTimeStamp,
+    ).inMilliseconds;
     final progress = _clockProgress() ?? 0.0;
     // One line per quarter of the replay, so the trace shows how far the
     // playhead actually travelled before the round was resolved without
@@ -460,6 +557,62 @@ class _BattleViewState extends ConsumerState<BattleView>
       );
     }
     _controller.seekTo(progress);
+  }
+}
+
+class _PlaybackSpeedButton extends StatelessWidget {
+  const _PlaybackSpeedButton({
+    required this.speed,
+    required this.onPressed,
+  });
+
+  final int speed;
+  final VoidCallback? onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final game = theme.extension<GameTheme>()!;
+    final enabled = onPressed != null;
+
+    return Tooltip(
+      message: 'ความเร็วการต่อสู้ x$speed',
+      child: Material(
+        color: theme.colorScheme.surface.withValues(alpha: 0.28),
+        shape: CircleBorder(
+          side: BorderSide(
+            color: enabled
+                ? game.gold.withValues(alpha: 0.62)
+                : theme.colorScheme.outline.withValues(alpha: 0.28),
+            width: 1.25,
+          ),
+        ),
+        shadowColor: Colors.transparent,
+        child: InkWell(
+          key: const ValueKey('battle-speed-button'),
+          customBorder: const CircleBorder(),
+          onTap: onPressed,
+          child: SizedBox.square(
+            dimension: 44,
+            child: Center(
+              child: Text(
+                'x$speed',
+                key: const ValueKey('battle-speed-label'),
+                style: theme.textTheme.titleMedium?.copyWith(
+                  color: enabled
+                      ? game.gold.withValues(alpha: 0.88)
+                      : theme.colorScheme.onSurfaceVariant.withValues(
+                          alpha: 0.55,
+                        ),
+                  fontWeight: FontWeight.w900,
+                  height: 1,
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
   }
 }
 
@@ -486,10 +639,18 @@ class _BattleStage extends StatelessWidget {
     final orientation = MediaQuery.orientationOf(context);
     final enemySide =
         match.yourSide == MatchSide.p1 ? MatchSide.p2 : MatchSide.p1;
+    final playerName = _visiblePlayerName(
+      match.roster.username,
+      match.yourSide,
+    );
+    final opponentName = _visiblePlayerName(
+      match.opponent.username,
+      enemySide,
+    );
     final mine = _BoardPreview(
       boardKey: const ValueKey('battle-player-board'),
       positionKey: myBoardKey,
-      label: 'คุณ',
+      label: playerName,
       icon: Icons.shield_outlined,
       color: game.ally,
       units: match.roster.board,
@@ -501,10 +662,11 @@ class _BattleStage extends StatelessWidget {
     final opponent = _BoardPreview(
       boardKey: const ValueKey('battle-opponent-board'),
       positionKey: opponentBoardKey,
-      label: 'คู่แข่ง',
+      label: opponentName,
       icon: Icons.sports_martial_arts_outlined,
       color: game.enemy,
-      opponentUnits: match.opponent.boardSummary,
+      opponentUnits:
+          match.opponent.battleBoardSummary ?? match.opponent.boardSummary,
       side: enemySide,
       mySide: match.yourSide,
       unitStates: unitStates,
@@ -529,6 +691,8 @@ class _BattleStage extends StatelessWidget {
         ),
         Expanded(child: opponent),
         _PortraitVersusDivider(
+          opponentName: opponentName,
+          playerName: playerName,
           opponentColor: game.enemy,
           playerColor: game.ally,
         ),
@@ -683,12 +847,17 @@ class _BattleTileState extends State<BattleTile> with TickerProviderStateMixin {
   late final Animation<double> _floatAnim;
   late final AnimationController _shakeCtrl;
   late final Animation<double> _shakeAnim;
+  late final AnimationController _hitCtrl;
+  late final Animation<double> _hitAnim;
   late final AnimationController _healBubbleCtrl;
   late final Animation<double> _healBubbleAnim;
   late final AnimationController _recoilCtrl;
   late final Animation<double> _recoilAnim;
-  int? _lastFloatingDamage;
+  String? _lastFloatingToken;
+  int? _visibleFloatingAmount;
+  bool _visibleFloatingIsHeal = false;
   int? _lastDamageIndex;
+  HitEffectKind? _visibleHitEffectKind;
   int? _lastHealIndex;
   int? _lastRecoilIndex;
 
@@ -704,7 +873,7 @@ class _BattleTileState extends State<BattleTile> with TickerProviderStateMixin {
     super.initState();
     _floatCtrl = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 800),
+      duration: const Duration(milliseconds: 950),
       // These four are functional combat feedback (hit shake, recoil, heal
       // bubble, floating damage), not decoration. Without `preserve`,
       // Flutter runs every AnimationBehavior.normal controller at 5% of
@@ -716,6 +885,11 @@ class _BattleTileState extends State<BattleTile> with TickerProviderStateMixin {
     _floatAnim = Tween<double>(begin: 0, end: 1).animate(
       CurvedAnimation(parent: _floatCtrl, curve: AppMotion.standard),
     );
+    _floatCtrl.addStatusListener((status) {
+      if (status == AnimationStatus.completed && mounted) {
+        setState(() => _visibleFloatingAmount = null);
+      }
+    });
     // Hit shake: constant intensity, ~200ms, horizontal only.
     _shakeCtrl = AnimationController(
       vsync: this,
@@ -725,10 +899,23 @@ class _BattleTileState extends State<BattleTile> with TickerProviderStateMixin {
     _shakeAnim = Tween<double>(begin: 0, end: 1).animate(
       CurvedAnimation(parent: _shakeCtrl, curve: Curves.easeOut),
     );
-    // Heal bubble: expanding green circle, ~600ms, emit-and-dispose.
+    _hitCtrl = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 460),
+      animationBehavior: AnimationBehavior.preserve,
+    );
+    _hitAnim = Tween<double>(begin: 0, end: 1).animate(
+      CurvedAnimation(parent: _hitCtrl, curve: Curves.easeOutCubic),
+    );
+    _hitCtrl.addStatusListener((status) {
+      if (status == AnimationStatus.completed && mounted) {
+        setState(() => _visibleHitEffectKind = null);
+      }
+    });
+    // Heal sigil: long enough to read during a busy combat exchange.
     _healBubbleCtrl = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 600),
+      duration: const Duration(milliseconds: 1050),
       animationBehavior: AnimationBehavior.preserve,
     );
     _healBubbleAnim = Tween<double>(begin: 0, end: 1).animate(
@@ -749,15 +936,26 @@ class _BattleTileState extends State<BattleTile> with TickerProviderStateMixin {
   void didUpdateWidget(BattleTile oldWidget) {
     super.didUpdateWidget(oldWidget);
     final floatingAmount = widget.unitState?.floatingDamage;
-    final hasFloating = floatingAmount != null;
-    if (hasFloating && floatingAmount != _lastFloatingDamage) {
+    final floatingIsHeal = widget.unitState?.floatingIsHeal ?? false;
+    final floatingEventIndex = floatingIsHeal
+        ? widget.unitState?.healEventIndex
+        : widget.unitState?.lastDamageEventIndex;
+    final floatingToken = floatingAmount == null
+        ? null
+        : '${floatingIsHeal ? 'heal' : 'damage'}:'
+            '${floatingEventIndex ?? 'unknown'}:$floatingAmount';
+    if (floatingToken != null && floatingToken != _lastFloatingToken) {
+      _visibleFloatingAmount = floatingAmount;
+      _visibleFloatingIsHeal = floatingIsHeal;
       _floatCtrl.forward(from: 0);
     }
-    _lastFloatingDamage = floatingAmount;
+    if (floatingToken != null) _lastFloatingToken = floatingToken;
     // Hit shake: trigger on new damage event index.
     final damageIdx = widget.unitState?.lastDamageEventIndex;
     if (damageIdx != null && damageIdx != _lastDamageIndex) {
+      _visibleHitEffectKind = widget.unitState?.hitEffectKind;
       _shakeCtrl.forward(from: 0);
+      if (_visibleHitEffectKind != null) _hitCtrl.forward(from: 0);
     }
     _lastDamageIndex = damageIdx;
 
@@ -780,6 +978,7 @@ class _BattleTileState extends State<BattleTile> with TickerProviderStateMixin {
   void dispose() {
     _floatCtrl.dispose();
     _shakeCtrl.dispose();
+    _hitCtrl.dispose();
     _healBubbleCtrl.dispose();
     _recoilCtrl.dispose();
     super.dispose();
@@ -789,8 +988,9 @@ class _BattleTileState extends State<BattleTile> with TickerProviderStateMixin {
   Widget build(BuildContext context) {
     final uv = widget.unitState;
     final isAlive = uv?.alive ?? false;
+    final floatingAmount = _visibleFloatingAmount;
     return AnimatedOpacity(
-      opacity: uv == null ? 0.3 : (isAlive ? 1.0 : 0.3),
+      opacity: uv == null ? 0.3 : 1.0,
       duration: const Duration(milliseconds: 200),
       child: AnimatedBuilder(
         animation: Listenable.merge([_shakeAnim, _recoilAnim]),
@@ -829,11 +1029,12 @@ class _BattleTileState extends State<BattleTile> with TickerProviderStateMixin {
           children: [
             StoneBoardTile(
               slot: widget.slot,
-              unitSide: widget.unitSide,
+              broken: uv != null && !isAlive,
+              unitSide: isAlive ? widget.unitSide : null,
               // While this unit is mid-attack its sprite is drawn by
               // CombatEffectsOverlay travelling to the target, so the tile
               // leaves its square empty rather than showing it twice.
-              child: uv == null || uv.isMeleeAttacking
+              child: uv == null || !isAlive || uv.isMeleeAttacking
                   ? null
                   : UnitAvatar(
                       unitId: uv.unitId.toJson(),
@@ -849,7 +1050,7 @@ class _BattleTileState extends State<BattleTile> with TickerProviderStateMixin {
                     ),
             ),
             // Debuff tint overlay — persistent blue wash when debuff active.
-            if (uv?.debuff != null)
+            if (isAlive && uv?.debuff != null)
               Positioned.fill(
                 child: DecoratedBox(
                   decoration: BoxDecoration(
@@ -858,8 +1059,34 @@ class _BattleTileState extends State<BattleTile> with TickerProviderStateMixin {
                   ),
                 ),
               ),
+            if (_visibleHitEffectKind case final kind?)
+              Positioned.fill(
+                child: IgnorePointer(
+                  child: AnimatedBuilder(
+                    animation: _hitAnim,
+                    builder: (context, _) => Center(
+                      child: SizedBox.square(
+                        dimension: widget.tileWidth * 0.82,
+                        child: CustomPaint(
+                          key: ValueKey(
+                            switch (kind) {
+                              HitEffectKind.slash => 'slash-hit-vfx',
+                              HitEffectKind.tankImpact => 'tank-hit-vfx',
+                              HitEffectKind.projectile => 'projectile-hit-vfx',
+                            },
+                          ),
+                          painter: _BattleHitPainter(
+                            kind: kind,
+                            progress: _hitAnim.value,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
             // Debuff badge — small icon in top-right corner.
-            if (uv?.debuff != null)
+            if (isAlive && uv?.debuff != null)
               const Positioned(
                 top: 2,
                 right: 2,
@@ -869,67 +1096,98 @@ class _BattleTileState extends State<BattleTile> with TickerProviderStateMixin {
                   color: Color(0xFF42A5F5),
                 ),
               ),
-            // Heal bubble — expanding green circle, emit-and-dispose.
-            if (uv != null && uv.healEventIndex != null)
+            // Healing feedback — shown only for a server Heal/Lifesteal
+            // event. The ornate sigil belongs specifically to Healer;
+            // Fighter lifesteal retains the lighter legacy pulse.
+            if (isAlive && uv != null && uv.healEventIndex != null)
               Positioned.fill(
                 child: AnimatedBuilder(
                   animation: _healBubbleAnim,
                   builder: (context, _) {
-                    final progress = _healBubbleAnim.value;
-                    final radius = widget.tileWidth * 0.6 * progress;
-                    return Center(
-                      child: Container(
-                        width: radius * 2,
-                        height: radius * 2,
-                        decoration: BoxDecoration(
-                          shape: BoxShape.circle,
-                          color: Colors.green.withValues(
-                            alpha: (0.3 * (1.0 - progress)).clamp(0.0, 1.0),
-                          ),
-                        ),
-                      ),
+                    // Use controller time for the hold/fade phases. The
+                    // curved animation accelerates early, which previously
+                    // made a nominally long heal still disappear too soon.
+                    final progress = _healBubbleCtrl.value;
+                    final reduceMotion =
+                        MediaQuery.disableAnimationsOf(context);
+                    final scale = reduceMotion
+                        ? 0.95
+                        : 0.58 + Curves.easeOutBack.transform(progress) * 0.48;
+                    final opacity = uv.isHealerHeal
+                        ? progress < 0.55
+                            ? 1.0
+                            : (1 - (progress - 0.55) / 0.45).clamp(0.0, 1.0)
+                        : (1.0 - progress).clamp(0.0, 1.0);
+                    return Opacity(
+                      opacity: opacity,
+                      child: uv.isHealerHeal
+                          ? Stack(
+                              alignment: Alignment.center,
+                              children: [
+                                Transform.rotate(
+                                  angle: progress * 0.18,
+                                  child: Transform.scale(
+                                    scale: scale,
+                                    child: Image.asset(
+                                      CombatEffectKind.healerHeal.assetPath,
+                                      key: const ValueKey('healer-heal-vfx'),
+                                      fit: BoxFit.contain,
+                                    ),
+                                  ),
+                                ),
+                                Positioned.fill(
+                                  child: CustomPaint(
+                                    key: const ValueKey(
+                                      'healer-heal-particles',
+                                    ),
+                                    painter: _HealParticlePainter(progress),
+                                  ),
+                                ),
+                              ],
+                            )
+                          : Center(
+                              child: Container(
+                                key: const ValueKey('lifesteal-pulse'),
+                                width: widget.tileWidth * scale,
+                                height: widget.tileWidth * scale,
+                                decoration: BoxDecoration(
+                                  shape: BoxShape.circle,
+                                  color: Colors.green.withValues(alpha: 0.3),
+                                ),
+                              ),
+                            ),
                     );
                   },
                 ),
               ),
             // Floating damage/heal number.
-            if (uv != null && uv.floatingDamage != null)
+            if (floatingAmount != null)
               Positioned.fill(
                 child: AnimatedBuilder(
                   animation: _floatAnim,
                   builder: (context, _) {
                     final progress = _floatAnim.value;
-                    final isHeal = uv.floatingIsHeal;
+                    final isHeal = _visibleFloatingIsHeal;
+                    final popScale = progress < 0.2
+                        ? 0.72 + (progress / 0.2) * 0.46
+                        : progress < 0.5
+                            ? 1.18 - ((progress - 0.2) / 0.3) * 0.18
+                            : 1.0;
                     return Opacity(
                       opacity: (1.0 - progress).clamp(0.0, 1.0),
                       child: Align(
                         alignment: Alignment.topCenter,
                         child: Transform.translate(
                           offset: Offset(0, -32 * progress),
-                          child: isHeal
-                              ? Container(
-                                  padding: const EdgeInsets.all(4),
-                                  decoration: BoxDecoration(
-                                    color: Colors.green.withValues(alpha: 0.3),
-                                    shape: BoxShape.circle,
-                                  ),
-                                  child: Text(
-                                    '+${uv.floatingDamage}',
-                                    style: const TextStyle(
-                                      fontSize: 14,
-                                      fontWeight: FontWeight.bold,
-                                      color: Colors.green,
-                                    ),
-                                  ),
-                                )
-                              : Text(
-                                  '-${uv.floatingDamage}',
-                                  style: const TextStyle(
-                                    fontSize: 16,
-                                    fontWeight: FontWeight.bold,
-                                    color: Colors.red,
-                                  ),
-                                ),
+                          child: Transform.scale(
+                            scale: popScale,
+                            child: _FloatingCombatNumber(
+                              amount: floatingAmount,
+                              isHeal: isHeal,
+                              fontSize:
+                                  (widget.tileWidth * 0.24).clamp(20.0, 30.0),
+                            ),
+                          ),
                         ),
                       ),
                     );
@@ -938,6 +1196,332 @@ class _BattleTileState extends State<BattleTile> with TickerProviderStateMixin {
               ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+class _BattleHitPainter extends CustomPainter {
+  const _BattleHitPainter({required this.kind, required this.progress});
+
+  final HitEffectKind kind;
+  final double progress;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    switch (kind) {
+      case HitEffectKind.slash:
+        _paintSlash(canvas, size);
+      case HitEffectKind.tankImpact:
+        _paintTankImpact(canvas, size);
+      case HitEffectKind.projectile:
+        _paintProjectileImpact(canvas, size);
+    }
+  }
+
+  void _paintSlash(Canvas canvas, Size size) {
+    final reveal = Curves.easeOutCubic.transform(
+      (progress / 0.46).clamp(0.0, 1.0),
+    );
+    final fade = (1 - ((progress - 0.68) / 0.32).clamp(0.0, 1.0));
+    final flash = (1 - (progress / 0.32).clamp(0.0, 1.0));
+    canvas.drawCircle(
+      size.center(Offset.zero),
+      size.shortestSide * (0.20 + progress * 0.22),
+      Paint()..color = const Color(0xFFFF8A3D).withValues(alpha: 0.18 * flash),
+    );
+    // Two parallel cuts moving in the same direction. They read as a quick
+    // two-hit sword combo without turning into an X icon.
+    final slashes = [
+      (
+        path: Path()
+          ..moveTo(size.width * 0.08, size.height * 0.72)
+          ..quadraticBezierTo(
+            size.width * 0.39,
+            size.height * 0.38,
+            size.width * 0.76,
+            size.height * 0.11,
+          ),
+        weight: 1.0,
+      ),
+      (
+        path: Path()
+          ..moveTo(size.width * 0.24, size.height * 0.91)
+          ..quadraticBezierTo(
+            size.width * 0.55,
+            size.height * 0.57,
+            size.width * 0.92,
+            size.height * 0.30,
+          ),
+        weight: 0.84,
+      ),
+    ];
+    for (final slash in slashes) {
+      final metric = slash.path.computeMetrics().first;
+      final visible = metric.extractPath(0, metric.length * reveal);
+      canvas.drawPath(
+        visible,
+        Paint()
+          ..color = const Color(0xFFFF5B2E).withValues(alpha: 0.46 * fade)
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 18 * slash.weight
+          ..strokeCap = StrokeCap.round,
+      );
+      canvas.drawPath(
+        visible,
+        Paint()
+          ..color = const Color(0xFFFFC94A).withValues(alpha: 0.92 * fade)
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 8 * slash.weight
+          ..strokeCap = StrokeCap.round,
+      );
+      canvas.drawPath(
+        visible,
+        Paint()
+          ..color = const Color(0xFFFFFFFF).withValues(alpha: fade)
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 3.2 * slash.weight
+          ..strokeCap = StrokeCap.round,
+      );
+    }
+
+    final sparkPaint = Paint()
+      ..color = const Color(0xFFFFE38A).withValues(alpha: fade)
+      ..strokeWidth = 2.2
+      ..strokeCap = StrokeCap.round;
+    for (final point in const [
+      Offset(0.38, 0.54),
+      Offset(0.58, 0.39),
+      Offset(0.76, 0.25),
+    ]) {
+      final center = Offset(point.dx * size.width, point.dy * size.height);
+      final sparkSize = size.shortestSide * (0.028 + progress * 0.012);
+      canvas.drawLine(
+        center - Offset(sparkSize * 0.72, sparkSize * 0.72),
+        center + Offset(sparkSize * 0.72, sparkSize * 0.72),
+        sparkPaint,
+      );
+      canvas.drawLine(
+        center - Offset(sparkSize * 0.72, -sparkSize * 0.72),
+        center + Offset(sparkSize * 0.72, -sparkSize * 0.72),
+        sparkPaint,
+      );
+    }
+  }
+
+  void _paintTankImpact(Canvas canvas, Size size) {
+    final center = size.center(Offset.zero);
+    final reveal = Curves.easeOutCubic.transform(progress);
+    final fade = 1 - ((progress - 0.62) / 0.38).clamp(0.0, 1.0);
+    final radius = size.shortestSide * (0.12 + 0.32 * reveal);
+
+    canvas.drawCircle(
+      center,
+      radius,
+      Paint()..color = const Color(0xFF64D8FF).withValues(alpha: 0.16 * fade),
+    );
+    canvas.drawCircle(
+      center,
+      radius,
+      Paint()
+        ..color = const Color(0xFFB9F2FF).withValues(alpha: 0.92 * fade)
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 5.0,
+    );
+    canvas.drawCircle(
+      center,
+      radius * 0.68,
+      Paint()
+        ..color = const Color(0xFFFFD45C).withValues(alpha: 0.78 * fade)
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 3.0,
+    );
+
+    final chunkPaint = Paint()
+      ..color = const Color(0xFFFFFFFF).withValues(alpha: 0.92 * fade)
+      ..strokeWidth = 4.0
+      ..strokeCap = StrokeCap.square;
+    for (var i = 0; i < 4; i++) {
+      final angle = math.pi / 4 + i * math.pi / 2;
+      final direction = Offset(math.cos(angle), math.sin(angle));
+      canvas.drawLine(
+        center + direction * radius * 0.78,
+        center + direction * radius * 1.16,
+        chunkPaint,
+      );
+    }
+
+    final coreSize = size.shortestSide * (0.12 - progress * 0.05);
+    canvas.drawRect(
+      Rect.fromCenter(center: center, width: coreSize, height: coreSize),
+      Paint()..color = const Color(0xFFFFF1AD).withValues(alpha: fade),
+    );
+  }
+
+  void _paintProjectileImpact(Canvas canvas, Size size) {
+    final center = size.center(Offset.zero);
+    final fade = 1 - Curves.easeIn.transform(progress);
+    final radius = size.shortestSide * (0.10 + progress * 0.34);
+    canvas.drawCircle(
+      center,
+      radius,
+      Paint()
+        ..color = const Color(0xFF67E8FF).withValues(alpha: 0.24 * fade)
+        ..style = PaintingStyle.fill,
+    );
+    canvas.drawCircle(
+      center,
+      radius,
+      Paint()
+        ..color = const Color(0xFFBFF7FF).withValues(alpha: 0.85 * fade)
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 3.2,
+    );
+    final rayPaint = Paint()
+      ..color = const Color(0xFFFFE780).withValues(alpha: 0.92 * fade)
+      ..strokeWidth = 3.0
+      ..strokeCap = StrokeCap.round;
+    for (var i = 0; i < 6; i++) {
+      final angle = i * math.pi / 3 + progress * 0.22;
+      final inner = radius * 0.65;
+      final outer = radius * 1.22;
+      canvas.drawLine(
+        center + Offset(math.cos(angle), math.sin(angle)) * inner,
+        center + Offset(math.cos(angle), math.sin(angle)) * outer,
+        rayPaint,
+      );
+    }
+    canvas.drawCircle(
+      center,
+      size.shortestSide * (0.09 * (1 - progress * 0.45)),
+      Paint()..color = Colors.white.withValues(alpha: 0.9 * fade),
+    );
+  }
+
+  @override
+  bool shouldRepaint(covariant _BattleHitPainter oldDelegate) =>
+      oldDelegate.kind != kind || oldDelegate.progress != progress;
+}
+
+class _HealParticlePainter extends CustomPainter {
+  const _HealParticlePainter(this.progress);
+
+  final double progress;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final center = size.center(Offset.zero);
+    final fade =
+        progress < 0.58 ? 1.0 : (1 - (progress - 0.58) / 0.42).clamp(0.0, 1.0);
+    final ringRadius = size.shortestSide * (0.18 + progress * 0.27);
+    canvas.drawCircle(
+      center,
+      ringRadius,
+      Paint()
+        ..color = const Color(0xFF76F7AC).withValues(alpha: 0.72 * fade)
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 3.2,
+    );
+    canvas.drawCircle(
+      center,
+      ringRadius * 0.72,
+      Paint()
+        ..color = const Color(0xFFFFDB65).withValues(alpha: 0.48 * fade)
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 2.0,
+    );
+    const directions = [
+      Offset(-0.24, -0.42),
+      Offset(0.24, -0.48),
+      Offset(-0.38, -0.16),
+      Offset(0.38, -0.20),
+      Offset(-0.18, 0.34),
+      Offset(0.20, 0.38),
+      Offset(-0.42, 0.08),
+      Offset(0.44, 0.06),
+    ];
+    for (var i = 0; i < directions.length; i++) {
+      final direction = directions[i];
+      final position = center +
+          Offset(
+            direction.dx * size.width * progress,
+            direction.dy * size.height * progress,
+          );
+      canvas.drawCircle(
+        position,
+        size.shortestSide * (i.isEven ? 0.025 : 0.019),
+        Paint()
+          ..color =
+              (i.isEven ? const Color(0xFF7EF0A5) : const Color(0xFFFFD75A))
+                  .withValues(alpha: 0.88 * fade),
+      );
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant _HealParticlePainter oldDelegate) =>
+      oldDelegate.progress != progress;
+}
+
+class _FloatingCombatNumber extends StatelessWidget {
+  const _FloatingCombatNumber({
+    required this.amount,
+    required this.isHeal,
+    required this.fontSize,
+  });
+
+  final int amount;
+  final bool isHeal;
+  final double fontSize;
+
+  @override
+  Widget build(BuildContext context) {
+    final label = '${isHeal ? '+' : '-'}$amount';
+    final color = isHeal ? const Color(0xFF62F2A5) : const Color(0xFFFF6B62);
+    final baseStyle = TextStyle(
+      fontSize: fontSize,
+      height: 1,
+      fontWeight: FontWeight.w900,
+      letterSpacing: 0.4,
+    );
+
+    return Semantics(
+      label: isHeal ? 'ฟื้นฟูพลังชีวิต $amount' : 'ได้รับความเสียหาย $amount',
+      child: Stack(
+        key: ValueKey(
+          isHeal ? 'floating-heal-number' : 'floating-damage-number',
+        ),
+        alignment: Alignment.center,
+        children: [
+          ExcludeSemantics(
+            child: Text(
+              label,
+              style: baseStyle.copyWith(
+                foreground: Paint()
+                  ..style = PaintingStyle.stroke
+                  ..strokeWidth = 4
+                  ..strokeJoin = StrokeJoin.round
+                  ..color = Colors.black.withValues(alpha: 0.9),
+              ),
+            ),
+          ),
+          Text(
+            label,
+            style: baseStyle.copyWith(
+              color: color,
+              shadows: [
+                Shadow(
+                  color: color.withValues(alpha: 0.9),
+                  blurRadius: 8,
+                ),
+                const Shadow(
+                  blurRadius: 2,
+                  offset: Offset(0, 2),
+                ),
+              ],
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -984,10 +1568,14 @@ class _BatchSummary extends StatelessWidget {
 
 class _PortraitVersusDivider extends StatelessWidget {
   const _PortraitVersusDivider({
+    required this.opponentName,
+    required this.playerName,
     required this.opponentColor,
     required this.playerColor,
   });
 
+  final String opponentName;
+  final String playerName;
   final Color opponentColor;
   final Color playerColor;
 
@@ -998,7 +1586,7 @@ class _PortraitVersusDivider extends StatelessWidget {
           children: [
             Expanded(
               child: _InlineSideLabel(
-                label: 'คู่แข่ง',
+                label: opponentName,
                 icon: Icons.sports_martial_arts_outlined,
                 color: opponentColor,
               ),
@@ -1006,7 +1594,7 @@ class _PortraitVersusDivider extends StatelessWidget {
             const _VersusDivider(horizontal: true),
             Expanded(
               child: _InlineSideLabel(
-                label: 'คุณ',
+                label: playerName,
                 icon: Icons.shield_outlined,
                 color: playerColor,
               ),

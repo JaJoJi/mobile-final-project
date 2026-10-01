@@ -14,6 +14,11 @@
 | `PATCH /user/me` | ✅ implemented | username only |
 | `GET /match/history` | ✅ implemented | JWT-guarded; latest 50 completed matches |
 | `GET /match/:matchId` | ✅ implemented | JWT-guarded; participants only |
+| `GET /leaderboard` | ✅ implemented | JWT-guarded; `RANK()` by rating, `?limit=&offset=`, always includes `me` |
+| `POST /rooms` | ✅ implemented | JWT-guarded; creates a 2-player private room, returns code |
+| `GET /rooms/mine` | ✅ implemented | JWT-guarded; caller's current room or 404 |
+| `POST /rooms/join` | ✅ implemented | JWT-guarded; join by code, auto-handoff to a match when full (verified: 23 suites / 206 tests) |
+| `POST /rooms/leave` | ✅ implemented | JWT-guarded; guest leaves or owner destroys |
 | WS gateway (`/socket.io`, namespace `/game`) | ✅ implemented | all 9 incoming events validated and routed |
 
 ## 1. REST Endpoints
@@ -139,7 +144,8 @@ the initiating action response tells the client which offer it consumed.
 ```
 
 #### `game:match:state`
-Sent to both clients when roster changes (purchase, sell, place).
+Sent to both clients when a roster changes (purchase, sell, place), when both
+rosters lock for battle, and when an active match is resumed after reconnect.
 ```ts
 {
   matchId: string;
@@ -156,11 +162,20 @@ Sent to both clients when roster changes (purchase, sell, place).
   opponent: {
     gold: number;
     hp: number;
-    boardSummary: Array<{ unitId: string; star: 0|1|2 } | null>;  // 9 slots, no HP detail
+    scoutRound: number | null; // null in round 1; otherwise the completed round captured below
+    boardSummary: Array<{ unitId: string; star: 0|1|2 } | null>;  // stable previous-round scout snapshot; 9 slots, no HP detail
+    battleBoardSummary: Array<{ unitId: string; star: 0|1|2 } | null> | null; // live board, sent only after both rosters lock for battle
   };
   readyCount: 0 | 1 | 2;
 }
 ```
+
+The server captures `boardSummary` after combat resolves and before advancing
+to the next planning round. It remains unchanged for that entire planning
+phase, regardless of opponent shop, sell, fuse, or placement actions. During
+battle, clients render `battleBoardSummary` (or combat-event `unitStates`) and
+must not use the scouting snapshot as battle state. Reconnect payloads contain
+the same persisted scouting snapshot.
 
 #### `game:combat:events`
 **Batch of every combat tick event for one battle**, sent ONCE per battle. The Flutter client plays the events locally as animations, then acks with `game:match:combat_done`. The server emits this payload via Redis Pub/Sub `match:<id>:events` so all instances forward to their connected sockets.

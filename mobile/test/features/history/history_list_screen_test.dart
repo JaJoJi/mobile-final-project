@@ -1,12 +1,10 @@
-import 'package:auto_chess_mobile/core/widgets/app_tab_bar.dart';
 import 'package:auto_chess_mobile/features/history/history_list_screen.dart';
 import 'package:auto_chess_mobile/features/history/match_list_item.dart';
+import 'package:auto_chess_mobile/features/lobby/player_hub_navigation.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'history_test_util.dart';
-
-Finder _tab(String label) =>
-    find.descendant(of: find.byType(AppTabBar), matching: find.text(label));
 
 Finder _rowWord(String label) => find.descendant(
       of: find.byType(MatchListItem),
@@ -53,6 +51,9 @@ void main() {
     expect(_rowWord('ชนะ'), findsOneWidget);
     expect(_rowWord('แพ้'), findsOneWidget);
     expect(find.textContaining('bob'), findsOneWidget);
+    expect(find.text('ประวัติการแข่งขัน'), findsOneWidget);
+    expect(find.byType(PlayerHubNavigation), findsOneWidget);
+    expect(find.byType(NavigationBar), findsNothing);
   });
 
   testWidgets('empty response shows the EmptyView CTA', (tester) async {
@@ -77,7 +78,7 @@ void main() {
     expect(find.text('ลองอีกครั้ง'), findsOneWidget);
   });
 
-  testWidgets('the "แพ้" tab filters to losses', (tester) async {
+  testWidgets('the filter menu can show losses only', (tester) async {
     await pumpHistory(
       tester,
       const HistoryListScreen(),
@@ -85,7 +86,9 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    await tester.tap(_tab('แพ้'));
+    await tester.tap(find.byKey(const Key('history-filter-menu')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('history-filter-losses')));
     await tester.pumpAndSettle();
 
     expect(find.byType(MatchListItem), findsOneWidget);

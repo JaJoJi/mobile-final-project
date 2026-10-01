@@ -63,7 +63,8 @@ class _ShopTabState extends State<ShopTab> {
     final paths = <String>{
       ...GameUiAssets.shop,
       for (final offer in widget.shop?.offers ?? const <ShopOffer?>[])
-        if (offer != null) unitKindFromId(offer.unitId.toJson()).artPath,
+        if (offer != null)
+          unitKindFromId(offer.unitId.toJson()).artPathForTier(offer.star),
     };
     for (final path in paths) {
       if (_precachedAssets.add(path)) {

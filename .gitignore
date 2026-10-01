@@ -17,6 +17,7 @@ mobile/build/
 backend/dist/
 backend/coverage/
 backend/src/coverage/
+backend/reports/
 mobile/build/
 nginx/.cache/
 
@@ -37,3 +38,17 @@ coverage/
 
 # Misc
 Thumbs.db
+.worktrees/
+
+# CI outputs (Jenkinsfile)
+.cache/
+zap-reports/
+stack-logs/
+backend-image.tar
+sbom.cdx.json
+*.sarif
+mobile/reports/
+
+# infra/ansible — per-person values and generated inventory (real IPs)
+infra/ansible/vars.yml
+infra/ansible/inventory/azure.yml

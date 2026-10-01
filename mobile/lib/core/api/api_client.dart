@@ -113,6 +113,46 @@ class ApiClient {
     return Map<String, dynamic>.from(res.data!);
   }
 
+  /// `GET /user/me/stats` — completed-match statistics for the caller.
+  Future<Map<String, dynamic>> getMyStats() async {
+    final res = await _dio.get<Map<String, dynamic>>('/user/me/stats');
+    return Map<String, dynamic>.from(res.data!);
+  }
+
+  Future<Map<String, dynamic>> getLeaderboard({
+    int limit = 20,
+    int offset = 0,
+  }) async {
+    final res = await _dio.get<Map<String, dynamic>>(
+      '/leaderboard',
+      queryParameters: {'limit': limit, 'offset': offset},
+    );
+    return Map<String, dynamic>.from(res.data!);
+  }
+
+  Future<Map<String, dynamic>> createRoom() async {
+    final res = await _dio.post<Map<String, dynamic>>('/rooms');
+    return Map<String, dynamic>.from(res.data!);
+  }
+
+  Future<Map<String, dynamic>> getMyRoom() async {
+    final res = await _dio.get<Map<String, dynamic>>('/rooms/mine');
+    return Map<String, dynamic>.from(res.data!);
+  }
+
+  Future<Map<String, dynamic>> joinRoom(String code) async {
+    final res = await _dio.post<Map<String, dynamic>>(
+      '/rooms/join',
+      data: {'code': code},
+    );
+    return Map<String, dynamic>.from(res.data!);
+  }
+
+  Future<Map<String, dynamic>> leaveRoom() async {
+    final res = await _dio.post<Map<String, dynamic>>('/rooms/leave');
+    return Map<String, dynamic>.from(res.data!);
+  }
+
   // ─── match history ────────────────────────────────────────────────
 
   /// `GET /match/history` — the caller's last matches (server caps the count).

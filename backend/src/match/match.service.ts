@@ -6,7 +6,10 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { DataSource } from 'typeorm';
+import { runOnMaster } from '../database/postgres-replication';
 import { PubsubBridge } from '../runtime/pubsub.bridge';
+import { LeaderboardService } from '../user/leaderboard.service';
+import { StatsService } from '../user/stats.service';
 import { UserService } from '../user/user.service';
 import { MatchDetailDto } from './dto/match-detail.dto';
 import { MatchHistoryDto, MatchOutcome } from './dto/match-history.dto';
@@ -27,6 +30,8 @@ export class MatchService {
     private readonly matches: MatchRepository,
     private readonly pubsub: PubsubBridge,
     private readonly users: UserService,
+    private readonly stats: StatsService,
+    private readonly leaderboard: LeaderboardService,
   ) {}
 
   async findById(id: string): Promise<Match> {
@@ -38,6 +43,22 @@ export class MatchService {
   /** Resolve the caller's live match for WS actions that omit matchId. */
   findActiveByUserId(userId: string): Promise<Match | null> {
     return this.matches.findActiveByUserId(userId);
+  }
+
+  /**
+   * Resolve player usernames for phase payloads. Reads from the PRIMARY:
+   * called from `initializeMatch` immediately after the match row is
+   * created, so a replica read could miss under WAL lag.
+   */
+  async usernamesForPlayers(player1Id: string, player2Id: string) {
+    const players = await runOnMaster(this.dataSource, (manager) =>
+      this.users.findByIds([player1Id, player2Id], manager),
+    );
+    const names = new Map(players.map((player) => [player.id, player.username]));
+    return {
+      player1Name: names.get(player1Id) ?? 'ผู้เล่น 1',
+      player2Name: names.get(player2Id) ?? 'ผู้เล่น 2',
+    };
   }
 
   async updateState(
@@ -63,7 +84,11 @@ export class MatchService {
   }
 
   async forfeitDisconnectedPlayer(matchId: string, userId: string): Promise<boolean> {
-    const match = await this.matches.findById(matchId);
+    // PRIMARY read: the disconnect handler must observe the latest match
+    // status before deciding to finalize (no WAL-lag staleness).
+    const match = await runOnMaster(this.dataSource, (manager) =>
+      this.matches.findById(matchId, manager),
+    );
     if (!match || match.status !== 'in_progress') return false;
     if (userId !== match.player1Id && userId !== match.player2Id) return false;
     const winnerId = userId === match.player1Id ? match.player2Id : match.player1Id;
@@ -140,6 +165,13 @@ export class MatchService {
     });
 
     if (!finalized) return false;
+    // Cache invalidation (#254 stats + #256 leaderboard): statistics and
+    // ratings change exactly when a match reaches a terminal state, and every
+    // terminal path funnels through finalize. Both are best-effort — the
+    // TTLs are the fallback — so a cache failure must never block the
+    // match:end publish below.
+    await this.stats.invalidateUsers([finalized.player1Id, finalized.player2Id]);
+    await this.leaderboard.bumpVersion();
     await this.pubsub.publish(finalized.id, 'game:match:end', {
       matchId: finalized.id,
       winnerId: finalized.winnerId,

@@ -99,7 +99,7 @@ async function run(): Promise<void> {
   // against a no-op subscriber of our own.
   {
     const ourselves = new Redis(REDIS_URL, { maxRetriesPerRequest: 3 });
-    let psubCount = 0;
+    let psubCount: number;
     try {
       await ourselves.psubscribe('match:probe-*:events');
       // tiny pause for Redis to register the subscription

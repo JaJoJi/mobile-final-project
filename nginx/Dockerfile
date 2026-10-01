@@ -1,3 +1,4 @@
+# checkov:skip=CKV_DOCKER_3: the nginx master process must start as root to bind :80 and drops workers to the `nginx` user itself; this image is replaced by the non-root ModSecurity image (listens on 8080) in #224.
 FROM nginx:1.27-alpine
 RUN rm -f /etc/nginx/conf.d/default.conf
 COPY nginx.conf /etc/nginx/nginx.conf
