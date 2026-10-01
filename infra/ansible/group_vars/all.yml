@@ -36,6 +36,13 @@ jenkins_url: "https://{{ jenkins_fqdn }}/"
 jenkins_executors: 1
 swap_size: 4G
 
+# Daily disk cleanup (jenkins-disk-cleanup.timer): prune Docker objects
+# and workspaces unused for this long, and drop the npm/pub cache once
+# the shared CI cache grows past ci_cache_max_gb.
+disk_cleanup_age_hours: 72
+ci_cache_max_gb: 15
+docker_image_name: fiatthanapon/mobile-final-project
+
 # Cost Management budget: EMAIL ALERT ONLY, it never stops the VM.
 budget_amount: 30
 budget_start_date: "2026-09-01"         # must be the 1st of a month

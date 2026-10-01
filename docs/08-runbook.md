@@ -203,6 +203,14 @@ log. Hardening checklist: #288.
    shows the Jenkins status check → email arrives; JUnit, `Backend
    coverage`, `ZAP` reports and `sbom.cdx.json` present on the build.
 
+**Disk (61 GB):** builds share one dependency cache at
+`/var/lib/jenkins/ci-cache` (npm, pub, Trivy DB) and delete their
+workspace when they finish; `jenkins-disk-cleanup.timer` (daily 04:00)
+prunes Docker leftovers, workspaces untouched for 3 days and an oversized
+cache. Every build starts with *Preflight · disk*, which fails below 5 GB
+free. If it trips: `df -h`, `sudo systemctl start jenkins-disk-cleanup`,
+`journalctl -u jenkins-disk-cleanup`.
+
 **Running pieces outside Jenkins** (from repo root, needs Docker + bash):
 build the image, then `CI_ID=local IMAGE=<image:tag> PG_IMAGE=postgres:16-alpine
 REDIS_IMAGE=redis:7-alpine bash ci/scripts/stack-up.sh`, run smoke / ZAP
