@@ -15,6 +15,16 @@ class FakeDataSource {
   greater = '0';
   failOn: '' | 'matches' | 'users' = '';
   readonly queries: string[] = [];
+  readonly runnerModes: string[] = [];
+
+  createQueryRunner(mode: string) {
+    this.runnerModes.push(mode);
+    const pg = this;
+    return {
+      query: (sql: string, params: unknown[]) => pg.query(sql, params),
+      release: async () => undefined,
+    };
+  }
 
   async query(sql: string, _params: unknown[]): Promise<unknown[]> {
     this.queries.push(sql);
@@ -170,6 +180,14 @@ describe('StatsService (#254)', () => {
       winRate: 100,
       currentRank: 1,
     });
+  });
+
+  it('routes aggregate SQL through "slave" runners (replica)', async () => {
+    const { pg, service } = makeService();
+    await service.getStats('user-1');
+    expect(pg.queries.length).toBeGreaterThan(0);
+    expect(pg.runnerModes.length).toBe(pg.queries.length);
+    expect(pg.runnerModes).not.toContain('master');
   });
 
   it('invalidateUsers deletes affected players best-effort', async () => {

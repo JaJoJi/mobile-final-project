@@ -93,6 +93,44 @@ describe('UserService reads (#308)', () => {
     expect(where[1]).toEqual({ ids: ['user-a', 'user-b'] });
     await expect(service.findByIdsForUpdate([], manager as any)).resolves.toEqual([]);
   });
+
+  it('routes findById/findByEmail through a PRIMARY runner when a DataSource is present', async () => {
+    const modes: string[] = [];
+    const released: string[] = [];
+    const found = { id: 'u1' };
+    const managerRepo = {
+      findOne: async (criteria: unknown) => {
+        (managerRepo as any).seen.push(criteria);
+        return found;
+      },
+      seen: [] as unknown[],
+    };
+    const dataSource = {
+      createQueryRunner: (mode: string) => {
+        modes.push(mode);
+        return {
+          manager: { getRepository: () => managerRepo },
+          release: async () => {
+            released.push(mode);
+          },
+        };
+      },
+    };
+    const defaultRepo = {
+      findOne: async () => {
+        throw new Error('must not hit the default (replica-routed) repository');
+      },
+    };
+    const service = new UserService(defaultRepo as any, dataSource as any);
+    await expect(service.findById('u1')).resolves.toBe(found);
+    await expect(service.findByEmail('ALICE@Example.COM')).resolves.toBe(found);
+    expect(modes).toEqual(['master', 'master']);
+    expect(released).toEqual(['master', 'master']);
+    expect(managerRepo.seen).toEqual([
+      { where: { id: 'u1' } },
+      { where: { email: 'alice@example.com' } },
+    ]);
+  });
 });
 
 describe('UserService mutations (#308)', () => {

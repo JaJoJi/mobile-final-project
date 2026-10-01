@@ -229,6 +229,33 @@ describe('MatchRepository reads (#309)', () => {
     expect(qb.wheres[1][0]).toBe("m.status = 'in_progress'");
   });
 
+  it('findActiveByUserId reads from PRIMARY (master runner) when a DataSource is present', async () => {
+    const { matches: fakes, rounds } = harness();
+    const modes: string[] = [];
+    const released: string[] = [];
+    const dataSource = {
+      createQueryRunner: (mode: string) => {
+        modes.push(mode);
+        return {
+          manager: { getRepository: () => fakes.repo },
+          release: async () => {
+            released.push(mode);
+          },
+        };
+      },
+    };
+    const repository = new MatchRepository(
+      fakes.repo as any,
+      rounds.repo as any,
+      dataSource as any,
+    );
+    await repository.findActiveByUserId('u1');
+    expect(modes).toEqual(['master']);
+    expect(released).toEqual(['master']);
+    const qb = fakes.builders[fakes.builders.length - 1];
+    expect(qb.wheres[0][0]).toBe('(m.player1Id = :uid OR m.player2Id = :uid)');
+  });
+
   it('findRounds orders replay rows ascending', async () => {
     const { rounds, repository } = harness();
     await repository.findRounds('m1');

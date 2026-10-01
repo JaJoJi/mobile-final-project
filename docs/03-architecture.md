@@ -149,6 +149,14 @@ class MatchRound {
 
 - Use TypeORM CLI: `npm run migration:generate -- src/migrations/MyMigration`.
 - **Never** `synchronize: true` in production. Set `synchronize: false` always for prod; allowed `true` only in `NODE_ENV=development`.
+- Migrations always run against the PRIMARY (`DATABASE_PRIMARY_URL ?? DATABASE_URL` in `backend/src/data-source.ts`); the replica is read-only and rejects DDL.
+
+### 3.5 Read/write splitting (TypeORM replication)
+
+- Config: `backend/src/database/postgres-replication.ts` builds `{ replication: { master, slaves } }` for `TypeOrmModule.forRootAsync` (`backend/src/app.module.ts`). Master = `DATABASE_PRIMARY_URL ?? DATABASE_URL`; slaves = `[DATABASE_REPLICA_URL ?? <primary>]`. Without `DATABASE_REPLICA_URL` the app degrades to the legacy single connection (zero behavior change).
+- PRIMARY: all writes, all `DataSource.transaction()` bodies, auth-critical reads (`UserService.findById/findByEmail`, `MatchRepository.findActiveByUserId`, match-create username resolution, forfeit pre-read).
+- REPLICA (eventual, async WAL — no zero-lag guarantee): leaderboard/stats raw SQL (explicit `"slave"` runners), match history/detail/rounds and opponent username resolution (automatic `"slave"` SELECT routing).
+- No read-after-write sleeps. No automatic failover (see §16 / runbook).
 
 ## 4. Redis Usage
 
