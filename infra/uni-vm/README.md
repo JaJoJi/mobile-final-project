@@ -46,8 +46,9 @@ sudo systemctl start psu-autologin.service
 #    (hub.docker.com → Account settings → Personal access tokens → Read-only)
 sudo docker login -u fiatthanapon         # paste the token as the password
 
-# 4. Deploy the latest release (tag = short commit of the Jenkins main build)
-sudo auto-chess-deploy d5ec4c4
+# 4. Deploy (from the repo root; .env next to compose.yml -> /etc/auto-chess/app.env)
+sudo docker compose -f infra/uni-vm/app/compose.yml pull
+sudo docker compose -f infra/uni-vm/app/compose.yml up -d
 curl -s http://127.0.0.1/health | head -c 300
 ```
 
@@ -55,11 +56,12 @@ curl -s http://127.0.0.1/health | head -c 300
 
 | What | Command |
 |---|---|
-| Deploy a release | `sudo auto-chess-deploy <tag>` |
-| What's running | `sudo auto-chess-deploy --status` |
-| Deploy history | `cat /var/lib/auto-chess/deploy.log` |
-| Roll back by hand | `sudo auto-chess-deploy <previous tag>` |
-| Logs | `docker compose -p auto-chess logs -f nest-1` |
+| Deploy the newest release | `sudo docker compose -f infra/uni-vm/app/compose.yml pull && sudo docker compose -f infra/uni-vm/app/compose.yml up -d` |
+| Pin / roll back to a release | set `IMAGE_TAG=<commit>` in `/etc/auto-chess/app.env`, then `pull` + `up -d` |
+| Deploy with health check + auto-rollback | `sudo auto-chess-deploy <tag>` (history: `/var/lib/auto-chess/deploy.log`) |
+| What's running | `sudo docker compose -f infra/uni-vm/app/compose.yml ps` |
+| Logs | `sudo docker compose -f infra/uni-vm/app/compose.yml logs -f nest-1` |
+| Stop (keep data) / wipe DB | `... down` / `... down -v` |
 | Update scripts/config | `git pull && sudo ansible-playbook -i localhost, -c local infra/uni-vm/site.yml` |
 
 ## Notes

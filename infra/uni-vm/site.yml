@@ -112,6 +112,16 @@
         mode: "0600"
         force: false
 
+    # Lets plain `docker compose -f infra/uni-vm/app/compose.yml up -d`
+    # find the secrets: compose auto-loads .env next to the compose file.
+    # Symlink, so the secrets stay root-only in /etc (and out of git).
+    - name: compose .env -> /etc/auto-chess/app.env
+      ansible.builtin.file:
+        src: /etc/auto-chess/app.env
+        dest: "{{ repo_dir }}/infra/uni-vm/app/.env"
+        state: link
+        force: true
+
     - name: Deploy state dir
       ansible.builtin.file:
         path: /var/lib/auto-chess

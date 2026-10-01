@@ -3,12 +3,17 @@
 # but nothing is built here: nest runs the image Jenkins released to
 # Docker Hub after it passed every gate (pull-based deploy, see deploy.sh).
 #
-# Run through deploy.sh, never by hand -- it sets IMAGE_TAG, checks
-# /health/ready and rolls back. Secrets come from /etc/auto-chess/app.env.
+# Deploy (from the repo root):
+#   docker compose -f infra/uni-vm/app/compose.yml pull
+#   docker compose -f infra/uni-vm/app/compose.yml up -d
+# Compose reads infra/uni-vm/app/.env automatically -- site.yml makes it a
+# symlink to /etc/auto-chess/app.env (root-only secrets, gitignored).
+# IMAGE_TAG there picks the release (default latest). deploy.sh does the
+# same plus a health check and automatic rollback.
 name: auto-chess
 
 x-nest: &nest
-  image: ${IMAGE_REPO:-fiatthanapon/mobile-final-project}:${IMAGE_TAG:?set by deploy.sh}
+  image: ${IMAGE_REPO:-fiatthanapon/mobile-final-project}:${IMAGE_TAG:-latest}
   restart: unless-stopped
   depends_on:
     postgres-primary:
