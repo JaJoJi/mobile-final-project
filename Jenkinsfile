@@ -87,9 +87,11 @@ CACHE_MOUNT = "-v ${CACHE_DIR}:${CACHE_DIR}"
 pipeline {
   agent any
 
-  // No triggers: Jenkins is private (no inbound webhook). The Multibranch
-  // job's periodic scan (1 min, runbook §6) finds new commits/PRs and
-  // starts builds; the `when` blocks below scope what runs where.
+  // No `triggers` block: GitHub pushes/PR events arrive on the repo webhook
+  // (/github-webhook/, HMAC-signed) and the Multibranch job builds the
+  // affected branch/PR at once; an hourly scan is the fallback if a
+  // delivery is missed (runbook §6). The `when` blocks below scope what
+  // runs where.
 
   options {
     timestamps()

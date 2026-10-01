@@ -32,6 +32,26 @@
         creates: /usr/local/bin/psu-autologin
 
     # ── Docker Engine + compose plugin (upstream repo) ──────────────────
+    # The university image may already ship Docker's repo (e.g. docker.list
+    # with signed-by=/etc/apt/keyrings/docker.gpg). Adding a second entry
+    # for the same source with a different key breaks apt entirely
+    # ("Conflicting values set for option Signed-By"), so reuse theirs.
+    - name: Existing Docker apt source?
+      ansible.builtin.shell: >
+        grep -rls 'download.docker.com' /etc/apt/sources.list /etc/apt/sources.list.d/
+        | grep -v '/docker.sources$'
+      register: existing_docker_repo
+      changed_when: false
+      failed_when: false
+
+    # Plain file removal: runs before apt is usable again, and before
+    # python3-debian (needed by deb822_repository) is guaranteed.
+    - name: Drop our duplicate Docker source (another one exists)
+      ansible.builtin.file:
+        path: /etc/apt/sources.list.d/docker.sources
+        state: absent
+      when: existing_docker_repo.stdout | length > 0
+
     - name: Base packages
       ansible.builtin.apt:
         name: [ca-certificates, curl, python3-debian]
@@ -46,6 +66,7 @@
         suites: "{{ ansible_facts.distribution_release }}"
         components: stable
         signed_by: "https://download.docker.com/linux/{{ ansible_facts.distribution | lower }}/gpg"
+      when: existing_docker_repo.stdout | length == 0
 
     - name: Docker Engine
       ansible.builtin.apt:
