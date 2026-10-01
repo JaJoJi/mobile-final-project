@@ -34,6 +34,7 @@ live in jest/lcov), Terraform (Ansible provisions), GitHub Actions as CI
 | Path | What | Status |
 |---|---|---|
 | [`ansible/`](ansible/README.md) | Jenkins host on Azure: `provision.yml` (VM, NSG, budget alert) + `jenkins-host.yml` (Docker, Jenkins on loopback, Caddy HTTPS) | **live** — `mfp-jenkins`, malaysiawest |
+| [`uni-vm/`](uni-vm/README.md) | University VM (app host): `site.yml` (local Ansible: Docker, secrets, deploy command), `app/compose.yml` + `deploy.sh` (pull the Jenkins release from Docker Hub, health check, auto-rollback) | ready to install |
 | [`uni-vm/psu-autologin/`](uni-vm/psu-autologin/README.md) | University VM (runs app + monitoring): systemd timer that re-logs in to the PSU captive portal when the internet session drops | ready to install |
 | _later_ | App deploy (#221), Vault (#223), ModSecurity (#224), LGTM monitoring (#225) — new playbooks in `ansible/` | planned |
 
