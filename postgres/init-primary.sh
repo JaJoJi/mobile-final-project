@@ -14,18 +14,15 @@ set -e
 PGDATA="${PGDATA:-/var/lib/postgresql/data}"
 
 # ---- 1. replicator role ----
-# NOTE: heredoc delimiter is SINGLE-QUOTED ('EOSQL') to disable shell
-# variable expansion. Otherwise `$$` in the PL/pgSQL DO block gets
-# expanded by bash to the script's PID (e.g. `DO 128 ... 128`) and
-# psql rejects the syntax.
-psql -v ON_ERROR_STOP=1 --username "$POSTGRES_USER" --dbname "$POSTGRES_DB" <<-'EOSQL'
-DO $$
-BEGIN
-  IF NOT EXISTS (SELECT FROM pg_catalog.pg_roles WHERE rolname = 'replicator') THEN
-    CREATE ROLE replicator WITH REPLICATION LOGIN ENCRYPTED PASSWORD 'replicator_secret';
-  END IF;
-END
-$$;
+# Password from POSTGRES_REPLICATION_PASSWORD (production sets it; the dev
+# compose doesn't, so it keeps the old dev default). Passed as a psql
+# variable and quoted with format(%L) -- never spliced into SQL by the
+# shell. Heredoc delimiter is single-quoted so bash expands nothing.
+psql -v ON_ERROR_STOP=1 --username "$POSTGRES_USER" --dbname "$POSTGRES_DB" \
+  -v repl_pw="${POSTGRES_REPLICATION_PASSWORD:-replicator_secret}" <<-'EOSQL'
+SELECT format('CREATE ROLE replicator WITH REPLICATION LOGIN PASSWORD %L', :'repl_pw')
+WHERE NOT EXISTS (SELECT FROM pg_catalog.pg_roles WHERE rolname = 'replicator')
+\gexec
 EOSQL
 
 # ---- 2. pg_hba.conf rule for replication from any docker-network host ----

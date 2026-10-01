@@ -1,0 +1,122 @@
+# Production stack on the university VM (#221). Same topology as the dev
+# docker-compose.yml (nginx -> nest x3 -> Redis + Postgres primary/replica)
+# but nothing is built here: nest runs the image Jenkins released to
+# Docker Hub after it passed every gate (pull-based deploy, see deploy.sh).
+#
+# Run through deploy.sh, never by hand -- it sets IMAGE_TAG, checks
+# /health/ready and rolls back. Secrets come from /etc/auto-chess/app.env.
+name: auto-chess
+
+x-nest: &nest
+  image: ${IMAGE_REPO:-fiatthanapon/mobile-final-project}:${IMAGE_TAG:?set by deploy.sh}
+  restart: unless-stopped
+  depends_on:
+    postgres-primary:
+      condition: service_healthy
+    redis:
+      condition: service_healthy
+  environment: &nest-env
+    NODE_ENV: production
+    NEST_PORT: 3000
+    LOG_LEVEL: ${LOG_LEVEL:-info}
+    DATABASE_URL: postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres-primary:5432/${POSTGRES_DB}
+    DATABASE_REPLICA_URL: postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres-replica:5432/${POSTGRES_DB}
+    REDIS_URL: redis://redis:6379
+    JWT_SECRET: ${JWT_SECRET:?}
+    JWT_ACCESS_TTL: ${JWT_ACCESS_TTL:-7d}
+    JWT_REFRESH_TTL: ${JWT_REFRESH_TTL:-30d}
+    COMBAT_DONE_TIMEOUT_MS: ${COMBAT_DONE_TIMEOUT_MS:-60000}
+
+services:
+  postgres-primary:
+    image: postgres:16-alpine@sha256:721873c34ceb9f8d8fc265984940dc982404c105f19ad51be9fdc5970a6080ea
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:?}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?}
+      POSTGRES_DB: ${POSTGRES_DB:?}
+      POSTGRES_REPLICATION_PASSWORD: ${POSTGRES_REPLICATION_PASSWORD:?}
+    command: ["postgres", "-c", "wal_level=replica", "-c", "max_wal_senders=10",
+              "-c", "max_replication_slots=10", "-c", "hot_standby=on"]
+    volumes:
+      - pg_primary_data:/var/lib/postgresql/data
+      - ../../../postgres/init-primary.sh:/docker-entrypoint-initdb.d/01-replication.sh:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  postgres-replica:
+    image: postgres:16-alpine@sha256:721873c34ceb9f8d8fc265984940dc982404c105f19ad51be9fdc5970a6080ea
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+      PGPASSWORD: ${POSTGRES_REPLICATION_PASSWORD}
+    depends_on:
+      postgres-primary:
+        condition: service_healthy
+    # Same bootstrap as the dev compose: base backup from the primary on
+    # first start, then run as a hot standby.
+    command:
+      - bash
+      - -c
+      - |
+        set -e
+        if [ ! -s /var/lib/postgresql/data/PG_VERSION ]; then
+          until pg_isready -h postgres-primary -U "$$POSTGRES_USER"; do sleep 2; done
+          pg_basebackup -h postgres-primary -D /var/lib/postgresql/data \
+            -U replicator -P -Xs -R --checkpoint=fast
+          chown -R postgres:postgres /var/lib/postgresql/data
+        fi
+        exec docker-entrypoint.sh postgres
+    volumes:
+      - pg_replica_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  redis:
+    image: redis:7-alpine@sha256:858f009f9709ce576febc734aa78b8f6d624b82571f9ddb6bda4377c833b3499
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  nest-1:
+    <<: *nest
+    environment:
+      <<: *nest-env
+      HOSTNAME: nest-1
+      RUN_MIGRATIONS: "true"     # one instance migrates, the others don't race it
+  nest-2:
+    <<: *nest
+    environment:
+      <<: *nest-env
+      HOSTNAME: nest-2
+  nest-3:
+    <<: *nest
+    environment:
+      <<: *nest-env
+      HOSTNAME: nest-3
+
+  # Stock image + the repo's config (no build on the VM). Replaced by the
+  # nginx + ModSecurity WAF image in #224.
+  nginx:
+    image: nginx:1.27-alpine
+    restart: unless-stopped
+    depends_on: [nest-1, nest-2, nest-3]
+    ports:
+      - "80:80"
+    volumes:
+      - ../../../nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+
+volumes:
+  pg_primary_data:
+  pg_replica_data:
