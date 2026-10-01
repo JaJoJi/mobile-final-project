@@ -300,6 +300,81 @@
         name: cloudflared
         state: absent
 
+    # ── Disk hygiene (2026-10-01: the 61 GB disk hit 100%) ──────────────
+    # Builds now share one dependency cache outside the workspaces and
+    # wipe their workspace when done (Jenkinsfile). This daily job catches
+    # what's left: images/volumes/networks no build used for 3 days,
+    # workspaces untouched for 3 days (closed PRs), and an oversized cache.
+    - name: Shared CI cache dir
+      ansible.builtin.file:
+        path: /var/lib/jenkins/ci-cache
+        state: directory
+        owner: jenkins
+        group: jenkins
+        mode: "0755"
+
+    - name: Disk cleanup script
+      ansible.builtin.copy:
+        dest: /usr/local/sbin/jenkins-disk-cleanup
+        mode: "0755"
+        content: |
+          #!/usr/bin/env bash
+          # Managed by infra/ansible/jenkins-host.yml -- daily via systemd timer.
+          set -u
+          before=$(df --output=avail -BG / | tail -1 | tr -dc 0-9)
+          docker container prune -f --filter until=24h >/dev/null
+          # Dangling layers + our own backend images. NOT `image prune -a`:
+          # its `until` filter is image *creation* time, so it would delete
+          # the pinned scanner images (built upstream months ago) every day
+          # and re-pull GBs on the next build.
+          docker image prune -f >/dev/null
+          docker images --filter "reference={{ docker_image_name }}" --format '{{ '{{' }}.ID{{ '}}' }} {{ '{{' }}.CreatedSince{{ '}}' }}' \
+            | awk '/days|weeks|months/ {print $1}' | xargs -r docker rmi -f >/dev/null 2>&1
+          docker builder prune -af --filter until={{ disk_cleanup_age_hours }}h >/dev/null
+          docker network prune -f --filter until=24h >/dev/null
+          docker volume prune -f >/dev/null      # anonymous volumes only
+          find /var/lib/jenkins/workspace -mindepth 1 -maxdepth 1 -type d \
+            -mtime +{{ (disk_cleanup_age_hours / 24) | int }} -exec rm -rf {} + 2>/dev/null
+          cache_gb=$(du -s -BG /var/lib/jenkins/ci-cache 2>/dev/null | tr -dc 0-9)
+          if [ "${cache_gb:-0}" -gt {{ ci_cache_max_gb }} ]; then
+            rm -rf /var/lib/jenkins/ci-cache/npm /var/lib/jenkins/ci-cache/pub
+            echo "ci-cache was ${cache_gb} GB > {{ ci_cache_max_gb }} GB: dropped npm/pub caches"
+          fi
+          after=$(df --output=avail -BG / | tail -1 | tr -dc 0-9)
+          echo "free disk: ${before} GB -> ${after} GB"
+
+    - name: Disk cleanup service
+      ansible.builtin.copy:
+        dest: /etc/systemd/system/jenkins-disk-cleanup.service
+        mode: "0644"
+        content: |
+          [Unit]
+          Description=Prune Docker leftovers and stale Jenkins workspaces
+          [Service]
+          Type=oneshot
+          ExecStart=/usr/local/sbin/jenkins-disk-cleanup
+
+    - name: Disk cleanup timer
+      ansible.builtin.copy:
+        dest: /etc/systemd/system/jenkins-disk-cleanup.timer
+        mode: "0644"
+        content: |
+          [Unit]
+          Description=Daily Jenkins disk cleanup
+          [Timer]
+          OnCalendar=*-*-* 04:00:00
+          Persistent=true
+          RandomizedDelaySec=10m
+          [Install]
+          WantedBy=timers.target
+
+    - name: Disk cleanup timer enabled
+      ansible.builtin.systemd_service:
+        name: jenkins-disk-cleanup.timer
+        state: started
+        enabled: true
+        daemon_reload: true
+
     - name: Apply pending handlers before verifying
       ansible.builtin.meta: flush_handlers
 

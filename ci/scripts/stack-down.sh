@@ -10,7 +10,9 @@ if [ -n "${LOG_DIR:-}" ]; then
   done
 fi
 
-docker rm -f "$CI_ID-zap" "$CI_ID-nest-1" "$CI_ID-nest-2" "$CI_ID-nest-3" \
+# -v: postgres/redis images declare VOLUMEs; without it every build
+# leaked two anonymous volumes onto the Jenkins disk.
+docker rm -f -v "$CI_ID-zap" "$CI_ID-nest-1" "$CI_ID-nest-2" "$CI_ID-nest-3" \
   "$CI_ID-redis" "$CI_ID-pg" >/dev/null 2>&1 || true
 docker network rm "$CI_ID-net" >/dev/null 2>&1 || true
 exit 0

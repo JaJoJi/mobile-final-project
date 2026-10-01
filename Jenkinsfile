@@ -76,6 +76,14 @@ MEM = [
   large : '--memory=1536m --memory-swap=3g',
 ]
 
+// One dependency cache for every job (npm, pub, Trivy DB), outside the
+// workspaces. It used to live in each workspace's .cache/, so every PR
+// carried its own multi-GB copy and the 61 GB disk filled up (2026-10-01).
+// Safe to share: the controller has 1 executor, so builds never overlap.
+// Tool containers see it through a bind mount at the same path.
+CACHE_DIR = '/var/lib/jenkins/ci-cache'
+CACHE_MOUNT = "-v ${CACHE_DIR}:${CACHE_DIR}"
+
 pipeline {
   agent any
 
@@ -114,9 +122,27 @@ pipeline {
     PG_IMAGE    = "${IMAGES.postgres}"
     REDIS_IMAGE = "${IMAGES.redis}"
     ZAP_IMAGE   = "${IMAGES.zap}"
+    CI_CACHE    = "${CACHE_DIR}"
   }
 
   stages {
+    // ── 0. Disk guard — fail fast with a clear message ─────────────────
+    // A full disk otherwise shows up as random "No space left on device"
+    // deep inside npm / pub / docker save.
+    stage('Preflight · disk') {
+      steps {
+        sh '''
+          mkdir -p "$CI_CACHE/npm" "$CI_CACHE/pub" "$CI_CACHE/trivy"
+          avail=$(df --output=avail -BG "$WORKSPACE" | tail -1 | tr -dc 0-9)
+          echo "Free disk: ${avail} GB"
+          if [ "$avail" -lt 5 ]; then
+            echo "Less than 5 GB free on the Jenkins host -- free space first (runbook §6)." >&2
+            exit 1
+          fi
+        '''
+      }
+    }
+
     // ── 1. Secrets — cheapest, every branch ─────────────────────────────
     stage('Security · Gitleaks') {
       when { expression { params.ENABLE_SECURITY_SCAN != false } }
@@ -136,8 +162,8 @@ pipeline {
       parallel {
         stage('Backend · lint + unit test') {
           when { anyOf { branch 'dev'; branch 'main'; changeRequest target: 'dev'; changeRequest target: 'main' } }
-          agent { docker { image IMAGES.node; args MEM.large; reuseNode true } }
-          environment { HOME = '/tmp'; npm_config_cache = "${env.WORKSPACE}/.cache/npm" }
+          agent { docker { image IMAGES.node; args "${MEM.large} ${CACHE_MOUNT}"; reuseNode true } }
+          environment { HOME = '/tmp'; npm_config_cache = "${CACHE_DIR}/npm" }
           steps {
             dir('backend') {
               sh 'npm ci --no-audit --no-fund'
@@ -166,8 +192,8 @@ pipeline {
           when { anyOf { branch 'dev'; branch 'main'; changeRequest target: 'dev'; changeRequest target: 'main' } }
           // Root: the Flutter SDK in this image is root-owned and flutter
           // writes to its own cache. Ownership is handed back in post.
-          agent { docker { image IMAGES.flutter; args "-u 0:0 ${MEM.large}"; reuseNode true } }
-          environment { HOME = '/tmp'; PUB_CACHE = "${env.WORKSPACE}/.cache/pub" }
+          agent { docker { image IMAGES.flutter; args "-u 0:0 ${MEM.large} ${CACHE_MOUNT}"; reuseNode true } }
+          environment { HOME = '/tmp'; PUB_CACHE = "${CACHE_DIR}/pub" }
           steps {
             dir('mobile') {
               sh 'flutter pub get'
@@ -189,7 +215,7 @@ pipeline {
                   fi
                 '''
               }
-              sh 'chown -R "$(stat -c %u:%g "$WORKSPACE")" mobile .cache'
+              sh 'chown -R "$(stat -c %u:%g "$WORKSPACE")" mobile "$PUB_CACHE"'
               junit testResults: 'mobile/reports/flutter-junit.xml', allowEmptyResults: true
               archiveArtifacts artifacts: 'mobile/coverage/**', allowEmptyArchive: true
             }
@@ -212,13 +238,13 @@ pipeline {
 
         stage('Security · Trivy fs') {
           when { expression { params.ENABLE_SECURITY_SCAN != false } }
-          agent { docker { image IMAGES.trivy; args "--entrypoint= ${MEM.medium}"; reuseNode true } }
+          agent { docker { image IMAGES.trivy; args "--entrypoint= ${MEM.medium} ${CACHE_MOUNT}"; reuseNode true } }
           environment { HOME = '/tmp' }
           steps {
             // Blocks only fixable HIGH/CRITICAL (guide A4). Accepted risks
             // live in .trivyignore.yaml, each with a reason + expiry.
             sh '''
-              trivy fs --cache-dir "$WORKSPACE/.cache/trivy" --timeout 15m --no-progress \
+              trivy fs --cache-dir "$CI_CACHE/trivy" --timeout 15m --no-progress \
                 --scanners vuln,secret,misconfig --severity HIGH,CRITICAL \
                 --ignore-unfixed --exit-code 1 --ignorefile .trivyignore.yaml \
                 --skip-dirs .cache,backend/node_modules,backend/dist,backend/coverage,mobile/.dart_tool,mobile/build \
@@ -260,17 +286,17 @@ pipeline {
           }
         }
         stage('Security · SBOM + Trivy image') {
-          agent { docker { image IMAGES.trivy; args "--entrypoint= ${MEM.medium}"; reuseNode true } }
+          agent { docker { image IMAGES.trivy; args "--entrypoint= ${MEM.medium} ${CACHE_MOUNT}"; reuseNode true } }
           environment { HOME = '/tmp' }
           steps {
             sh '''
-              trivy image --cache-dir "$WORKSPACE/.cache/trivy" --timeout 15m --no-progress \
+              trivy image --cache-dir "$CI_CACHE/trivy" --timeout 15m --no-progress \
                 --input backend-image.tar --format cyclonedx --output sbom.cdx.json
             '''
             script {
               if (params.ENABLE_SECURITY_SCAN != false) {
                 sh '''
-                  trivy image --cache-dir "$WORKSPACE/.cache/trivy" --timeout 15m --no-progress \
+                  trivy image --cache-dir "$CI_CACHE/trivy" --timeout 15m --no-progress \
                     --input backend-image.tar --severity HIGH,CRITICAL \
                     --ignore-unfixed --exit-code 1 --ignorefile .trivyignore.yaml
                 '''
@@ -382,6 +408,21 @@ pipeline {
     }
     unsuccessful {
       script { if (params.ENABLE_NOTIFICATIONS != false) { notifyEmail(currentBuild.currentResult) } }
+    }
+    // Runs last, pass or fail, after artifacts/reports are archived: the
+    // workspace (source, node_modules, .dart_tool, build/ ...) is rebuilt
+    // from git every time anyway. Flutter runs as root, so first hand any
+    // root-owned leftovers back to the jenkins user (a failed stage may
+    // have skipped its own chown) or deleteDir can't remove them.
+    cleanup {
+      sh """
+        docker run --rm -u 0:0 --entrypoint chown \
+          -v "\$WORKSPACE:/w" -v "\$CI_CACHE/pub:/pub" ${IMAGES.node} \
+          -R "\$(id -u):\$(id -g)" /w /pub >/dev/null 2>&1 || true
+      """
+      script {
+        try { deleteDir() } catch (e) { echo "Workspace cleanup failed (daily timer will retry): ${e}" }
+      }
     }
   }
 }
