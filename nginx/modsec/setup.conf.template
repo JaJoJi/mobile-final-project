@@ -1,0 +1,43 @@
+# Curated OWASP CRS 4.25 rule set (#224), mounted over the image's
+# setup.conf.template, which includes every rule file (rules/*.conf).
+# Only the categories that match this app's attack surface (JSON + WebSocket
+# API, NestJS, Postgres, JWT; no file uploads, PHP, Java or CMS) are
+# loaded. That keeps nginx worker memory/CPU bounded on a shared VM, given
+# the real-world CRS memory-growth reports noted in #224.
+# Paranoia level 1 (BLOCKING_PARANOIA in compose) to start.
+
+Include /etc/modsecurity.d/modsecurity.conf
+Include /etc/modsecurity.d/modsecurity-override.conf
+Include /etc/modsecurity.d/owasp-crs/crs-setup.conf
+
+# Mandatory CRS initialization + common exceptions
+Include /etc/modsecurity.d/owasp-crs/rules/REQUEST-901-INITIALIZATION.conf
+Include /etc/modsecurity.d/owasp-crs/rules/REQUEST-905-COMMON-EXCEPTIONS.conf
+
+# Protocol hygiene
+Include /etc/modsecurity.d/owasp-crs/rules/REQUEST-911-METHOD-ENFORCEMENT.conf
+Include /etc/modsecurity.d/owasp-crs/rules/REQUEST-913-SCANNER-DETECTION.conf
+Include /etc/modsecurity.d/owasp-crs/rules/REQUEST-920-PROTOCOL-ENFORCEMENT.conf
+Include /etc/modsecurity.d/owasp-crs/rules/REQUEST-921-PROTOCOL-ATTACK.conf
+
+# Attack classes relevant to this stack
+Include /etc/modsecurity.d/owasp-crs/rules/REQUEST-930-APPLICATION-ATTACK-LFI.conf
+Include /etc/modsecurity.d/owasp-crs/rules/REQUEST-931-APPLICATION-ATTACK-RFI.conf
+Include /etc/modsecurity.d/owasp-crs/rules/REQUEST-932-APPLICATION-ATTACK-RCE.conf
+Include /etc/modsecurity.d/owasp-crs/rules/REQUEST-934-APPLICATION-ATTACK-GENERIC.conf
+Include /etc/modsecurity.d/owasp-crs/rules/REQUEST-941-APPLICATION-ATTACK-XSS.conf
+Include /etc/modsecurity.d/owasp-crs/rules/REQUEST-942-APPLICATION-ATTACK-SQLI.conf
+Include /etc/modsecurity.d/owasp-crs/rules/REQUEST-943-APPLICATION-ATTACK-SESSION-FIXATION.conf
+
+# Mandatory: anomaly score -> block/pass decision
+Include /etc/modsecurity.d/owasp-crs/rules/REQUEST-949-BLOCKING-EVALUATION.conf
+Include /etc/modsecurity.d/owasp-crs/rules/REQUEST-999-COMMON-EXCEPTIONS-AFTER.conf
+
+# Response phase: generic + SQL (Postgres) error leakage
+Include /etc/modsecurity.d/owasp-crs/rules/RESPONSE-950-DATA-LEAKAGES.conf
+Include /etc/modsecurity.d/owasp-crs/rules/RESPONSE-951-DATA-LEAKAGES-SQL.conf
+Include /etc/modsecurity.d/owasp-crs/rules/RESPONSE-959-BLOCKING-EVALUATION.conf
+Include /etc/modsecurity.d/owasp-crs/rules/RESPONSE-980-CORRELATION.conf
+
+# Not loaded (no matching attack surface): 922 multipart (no uploads),
+# 933/953 PHP, 944/952 Java, 954 IIS, 955 web shells, 956 Ruby.

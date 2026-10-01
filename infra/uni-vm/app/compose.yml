@@ -1,15 +1,19 @@
-# Production stack on the university VM (#221). Same topology as the dev
-# docker-compose.yml (nginx -> nest x3 -> Redis + Postgres primary/replica)
-# but nothing is built here: nest runs the image Jenkins released to
-# Docker Hub after it passed every gate (pull-based deploy, see deploy.sh).
+# Production stack on the university VM (#221, #223, #224, #225).
+#   edge     nginx + ModSecurity (OWASP CRS)           -> nest-1/2/3
+#   data     Postgres primary + replica, Redis
+#   secrets  Vault (production mode) + Vault Agent     -> tmpfs volume
+#   observe  Beyla, Alloy, Prometheus, Loki, Tempo, Grafana
+# Nothing is built here: nest runs the image Jenkins released to Docker Hub
+# after it passed every gate (pull-based deploy, see deploy.sh).
 #
 # Deploy (from the repo root):
 #   docker compose -f infra/uni-vm/app/compose.yml pull
 #   docker compose -f infra/uni-vm/app/compose.yml up -d
 # Compose reads infra/uni-vm/app/.env automatically -- site.yml makes it a
-# symlink to /etc/auto-chess/app.env (root-only secrets, gitignored).
-# IMAGE_TAG there picks the release (default latest). deploy.sh does the
-# same plus a health check and automatic rollback.
+# symlink to /etc/auto-chess/app.env (root-only, gitignored). It holds only
+# non-secret settings; every password / key lives in Vault and is rendered
+# by Vault Agent into the in-memory `vault_secrets` volume.
+# First time: `up -d vault`, then sudo infra/uni-vm/vault/bootstrap.sh.
 name: auto-chess
 
 x-nest: &nest
@@ -20,31 +24,58 @@ x-nest: &nest
       condition: service_healthy
     redis:
       condition: service_healthy
+    vault-agent:
+      condition: service_started
+  # Wait for Vault Agent to render the secrets, load them into the process
+  # environment only (never onto disk), then start the app.
+  entrypoint:
+    - sh
+    - -c
+    - |
+      until [ -s /vault/secrets/app.env ]; do echo "waiting for Vault secrets"; sleep 3; done
+      set -a; . /vault/secrets/app.env; set +a
+      exec node dist/main.js
+  volumes:
+    - vault_secrets:/vault/secrets:ro
   environment: &nest-env
     NODE_ENV: production
     NEST_PORT: 3000
     LOG_LEVEL: ${LOG_LEVEL:-info}
-    DATABASE_URL: postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres-primary:5432/${POSTGRES_DB}
-    DATABASE_REPLICA_URL: postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres-replica:5432/${POSTGRES_DB}
     REDIS_URL: redis://redis:6379
-    JWT_SECRET: ${JWT_SECRET:?}
     JWT_ACCESS_TTL: ${JWT_ACCESS_TTL:-7d}
     JWT_REFRESH_TTL: ${JWT_REFRESH_TTL:-30d}
     COMBAT_DONE_TIMEOUT_MS: ${COMBAT_DONE_TIMEOUT_MS:-60000}
+    # OTel SDK (backend/src/tracing.ts) -> Tempo
+    OTEL_EXPORTER_OTLP_ENDPOINT: http://tempo:4318
+    OTEL_SERVICE_NAME: auto-chess-backend
 
 services:
+  # ── data ───────────────────────────────────────────────────────────────
   postgres-primary:
     image: postgres:16-alpine@sha256:721873c34ceb9f8d8fc265984940dc982404c105f19ad51be9fdc5970a6080ea
     restart: unless-stopped
+    depends_on:
+      vault-agent:
+        condition: service_started
     environment:
       POSTGRES_USER: ${POSTGRES_USER:?}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?}
       POSTGRES_DB: ${POSTGRES_DB:?}
-      POSTGRES_REPLICATION_PASSWORD: ${POSTGRES_REPLICATION_PASSWORD:?}
+      POSTGRES_PASSWORD_FILE: /vault/secrets/pg_password
+      POSTGRES_REPLICATION_PASSWORD_FILE: /vault/secrets/repl_password
+    entrypoint:
+      - sh
+      - -c
+      - |
+        until [ -s /vault/secrets/pg_password ] && [ -s /vault/secrets/repl_password ]; do
+          echo "waiting for Vault secrets"; sleep 3
+        done
+        exec docker-entrypoint.sh "$$@"
+      - sh
     command: ["postgres", "-c", "wal_level=replica", "-c", "max_wal_senders=10",
               "-c", "max_replication_slots=10", "-c", "hot_standby=on"]
     volumes:
       - pg_primary_data:/var/lib/postgresql/data
+      - vault_secrets:/vault/secrets:ro
       - ../../../postgres/init-primary.sh:/docker-entrypoint-initdb.d/01-replication.sh:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
@@ -57,19 +88,21 @@ services:
     restart: unless-stopped
     environment:
       POSTGRES_USER: ${POSTGRES_USER}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
       POSTGRES_DB: ${POSTGRES_DB}
-      PGPASSWORD: ${POSTGRES_REPLICATION_PASSWORD}
+      POSTGRES_PASSWORD_FILE: /vault/secrets/pg_password
     depends_on:
       postgres-primary:
         condition: service_healthy
     # Same bootstrap as the dev compose: base backup from the primary on
-    # first start, then run as a hot standby.
+    # first start, then run as a hot standby. The replication password is
+    # read from the Vault-rendered file into PGPASSWORD (never in compose).
     command:
       - bash
       - -c
       - |
         set -e
+        until [ -s /vault/secrets/repl_password ]; do sleep 2; done
+        export PGPASSWORD="$$(cat /vault/secrets/repl_password)"
         if [ ! -s /var/lib/postgresql/data/PG_VERSION ]; then
           until pg_isready -h postgres-primary -U "$$POSTGRES_USER"; do sleep 2; done
           pg_basebackup -h postgres-primary -D /var/lib/postgresql/data \
@@ -79,6 +112,7 @@ services:
         exec docker-entrypoint.sh postgres
     volumes:
       - pg_replica_data:/var/lib/postgresql/data
+      - vault_secrets:/vault/secrets:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
       interval: 5s
@@ -94,6 +128,7 @@ services:
       timeout: 3s
       retries: 5
 
+  # ── app ────────────────────────────────────────────────────────────────
   nest-1:
     <<: *nest
     environment:
@@ -111,17 +146,190 @@ services:
       <<: *nest-env
       HOSTNAME: nest-3
 
-  # Stock image + the repo's config (no build on the VM). Replaced by the
-  # nginx + ModSecurity WAF image in #224.
+  # nginx + ModSecurity WAF with OWASP CRS (#224): the official image,
+  # pinned LTS release + digest, configured by mounting our templates (no
+  # build on the VM). Unprivileged: listens on 8080 inside, published on 80.
+  # Starts in DetectionOnly: attacks are logged (JSON audit log on stdout,
+  # `docker compose logs nginx`) but not blocked, until the logs show no
+  # false positives; then set MODSEC_RULE_ENGINE=On in app.env + up -d.
   nginx:
-    image: nginx:1.27-alpine
+    image: owasp/modsecurity-crs:4.25.1-nginx-alpine-202609301109-lts@sha256:486b90815ad28f584a84fcd308259d0c8962b5a67f770e63730ab654595f360a
     restart: unless-stopped
     depends_on: [nest-1, nest-2, nest-3]
     ports:
-      - "80:80"
+      - "80:8080"
+    environment:
+      MODSEC_RULE_ENGINE: ${MODSEC_RULE_ENGINE:-DetectionOnly}
+      BLOCKING_PARANOIA: 1
+      # Fixed, not `auto`: the VM is shared with nest x3, Postgres, monitoring.
+      NGINX_WORKER_PROCESSES: 2
+      SERVER_TOKENS: "off"
+      MODSEC_AUDIT_LOG: /dev/stdout
+      MODSEC_AUDIT_LOG_FORMAT: JSON
     volumes:
-      - ../../../nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ../../../nginx/modsec/default.conf.template:/etc/nginx/templates/conf.d/default.conf.template:ro
+      - ../../../nginx/modsec/setup.conf.template:/etc/nginx/templates/modsecurity.d/setup.conf.template:ro
+    # CRS workers can grow under load (#224): cap it so a runaway worker
+    # gets the WAF restarted instead of starving the app.
+    mem_limit: 512m
+    # The image's own healthcheck probes https://:8443, which our server
+    # block doesn't serve -- probe the plain-HTTP /healthz instead.
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:8080/healthz"]
+      interval: 15s
+      timeout: 3s
+      retries: 3
+
+  # ── secrets (#223) ─────────────────────────────────────────────────────
+  # Vault in production mode: Raft storage, TLS, sealed after each restart
+  # (sudo auto-chess-vault-unseal). No published port: only compose
+  # services reach it. TLS cert/key: /etc/auto-chess/vault-tls (site.yml).
+  vault:
+    image: hashicorp/vault:2.1.1
+    restart: unless-stopped
+    command: ["server"]
+    environment:
+      VAULT_ADDR: https://127.0.0.1:8200
+      VAULT_CACERT: /vault/tls/vault.crt
+    volumes:
+      - vault_data:/vault/data
+      - ../vault/vault.hcl:/vault/config/vault.hcl:ro
+      - ../vault/policies:/vault/policies:ro
+      - /etc/auto-chess/vault-tls:/vault/tls:ro
+    # `vault status` exits 2 when sealed (still alive) and 1 when it can't
+    # connect: only 1 is unhealthy.
+    healthcheck:
+      test: ["CMD-SHELL", "vault status >/dev/null 2>&1; [ $$? -ne 1 ]"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+    mem_limit: 256m
+
+  # Vault Agent: logs in with the app AppRole (/etc/auto-chess/vault-agent)
+  # and renders the secrets into the tmpfs volume. Retries while Vault is
+  # sealed, so a reboot recovers by itself once someone unseals.
+  vault-agent:
+    image: hashicorp/vault:2.1.1
+    restart: unless-stopped
+    user: "0"
+    entrypoint: ["vault", "agent", "-config=/vault/config/agent.hcl"]
+    depends_on: [vault]
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:?}
+      POSTGRES_DB: ${POSTGRES_DB:?}
+    volumes:
+      - ../vault/agent.hcl:/vault/config/agent.hcl:ro
+      - /etc/auto-chess/vault-tls/vault.crt:/vault/tls/vault.crt:ro
+      - /etc/auto-chess/vault-agent:/vault/approle:ro
+      - vault_secrets:/vault/secrets
+    mem_limit: 128m
+
+  # ── observability (#225) ───────────────────────────────────────────────
+  # Beyla: eBPF auto-instrumentation -> RED metrics of nest + nginx with no
+  # code change. Needs host PID namespace + privileges for eBPF.
+  beyla:
+    image: grafana/beyla:2.5.0
+    restart: unless-stopped
+    privileged: true
+    pid: host
+    environment:
+      BEYLA_OPEN_PORT: "3000,8080"
+      BEYLA_PROMETHEUS_PORT: 9400
+      BEYLA_TRACE_PRINTER: disabled
+    mem_limit: 256m
+
+  # Alloy: the single collection agent -- container logs -> Loki, host
+  # metrics -> Prometheus. Replaces Promtail.
+  alloy:
+    image: grafana/alloy:v1.10.0
+    restart: unless-stopped
+    user: "0"
+    command:
+      - run
+      - /etc/alloy/config.alloy
+      - --server.http.listen-addr=0.0.0.0:12345
+      - --storage.path=/var/lib/alloy/data
+    volumes:
+      - ../monitoring/config.alloy:/etc/alloy/config.alloy:ro
+      - alloy_data:/var/lib/alloy/data
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - /proc:/host/proc:ro
+      - /sys:/host/sys:ro
+      - /:/host/root:ro
+    depends_on: [loki, prometheus]
+    mem_limit: 256m
+
+  prometheus:
+    image: prom/prometheus:v3.15.0
+    restart: unless-stopped
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.path=/prometheus
+      - --storage.tsdb.retention.time=7d
+      - --web.enable-remote-write-receiver
+    volumes:
+      - ../monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
+    mem_limit: 384m
+
+  loki:
+    image: grafana/loki:3.5.0
+    restart: unless-stopped
+    command: ["-config.file=/etc/loki/loki.yaml"]
+    volumes:
+      - ../monitoring/loki.yaml:/etc/loki/loki.yaml:ro
+      - loki_data:/loki
+    mem_limit: 384m
+
+  tempo:
+    image: grafana/tempo:2.8.1
+    restart: unless-stopped
+    user: "0"
+    command: ["-config.file=/etc/tempo/tempo.yaml"]
+    volumes:
+      - ../monitoring/tempo.yaml:/etc/tempo/tempo.yaml:ro
+      - tempo_data:/var/tempo
+    mem_limit: 384m
+
+  # Grafana on :3000 (campus network). Admin password comes from Vault.
+  # Datasources (Prometheus, Loki, Tempo) and the overview dashboard are
+  # provisioned from files -- nothing to click together.
+  grafana:
+    image: grafana/grafana:12.0.0
+    restart: unless-stopped
+    depends_on: [prometheus, loki, tempo, vault-agent]
+    entrypoint:
+      - sh
+      - -c
+      - |
+        until [ -s /vault/secrets/grafana_admin_password ]; do sleep 3; done
+        exec /run.sh
+    ports:
+      - "3000:3000"
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD__FILE: /vault/secrets/grafana_admin_password
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_ANALYTICS_REPORTING_ENABLED: "false"
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - vault_secrets:/vault/secrets:ro
+      - ../monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ../monitoring/grafana/dashboards:/var/lib/grafana/dashboards:ro
+    mem_limit: 384m
 
 volumes:
   pg_primary_data:
   pg_replica_data:
+  vault_data:
+  # In-memory only: rendered secrets never touch the VM disk.
+  vault_secrets:
+    driver: local
+    driver_opts:
+      type: tmpfs
+      device: tmpfs
+      o: uid=0,mode=0755
+  prometheus_data:
+  loki_data:
+  tempo_data:
+  grafana_data:
+  alloy_data:

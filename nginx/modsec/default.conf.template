@@ -1,0 +1,61 @@
+# Production server block for the nginx + ModSecurity WAF image (#224),
+# mounted over the image's default.conf.template (which also drops its
+# self-signed :8443 server). Load balancing is the same tested shape as
+# nginx/nginx.conf: least_conn over nest-1/2/3, WebSocket on /socket.io/,
+# /health passthrough.
+#
+# ModSecurity is enabled globally by the image (modsecurity.conf +
+# setup.conf.template here); nothing per-location is needed.
+# Rendered with envsubst at start: only ${PORT} is an env var below --
+# nginx variables like $host are left alone.
+
+upstream backend {
+    least_conn;
+    server nest-1:3000 max_fails=3 fail_timeout=10s;
+    server nest-2:3000 max_fails=3 fail_timeout=10s;
+    server nest-3:3000 max_fails=3 fail_timeout=10s;
+    keepalive 32;
+}
+
+server {
+    # Unprivileged image: nginx listens on 8080 inside, compose maps 80->8080.
+    listen ${PORT} default_server;
+    server_name _;
+
+    # ─── CORS for browser clients (Flutter web, etc.) ───
+    add_header 'Access-Control-Allow-Origin'  '*'                                   always;
+    add_header 'Access-Control-Allow-Methods' 'GET, POST, PUT, PATCH, DELETE, OPTIONS' always;
+    add_header 'Access-Control-Allow-Headers' 'Content-Type, Authorization, X-Requested-With' always;
+    add_header 'Access-Control-Max-Age'       86400                                 always;
+
+    if ($request_method = 'OPTIONS') {
+        return 204;
+    }
+
+    location = /health {
+        proxy_pass http://backend/health;
+        access_log off;
+    }
+
+    location /socket.io/ {
+        proxy_pass http://backend;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_read_timeout 86400;
+    }
+
+    location / {
+        proxy_pass http://backend;
+        proxy_http_version 1.1;
+        proxy_set_header Host              $host;
+        proxy_set_header X-Real-IP         $remote_addr;
+        proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+
+    # Image-provided /healthz (container healthcheck) + local stub_status.
+    include includes/location_common.conf;
+}
