@@ -6,7 +6,8 @@
 # 2026-09-30; before that it was SSH-tunnel only). Caddy gets a Let's
 # Encrypt cert and proxies to 127.0.0.1:8080; the Jenkins login is the
 # access control, so this playbook refuses to start Caddy while anonymous
-# read or self sign-up is enabled. Jenkins still polls GitHub (no webhook),
+# read or self sign-up is enabled. GitHub pushes builds in via the repo
+# webhook (/github-webhook/, HMAC-signed),
 # reports ✅/❌ on the PR and emails results with the log.
 #
 #   ./run.sh ansible-playbook jenkins-host.yml
@@ -288,7 +289,7 @@
         enabled: true
 
     # Earlier revisions installed cloudflared for a webhook tunnel; not
-    # needed now that Jenkins polls GitHub. Remove it (least software).
+    # needed now that Caddy publishes Jenkins. Remove it (least software).
     - name: No cloudflared
       ansible.builtin.apt:
         name: cloudflared
