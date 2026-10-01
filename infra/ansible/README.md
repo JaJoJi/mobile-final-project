@@ -54,9 +54,10 @@ different key pair (default `~/.ssh/id_ed25519`).
    and keep anonymous read + sign-up off.
 2. Finish setup per `docs/08-runbook.md` §6 (plugins, Multibranch job,
    credentials) and the hardening checklist in #288.
-3. **No webhook** — Jenkins is private. The Multibranch job polls GitHub
-   every minute (runbook §6), posts commit statuses with `github-token`,
-   and emails results (`notify-email` + SMTP).
+3. **GitHub webhook** to `https://<jenkins_fqdn>/github-webhook/` with a
+   shared secret (runbook §6) starts builds; the Multibranch job posts
+   commit statuses with `github-token` and emails results
+   (`notify-email` + SMTP).
 
 ## Teammate IP changed?
 

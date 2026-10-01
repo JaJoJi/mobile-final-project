@@ -153,11 +153,11 @@ grepping `docker compose logs` by hand — update this section then.
 
 ## 6. Jenkins CI Setup
 
-Jenkins runs on the Azure VM `mfp-jenkins` and is **private**: nothing
-inbound except SSH from known IPs, Jenkins bound to `127.0.0.1:8080`
-(decided 2026-09-28, "option A"). It polls GitHub instead of receiving
-webhooks, posts ✅/❌ back to commits/PRs, and emails results with the
-log. Hardening checklist: #288.
+Jenkins runs on the Azure VM `mfp-jenkins`, bound to `127.0.0.1:8080` and
+published over HTTPS by Caddy at https://mfp-jenkins-psu.malaysiawest.cloudapp.azure.com (since
+2026-09-30; SSH only from known IPs). GitHub starts builds through a
+signed webhook, Jenkins posts ✅/❌ back to commits/PRs and emails results
+with the log. Hardening checklist: #288.
 
 1. **Host:** created + configured by Ansible — `infra/ansible/`
    (`provision.yml` makes the VM, `jenkins-host.yml` installs Docker +
@@ -194,8 +194,20 @@ log. Hardening checklist: #288.
      wildcards)** include `dev main PR-*` (the repo has ~40 stale
      feature branches; without the filter each gets built)
    - **Scan Multibranch Pipeline Triggers → Periodically if not otherwise
-     run: 1 minute** (replaces the webhook)
+     run: 1 hour** (fallback only; the webhook below starts builds)
    - Orphaned items: discard after 7 days
+7. **Webhook** (builds start seconds after a push/PR instead of polling):
+   - Jenkins: Manage Jenkins → Credentials → add **Secret text**
+     `github-webhook-secret` (random: `openssl rand -hex 32`). Manage
+     Jenkins → System → **GitHub** → Advanced → *Shared secrets* → pick
+     it. Leave "Manage hooks" off (the token can't admin the repo).
+   - GitHub (repo admin): Settings → Webhooks → Add webhook — Payload URL
+     `https://mfp-jenkins-psu.malaysiawest.cloudapp.azure.com/github-webhook/` (trailing slash), Content type
+     `application/json`, Secret = the same value, events **Pushes** +
+     **Pull requests**, SSL verification on.
+   - Check: Recent Deliveries shows `200`; pushing to a PR starts its
+     build within seconds. Requests with a wrong/missing signature are
+     rejected by Jenkins.
    The `Jenkinsfile` scopes stages: cheap scans on every discovered
    branch; full build/test/image/ZAP on PRs into `dev`/`main` and on
    `dev`/`main`; Docker Hub push on `main` only.
