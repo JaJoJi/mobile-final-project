@@ -1,0 +1,42 @@
+# Loki, single binary, filesystem storage (#225). Receives every
+# container's stdout from Alloy: nest pino JSON (with trace_id for the
+# jump to Tempo), the nginx ModSecurity JSON audit log, Vault's audit log.
+auth_enabled: false
+
+server:
+  http_listen_port: 3100
+  log_level: warn
+
+common:
+  instance_addr: 127.0.0.1
+  path_prefix: /loki
+  replication_factor: 1
+  ring:
+    kvstore:
+      store: inmemory
+  storage:
+    filesystem:
+      chunks_directory: /loki/chunks
+      rules_directory: /loki/rules
+
+schema_config:
+  configs:
+    - from: 2026-01-01
+      store: tsdb
+      object_store: filesystem
+      schema: v13
+      index:
+        prefix: index_
+        period: 24h
+
+limits_config:
+  retention_period: 168h          # 7 days -- the VM disk is shared with the app
+  allow_structured_metadata: true # trace_id / span_id travel as metadata, not labels
+
+compactor:
+  working_directory: /loki/compactor
+  retention_enabled: true
+  delete_request_store: filesystem
+
+analytics:
+  reporting_enabled: false

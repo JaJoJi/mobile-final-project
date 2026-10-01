@@ -1,0 +1,94 @@
+// Grafana Alloy on the university VM (#225) -- the one collection agent
+// (replaces Promtail; no mtail): container logs -> Loki, host metrics ->
+// Prometheus.
+
+// ── Logs: every container of this compose project ───────────────────────
+// Docker API for discovery + log streaming (labels = compose service
+// names). The socket is mounted read-only into this one trusted agent.
+discovery.docker "containers" {
+  host = "unix:///var/run/docker.sock"
+}
+
+discovery.relabel "containers" {
+  targets = discovery.docker.containers.targets
+
+  rule {
+    source_labels = ["__meta_docker_container_label_com_docker_compose_project"]
+    regex         = "auto-chess"
+    action        = "keep"
+  }
+  rule {
+    source_labels = ["__meta_docker_container_label_com_docker_compose_service"]
+    target_label  = "service"
+  }
+}
+
+loki.source.docker "containers" {
+  host       = "unix:///var/run/docker.sock"
+  targets    = discovery.relabel.containers.output
+  forward_to = [loki.process.app.receiver]
+}
+
+loki.process "app" {
+  // nest-1/2/3: pino JSON. `level` (numeric: 30 info, 40 warn, 50 error)
+  // becomes a label; trace_id/span_id (added by the OTel pino
+  // instrumentation) become structured metadata -> Grafana jumps to Tempo.
+  stage.match {
+    selector = "{service=~\"nest-.*\"}"
+
+    stage.json {
+      expressions = { level = "level", trace_id = "trace_id", span_id = "span_id" }
+    }
+    stage.labels {
+      values = { level = "" }
+    }
+    stage.structured_metadata {
+      values = { trace_id = "", span_id = "" }
+    }
+  }
+
+  // nginx: ModSecurity JSON audit records (one per flagged request).
+  stage.match {
+    selector = "{service=\"nginx\"} |= \"\\\"transaction\\\"\""
+
+    stage.static_labels {
+      values = { log_type = "modsec_audit" }
+    }
+  }
+
+  // vault: audit device writes JSON to stdout (who read which secret).
+  stage.match {
+    selector = "{service=\"vault\"} |= \"\\\"type\\\":\\\"response\\\"\""
+
+    stage.static_labels {
+      values = { log_type = "vault_audit" }
+    }
+  }
+
+  forward_to = [loki.write.default.receiver]
+}
+
+loki.write "default" {
+  endpoint {
+    url = "http://loki:3100/loki/api/v1/push"
+  }
+}
+
+// ── Host metrics -> Prometheus (remote_write) ───────────────────────────
+prometheus.exporter.unix "host" {
+  procfs_path = "/host/proc"
+  sysfs_path  = "/host/sys"
+  rootfs_path = "/host/root"
+}
+
+prometheus.scrape "host" {
+  targets         = prometheus.exporter.unix.host.targets
+  forward_to      = [prometheus.remote_write.default.receiver]
+  scrape_interval = "15s"
+}
+
+prometheus.remote_write "default" {
+  endpoint {
+    url = "http://prometheus:9090/api/v1/write"
+  }
+}

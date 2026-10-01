@@ -1,0 +1,43 @@
+# Provisioned at Grafana start (#225): three datasources wired together.
+# Loki log line -> Tempo trace (trace_id structured metadata), and
+# Tempo span -> Loki logs of the same trace.
+# `$$` escapes Grafana's own env-var interpolation in provisioning files.
+apiVersion: 1
+
+datasources:
+  - name: Prometheus
+    uid: prometheus
+    type: prometheus
+    access: proxy
+    url: http://prometheus:9090
+    isDefault: true
+
+  - name: Loki
+    uid: loki
+    type: loki
+    access: proxy
+    url: http://loki:3100
+    jsonData:
+      derivedFields:
+        - name: TraceID
+          matcherType: label
+          matcherRegex: trace_id
+          datasourceUid: tempo
+          url: "$${__value.raw}"
+          urlDisplayLabel: View trace
+
+  - name: Tempo
+    uid: tempo
+    type: tempo
+    access: proxy
+    url: http://tempo:3200
+    jsonData:
+      tracesToLogsV2:
+        datasourceUid: loki
+        filterByTraceID: true
+        spanStartTimeShift: "-5m"
+        spanEndTimeShift: "5m"
+      serviceMap:
+        datasourceUid: prometheus
+      nodeGraph:
+        enabled: true

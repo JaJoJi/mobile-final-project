@@ -1,3 +1,5 @@
+// First: OpenTelemetry must patch http/pg/ioredis before they load (#225).
+import './tracing';
 import 'reflect-metadata';
 import { Logger, ValidationPipe } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';

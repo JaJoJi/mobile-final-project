@@ -13,6 +13,8 @@ module.exports = {
     '!src/**/fixtures/**',
     '!src/game/index.ts',
     '!src/main.ts',
+    // OTel bootstrap: process-level side effects only, opt-in via env (#225).
+    '!src/tracing.ts',
     '!src/data-source.ts',
     '!src/migrations/**',
     '!src/**/*.module.ts',
