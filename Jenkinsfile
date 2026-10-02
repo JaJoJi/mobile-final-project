@@ -110,6 +110,10 @@ pipeline {
       description: 'Backend *.smoke.ts against a real Postgres + Redis + 3 Nest instances')
     booleanParam(name: 'ENABLE_IMAGE_PUBLISH', defaultValue: true,
       description: 'Push the backend image to Docker Hub on main (dockerhub-token)')
+    booleanParam(name: 'ENABLE_APK_BUILD', defaultValue: true,
+      description: 'Build a release Android APK on main and archive it (installable in the emulator, #194)')
+    string(name: 'APK_API_BASE_URL', defaultValue: 'http://172.30.58.10',
+      description: 'Backend the APK talks to (--dart-define API_BASE_URL; WS_BASE_URL is derived). The university VM address, reachable on the campus network')
     booleanParam(name: 'ENABLE_NOTIFICATIONS', defaultValue: true,
       description: 'Email SUCCESS/FAILURE (notify-email credential + SMTP, runbook §6)')
   }
@@ -392,6 +396,50 @@ pipeline {
             docker push "$IMAGE_NAME:latest"
             docker logout
           '''
+        }
+      }
+    }
+
+    // ── 6. Mobile artifact: release APK on main (#194) ──────────────────
+    // Debug-signed release APK (installable via adb / "unknown sources";
+    // no Play Store key needed for a course project). The version name is
+    // 0.1.<build number> so every APK is distinguishable. API/WS URLs are
+    // baked in at build time (mobile/lib/core/config/app_config.dart).
+    stage('Mobile · build APK') {
+      when {
+        allOf {
+          branch 'main'
+          not { changeRequest() }
+          expression { params.ENABLE_APK_BUILD != false }
+        }
+      }
+      options { timeout(time: 30, unit: 'MINUTES') }
+      // Root: the Flutter SDK in this image is root-owned (same as the
+      // mobile quality stage). Gradle's cache lives in the shared CI cache.
+      agent { docker { image IMAGES.flutter; args "-u 0:0 ${MEM.large} ${CACHE_MOUNT}"; reuseNode true } }
+      environment {
+        HOME = '/tmp'
+        PUB_CACHE = "${CACHE_DIR}/pub"
+        GRADLE_USER_HOME = "${CACHE_DIR}/gradle"
+      }
+      steps {
+        dir('mobile') {
+          sh '''
+            API="${APK_API_BASE_URL:-http://172.30.58.10}"
+            WS="$(echo "$API" | sed -E 's#^https#wss#; s#^http#ws#')"
+            flutter pub get
+            flutter build apk --release               --build-name "0.1.${BUILD_NUMBER}" --build-number "${BUILD_NUMBER}"               --dart-define "API_BASE_URL=${API}" --dart-define "WS_BASE_URL=${WS}"
+            mkdir -p ../apk
+            cp build/app/outputs/flutter-apk/app-release.apk "../apk/auto-chess-${IMAGE_TAG}.apk"
+          '''
+        }
+      }
+      post {
+        always {
+          sh 'chown -R "$(stat -c %u:%g "$WORKSPACE")" mobile apk "$PUB_CACHE" "$GRADLE_USER_HOME" 2>/dev/null || true'
+        }
+        success {
+          archiveArtifacts artifacts: 'apk/*.apk', fingerprint: true
         }
       }
     }
