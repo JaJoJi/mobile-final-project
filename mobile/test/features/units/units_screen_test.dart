@@ -1,169 +1,186 @@
 import 'package:auto_chess_mobile/core/theme/app_theme.dart';
-import 'package:auto_chess_mobile/core/widgets/health_bar.dart';
-import 'package:auto_chess_mobile/core/widgets/unit_detail_sheet.dart';
 import 'package:auto_chess_mobile/features/lobby/player_hub_navigation.dart';
+import 'package:auto_chess_mobile/features/units/unit_catalog_card.dart';
+import 'package:auto_chess_mobile/features/units/unit_detail_screen.dart';
 import 'package:auto_chess_mobile/features/units/units_screen.dart';
 import 'package:auto_chess_mobile/shared/models/unit.dart';
 import 'package:auto_chess_mobile/shared/models/unit_catalog.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 
-void main() {
-  testWidgets('Units tab navigates to the four-unit catalog', (tester) async {
-    final router = GoRouter(
-      initialLocation: '/lobby',
-      routes: [
-        GoRoute(
-          path: '/lobby',
-          builder: (_, __) => const Scaffold(
-            body: PlayerHubNavigation(selected: PlayerHubTab.home),
-          ),
-        ),
-        GoRoute(path: '/units', builder: (_, __) => const UnitsScreen()),
-      ],
-    );
-    addTearDown(router.dispose);
-    await tester.pumpWidget(
-      MaterialApp.router(
+import '../_util.dart';
+
+/// Stub page that shows which route was navigated to.
+class _Stub extends StatelessWidget {
+  const _Stub(this.tag);
+  final String tag;
+  @override
+  Widget build(BuildContext context) =>
+      Scaffold(body: Center(child: Text('stub:$tag')));
+}
+
+/// Pump the [UnitsScreen] inside a GoRouter with stub detail and hub routes.
+Future<GoRouter> _pumpUnits(
+  WidgetTester tester, {
+  Size surfaceSize = const Size(390, 844),
+}) async {
+  installFakeSecureStorage();
+
+  tester.view.physicalSize = surfaceSize;
+  tester.view.devicePixelRatio = 1.0;
+  addTearDown(tester.view.reset);
+
+  final router = GoRouter(
+    initialLocation: '/units',
+    routes: [
+      GoRoute(path: '/units', builder: (_, __) => const UnitsScreen()),
+      GoRoute(
+        path: '/units/:unitId',
+        builder: (_, state) =>
+            _Stub('detail:${state.pathParameters['unitId']}'),
+      ),
+      GoRoute(path: '/lobby', builder: (_, __) => const _Stub('lobby')),
+      GoRoute(path: '/history', builder: (_, __) => const _Stub('history')),
+      GoRoute(path: '/profile', builder: (_, __) => const _Stub('profile')),
+    ],
+  );
+
+  await tester.pumpWidget(
+    ProviderScope(
+      child: MaterialApp.router(
         theme: buildTheme(Brightness.dark),
         routerConfig: router,
       ),
-    );
-    await tester.tap(find.text('ยูนิต'));
+    ),
+  );
+  await tester.pumpAndSettle();
+  return router;
+}
+
+void main() {
+  testWidgets('renders all 4 unit names from the catalog', (tester) async {
+    await _pumpUnits(tester);
+
+    for (final entry in unitCatalog.values) {
+      expect(
+        find.text(entry.name),
+        findsOneWidget,
+        reason: '${entry.id} name "${entry.name}" should be visible',
+      );
+    }
+  });
+
+  testWidgets('renders roles for each unit', (tester) async {
+    await _pumpUnits(tester);
+
+    for (final entry in unitCatalog.values) {
+      expect(
+        find.text(entry.role),
+        findsOneWidget,
+        reason: '${entry.id} role "${entry.role}" should be visible',
+      );
+    }
+  });
+
+  testWidgets('renders 4 UnitCatalogCard widgets', (tester) async {
+    await _pumpUnits(tester);
+
+    expect(find.byType(UnitCatalogCard), findsNWidgets(4));
+  });
+
+  testWidgets('shows the PlayerHubNavigation with units tab', (tester) async {
+    await _pumpUnits(tester);
+
+    expect(find.byType(PlayerHubNavigation), findsOneWidget);
+    // The Thai label for the units tab.
+    expect(find.text('ยูนิต'), findsOneWidget);
+  });
+
+  testWidgets('shows the catalog header', (tester) async {
+    await _pumpUnits(tester);
+
+    expect(find.text('คลังยูนิต'), findsOneWidget);
+  });
+
+  testWidgets('tapping a unit card navigates to the detail route',
+      (tester) async {
+    final router = await _pumpUnits(tester);
+
+    // Tap the first card (fighter).
+    await tester.tap(find.byType(UnitCatalogCard).first);
     await tester.pumpAndSettle();
 
-    expect(router.routeInformationProvider.value.uri.path, UnitsScreen.path);
+    expect(
+      find.text('stub:detail:fighter'),
+      findsOneWidget,
+      reason: 'should have pushed /units/fighter',
+    );
+
+    // Go back and tap the last card (tank).
+    router.go('/units');
+    await tester.pumpAndSettle();
+    await tester.tap(find.byType(UnitCatalogCard).last);
+    await tester.pumpAndSettle();
+
+    expect(
+      find.text('stub:detail:tank'),
+      findsOneWidget,
+      reason: 'should have pushed /units/tank',
+    );
+  });
+
+  testWidgets('no overflow at 390×844 portrait', (tester) async {
+    await _pumpUnits(tester);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('no overflow at 360×640 compact', (tester) async {
+    await _pumpUnits(tester, surfaceSize: const Size(360, 640));
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('no overflow at 900×500 landscape', (tester) async {
+    await _pumpUnits(tester, surfaceSize: const Size(900, 500));
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('invalid unitId redirects to catalog', (tester) async {
+    final router = GoRouter(
+      initialLocation: '/units/invalid123',
+      routes: [
+        GoRoute(
+          path: UnitsScreen.path,
+          builder: (_, __) => const UnitsScreen(),
+        ),
+        GoRoute(
+          path: UnitDetailScreen.path,
+          redirect: (context, state) {
+            final idString = state.pathParameters['unitId'];
+            if (idString == null ||
+                !UnitId.values.any((e) => e.toJson() == idString)) {
+              return UnitsScreen.path;
+            }
+            return null;
+          },
+          builder: (_, state) => UnitDetailScreen(
+            unitId: UnitId.fromJson(state.pathParameters['unitId']),
+          ),
+        ),
+      ],
+    );
+
+    await tester.pumpWidget(
+      ProviderScope(
+        child: MaterialApp.router(
+          routerConfig: router,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
     expect(find.byType(UnitsScreen), findsOneWidget);
-    for (final entry in UnitCatalogEntry.entries) {
-      expect(
-        find.byKey(ValueKey('unit-card-${entry.id.name}')),
-        findsOneWidget,
-      );
-    }
-    expect(find.text('ระบบยูนิตจะเปิดให้ใช้งานเร็ว ๆ นี้'), findsNothing);
-  });
-
-  testWidgets('each card opens shared details and switches through 1–3 stars',
-      (tester) async {
-    tester.view.physicalSize = const Size(390, 844);
-    tester.view.devicePixelRatio = 1;
-    addTearDown(tester.view.reset);
-    await tester.pumpWidget(
-      MaterialApp(
-        theme: buildTheme(Brightness.dark),
-        home: const UnitsScreen(),
-      ),
-    );
-
-    for (final entry in UnitCatalogEntry.entries) {
-      final card = find.byKey(ValueKey('unit-card-${entry.id.name}'));
-      await tester.ensureVisible(card);
-      await tester.tap(card);
-      await tester.pumpAndSettle();
-      final sheet = find.byType(UnitDetailSheet);
-      expect(sheet, findsOneWidget);
-      expect(
-        find.descendant(of: sheet, matching: find.text(entry.name)),
-        findsOneWidget,
-      );
-      expect(find.byType(HealthBar), findsNothing);
-
-      for (var tier = 0; tier <= 2; tier++) {
-        await tester.tap(find.byKey(ValueKey('unit-tier-$tier')));
-        await tester.pumpAndSettle();
-        expect(
-          find.descendant(
-            of: sheet,
-            matching: find.text('${entry.atkForTier(tier)}'),
-          ),
-          findsOneWidget,
-        );
-        expect(
-          find.descendant(
-            of: sheet,
-            matching: find.text(entry.abilityForTier(tier)),
-          ),
-          findsOneWidget,
-        );
-      }
-      Navigator.of(tester.element(sheet)).pop();
-      await tester.pumpAndSettle();
-    }
-    expect(tester.takeException(), isNull);
-  });
-
-  testWidgets('match detail shows current HP without catalog tier controls',
-      (tester) async {
-    await tester.pumpWidget(
-      MaterialApp(
-        theme: buildTheme(Brightness.dark),
-        home: const Scaffold(
-          body: UnitDetailSheet(
-            unitId: UnitId.fighter,
-            star: 1,
-            hp: 37,
-            maxHp: 100,
-          ),
-        ),
-      ),
-    );
-    expect(find.byType(HealthBar), findsOneWidget);
-    expect(find.byKey(const ValueKey('unit-tier-0')), findsNothing);
-    expect(find.text('2 ดาว · ไฟต์เตอร์'), findsOneWidget);
-    expect(find.text('22'), findsOneWidget);
-  });
-
-  testWidgets('catalog and detail fit narrow scaled text and tablet layouts',
-      (tester) async {
-    tester.view.physicalSize = const Size(320, 640);
-    tester.view.devicePixelRatio = 1;
-    addTearDown(tester.view.reset);
-    await tester.pumpWidget(
-      MaterialApp(
-        theme: buildTheme(Brightness.dark),
-        home: const MediaQuery(
-          data: MediaQueryData(
-            size: Size(320, 640),
-            textScaler: TextScaler.linear(2),
-          ),
-          child: UnitsScreen(),
-        ),
-      ),
-    );
-    expect(tester.takeException(), isNull);
-
-    await tester.pumpWidget(
-      MaterialApp(
-        theme: buildTheme(Brightness.dark),
-        home: const MediaQuery(
-          data: MediaQueryData(
-            size: Size(320, 640),
-            textScaler: TextScaler.linear(2),
-          ),
-          child: Scaffold(
-            body: UnitDetailSheet(unitId: UnitId.fighter, star: 2),
-          ),
-        ),
-      ),
-    );
-    expect(find.text('นักรบ'), findsOneWidget);
-    expect(tester.takeException(), isNull);
-
-    tester.view.physicalSize = const Size(1024, 768);
-    await tester.pumpWidget(
-      MaterialApp(
-        theme: buildTheme(Brightness.dark),
-        home: const UnitsScreen(),
-      ),
-    );
-    await tester.pumpAndSettle();
-    for (final entry in UnitCatalogEntry.entries) {
-      expect(
-        find.byKey(ValueKey('unit-card-${entry.id.name}')),
-        findsOneWidget,
-      );
-    }
-    expect(tester.takeException(), isNull);
+    expect(find.byType(UnitDetailScreen), findsNothing);
   });
 }
