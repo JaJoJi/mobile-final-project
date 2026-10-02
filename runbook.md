@@ -162,88 +162,40 @@ committed): if `flutter create` complains about the package name, check
 `name:` in `pubspec.yaml` and pass that to `--project-name`.
 
 
-## 12. Production hardening: HTTPS, pgBouncer, DB backup, secret rotation (#139)
+## 13. Load test (k6, #140 / #224)
 
-### HTTPS
+`k6/load.js` proves the NFRs: p95 round-state event < 500 ms (NFR-2), p95
+combat latency < 500 ms (NFR-14), >= 50 concurrent matches (NFR-3). Each
+VU is one player; matchmaking pairs two VUs, so `MATCHES=50` = 100 VUs =
+50 live matches, each playing `ROUNDS=3` rounds (buy -> ready -> battle ->
+combat events -> combat_done). Latencies are measured on the client that
+sent the request and are a conservative upper bound (see the file header).
 
-nginx (ModSecurity) also listens on **443**. `site.yml` creates a
-self-signed cert in `/etc/auto-chess/tls/` (the VM is behind the campus NAT,
-no public name for Let's Encrypt).
-
-```bash
-curl -sk https://127.0.0.1/health                       # -k: self-signed
-echo | openssl s_client -connect 127.0.0.1:443 2>/dev/null | openssl x509 -noout -subject -dates
-
-# real cert: put fullchain at /etc/auto-chess/tls/server.crt and the key at
-# server.key (key owner uid 101, mode 600), then
-$C up -d nginx
-
-# redirect HTTP -> HTTPS (leave OFF while the mobile app uses http://<vm>)
-sudo nano /etc/auto-chess/app.env      # HTTPS_REDIRECT=on
-$C up -d nginx
-curl -sI http://127.0.0.1/ | head -3   # 301 -> https://...
-```
-
-### pgBouncer (opt-in)
-
-`pgbouncer` (primary) and `pgbouncer-replica` can sit between nest and
-Postgres: transaction pooling, `DEFAULT_POOL_SIZE=20`, `MAX_CLIENT_CONN=1000`.
-They are behind the compose profile `pgbouncer`, **off by default**: nest
-talks to Postgres directly until you turn it on, because transaction
-pooling has not been proven against this app (TypeORM) yet.
+**On the university VM** (through nginx + ModSecurity, so this is also the
+#224 "WAF memory stays bounded" test):
 
 ```bash
-# 1. enable: add to /etc/auto-chess/app.env
-#      COMPOSE_PROFILES=pgbouncer
-#      DB_PRIMARY_HOST=pgbouncer         DB_PRIMARY_PORT=6432
-#      DB_REPLICA_HOST=pgbouncer-replica DB_REPLICA_PORT=6432
-$C up -d                                  # starts the poolers, vault-agent re-renders the URLs
-$C up -d --force-recreate nest-1 nest-2 nest-3   # pick up the new URLs (~1 min of downtime)
+# terminal 1: watch memory while it runs
+watch -n 2 "sudo docker stats --no-stream --format '{{.Name}} {{.CPUPerc}} {{.MemUsage}}' | sort -k3 -h -r | head -8"
 
-# 2. test it
-$C logs --tail 20 pgbouncer pgbouncer-replica          # listening on 6432, no auth errors
-$C exec vault-agent cat /vault/secrets/app.env | sed -E 's#(://[^:]+:)[^@]+@#\1***@#'   # URLs show pgbouncer:6432
-curl -s http://127.0.0.1/health/ready                  # postgres up through the pooler
-curl -s -X POST http://127.0.0.1/auth/register -H 'content-type: application/json' \
-  -d '{"email":"pgb@test.local","username":"pgbtest","password":"test-password-123"}' | head -c 150   # a write
-# play a short match from the app / run the k6 test (section 13): no errors in
-#   $C logs --since 5m nest-1 nest-2 nest-3 | grep -i 'error\|ECONN'
+# terminal 2: the test (k6 prints the thresholds at the end; exit code 99 = an NFR failed)
+sudo docker run --rm -i --network host -e TARGETS=http://127.0.0.1 -e MATCHES=50 \
+  grafana/k6:1.3.0@sha256:3ddc8b1a33a2c3d8edc6e99b6a762ae36cba08788463458f5e6a7703e14eb77d run - < k6/load.js
 
-# 3. keep it, or roll back: comment the five lines out of app.env, then
-$C up -d --remove-orphans && $C up -d --force-recreate nest-1 nest-2 nest-3
+# afterwards: no errors in the app / WAF logs, nginx memory still below its 512m cap
+$C logs --since 10m nest-1 nest-2 nest-3 | grep -c '"level":50'
+sudo docker stats --no-stream auto-chess-nginx-1
+
+# remove the throwaway users (their matches stay in the history tables)
+$C exec postgres-primary psql -U auto_chess -d auto_chess -c "DELETE FROM users WHERE email LIKE '%@load.test'"
 ```
 
-### Daily database backup
+Read the result: `round_state_latency_ms` and `combat_latency_ms` p(95) must be
+< 500; `player_failed` must be 0 (a player that never got paired, a socket
+that closed, or a missing event within 20 s counts as failed). Put the k6
+summary + the `docker stats` lines in the issue as evidence.
 
-`pg-backup` runs `pg_basebackup` against the primary at start and then every
-day at 03:00 UTC into the `auto-chess_pg_backups` volume (last 7 kept).
-
-```bash
-$C logs --tail 5 pg-backup                               # "backup ok: /backup/base-<date> (<size>)"
-$C exec pg-backup ls -lh /backup                         # the base-* directories (base.tar.gz + pg_wal.tar.gz)
-
-# copy the newest backup off the VM
-d=$($C exec -T pg-backup sh -c 'ls -1dt /backup/base-* | head -1' | tr -d '\r')
-sudo docker cp "$($C ps -q pg-backup):$d" ./pg-backup-latest
-```
-
-**Restore drill** (into a throwaway volume, never over the live one):
-
-```bash
-sudo docker volume create restore_test
-sudo docker run --rm -v restore_test:/var/lib/postgresql/data -v "$PWD/pg-backup-latest":/b:ro postgres:16-alpine \
-  sh -c 'tar xzf /b/base.tar.gz -C /var/lib/postgresql/data && mkdir -p /var/lib/postgresql/data/pg_wal && tar xzf /b/pg_wal.tar.gz -C /var/lib/postgresql/data/pg_wal && chown -R postgres:postgres /var/lib/postgresql/data && chmod 700 /var/lib/postgresql/data'
-sudo docker run --rm -d --name pg_restore_test -v restore_test:/var/lib/postgresql/data postgres:16-alpine
-sleep 8; sudo docker exec pg_restore_test psql -U auto_chess -d auto_chess -c '\dt'      # tables are back
-sudo docker rm -f pg_restore_test && sudo docker volume rm restore_test
-```
-
-### Secret rotation (no secret is hardcoded: all come from Vault via Vault Agent)
-
-| Secret | When | How |
-|---|---|---|
-| `JWT_SECRET` | every 6 months, or if leaked | `vault kv patch secret/auto-chess/prod/app JWT_SECRET=$(openssl rand -hex 32)` (needs a token: `vault operator generate-root`, 2 unseal keys), wait for Agent (<= 5 min) or `$C restart vault-agent`, then restart nest **one at a time**: `$C restart nest-1; sleep 20; $C restart nest-2; sleep 20; $C restart nest-3`. All users are signed out (the app has no dual-secret support), and for the ~1 min of mixed instances some requests may get 401 and retry. |
-| `POSTGRES_PASSWORD` | yearly / if leaked | `ALTER ROLE auto_chess PASSWORD '<new>'` on the primary **and** `vault kv patch ...POSTGRES_PASSWORD=<new>`, then `$C restart vault-agent nest-1 nest-2 nest-3` (plus `pgbouncer pgbouncer-replica` if the pooler is on) |
-| `POSTGRES_REPLICATION_PASSWORD` | yearly | `ALTER ROLE replicator PASSWORD '<new>'`, `vault kv patch`, restart `vault-agent pg-backup postgres-replica` (the replica re-reads it) |
-| Grafana admin | on staff change | Grafana UI, or `vault kv patch ...GRAFANA_ADMIN_PASSWORD=` + `grafana cli admin reset-admin-password` |
-| TLS cert | before expiry (825 days for the self-signed one) | replace files, `$C up -d nginx` |
+**In Jenkins** (opt-in): tick `ENABLE_LOAD_TEST` on a `dev`/`main` build. It
+runs 10 matches against the ephemeral 3-instance stack and fails the build
+on the same thresholds; `reports/k6/summary.json` is archived. Default off:
+the small Jenkins VM would be the bottleneck, not the app.
