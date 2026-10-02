@@ -4,7 +4,8 @@
 #   app.env                  -> nest-1/2/3 (sourced at container start)
 #   pg_password / repl_password -> Postgres primary/replica (*_FILE)
 #   grafana_admin_password   -> Grafana (GF_SECURITY_ADMIN_PASSWORD__FILE)
-# Non-secret names (POSTGRES_USER / POSTGRES_DB) come from the agent's env.
+# Non-secret names (POSTGRES_USER / POSTGRES_DB, DB_*_HOST / DB_*_PORT -- by
+# default the pgBouncer services) come from the agent's env.
 
 pid_file = "/tmp/vault-agent.pid"
 
@@ -35,8 +36,8 @@ template {
   contents    = <<EOT
 {{ with secret "secret/data/auto-chess/prod/app" -}}
 JWT_SECRET={{ .Data.data.JWT_SECRET }}
-DATABASE_URL=postgres://{{ env "POSTGRES_USER" }}:{{ .Data.data.POSTGRES_PASSWORD }}@postgres-primary:5432/{{ env "POSTGRES_DB" }}
-DATABASE_REPLICA_URL=postgres://{{ env "POSTGRES_USER" }}:{{ .Data.data.POSTGRES_PASSWORD }}@postgres-replica:5432/{{ env "POSTGRES_DB" }}
+DATABASE_URL=postgres://{{ env "POSTGRES_USER" }}:{{ .Data.data.POSTGRES_PASSWORD }}@{{ env "DB_PRIMARY_HOST" }}:{{ env "DB_PRIMARY_PORT" }}/{{ env "POSTGRES_DB" }}
+DATABASE_REPLICA_URL=postgres://{{ env "POSTGRES_USER" }}:{{ .Data.data.POSTGRES_PASSWORD }}@{{ env "DB_REPLICA_HOST" }}:{{ env "DB_REPLICA_PORT" }}/{{ env "POSTGRES_DB" }}
 {{- end }}
 EOT
 }
