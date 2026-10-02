@@ -6,7 +6,7 @@
   ],
   "timezone": "browser",
   "schemaVersion": 39,
-  "version": 1,
+  "version": 2,
   "refresh": "30s",
   "time": {
     "from": "now-3h",
@@ -224,7 +224,8 @@
                 "value": 90
               }
             ]
-          }
+          },
+          "noValue": "no swap"
         },
         "overrides": []
       },
@@ -242,7 +243,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "(1 - node_memory_SwapFree_bytes / clamp_min(node_memory_SwapTotal_bytes, 1)) * 100"
+          "expr": "(1 - node_memory_SwapFree_bytes / node_memory_SwapTotal_bytes) * 100 and node_memory_SwapTotal_bytes > 0"
         }
       ]
     },
@@ -523,6 +524,19 @@
           "expr": "{service=\"nginx\", log_type=\"modsec_audit\"}"
         }
       ]
+    }
+  ],
+  "links": [
+    {
+      "type": "dashboards",
+      "title": "Auto Chess",
+      "tags": [
+        "auto-chess"
+      ],
+      "asDropdown": false,
+      "includeVars": false,
+      "keepTime": true,
+      "icon": "external link"
     }
   ]
 }
