@@ -249,7 +249,8 @@ services:
       BEYLA_OPEN_PORT: "3000,8080"
       BEYLA_PROMETHEUS_PORT: 9400
       BEYLA_TRACE_PRINTER: disabled
-    mem_limit: 256m
+    # 256m got it OOM-killed (137) while attaching eBPF probes.
+    mem_limit: 768m
 
   # Alloy: the single collection agent -- container logs -> Loki, host
   # metrics -> Prometheus. Replaces Promtail.
@@ -294,8 +295,10 @@ services:
       - loki_data:/loki
     mem_limit: 384m
 
+  # 2.7.2, not newer: the VM's virtual CPU has no SSE4.2 (x86-64-v1) and
+  # Tempo >= 2.8 needs v2 ("only be run on AMD64 processors with v2").
   tempo:
-    image: grafana/tempo:2.8.1
+    image: grafana/tempo:2.7.2
     restart: unless-stopped
     user: "0"
     command: ["-config.file=/etc/tempo/tempo.yaml"]
