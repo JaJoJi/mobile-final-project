@@ -184,10 +184,23 @@ services:
   # Vault in production mode: Raft storage, TLS, sealed after each restart
   # (sudo auto-chess-vault-unseal). No published port: only compose
   # services reach it. TLS cert/key: /etc/auto-chess/vault-tls (site.yml).
+  # One-shot: a fresh named volume is root-owned, but Vault runs as the
+  # `vault` user (uid 100) and must write its Raft data there.
+  vault-perms:
+    image: hashicorp/vault:2.1.1
+    user: "0"
+    entrypoint: ["chown", "-R", "100:1000", "/vault/data"]
+    volumes:
+      - vault_data:/vault/data
+    restart: "no"
+
   vault:
     image: hashicorp/vault:2.1.1
     restart: unless-stopped
     command: ["server"]
+    depends_on:
+      vault-perms:
+        condition: service_completed_successfully
     environment:
       VAULT_ADDR: https://127.0.0.1:8200
       VAULT_CACERT: /vault/tls/vault.crt
