@@ -187,7 +187,7 @@ services:
   # One-shot: a fresh named volume is root-owned, but Vault runs as the
   # `vault` user (uid 100) and must write its Raft data there.
   vault-perms:
-    image: hashicorp/vault:2.1.1
+    image: hashicorp/vault:2.1.1@sha256:47f14a6acb98f48d798a07df7c83f23a6e636e1cf724c5f8ff165cb32667a1e2
     user: "0"
     entrypoint: ["chown", "-R", "100:1000", "/vault/data"]
     volumes:
@@ -195,7 +195,7 @@ services:
     restart: "no"
 
   vault:
-    image: hashicorp/vault:2.1.1
+    image: hashicorp/vault:2.1.1@sha256:47f14a6acb98f48d798a07df7c83f23a6e636e1cf724c5f8ff165cb32667a1e2
     restart: unless-stopped
     command: ["server"]
     depends_on:
@@ -222,7 +222,7 @@ services:
   # and renders the secrets into the tmpfs volume. Retries while Vault is
   # sealed, so a reboot recovers by itself once someone unseals.
   vault-agent:
-    image: hashicorp/vault:2.1.1
+    image: hashicorp/vault:2.1.1@sha256:47f14a6acb98f48d798a07df7c83f23a6e636e1cf724c5f8ff165cb32667a1e2
     restart: unless-stopped
     user: "0"
     entrypoint: ["vault", "agent", "-config=/vault/config/agent.hcl"]
@@ -241,7 +241,7 @@ services:
   # Beyla: eBPF auto-instrumentation -> RED metrics of nest + nginx with no
   # code change. Needs host PID namespace + privileges for eBPF.
   beyla:
-    image: grafana/beyla:3.37.0
+    image: grafana/beyla:3.37.0@sha256:bbb325e07ad0f242cf6281b4a94ca026ec9504b2cf9a12d7db582e281727520f
     restart: unless-stopped
     privileged: true
     pid: host
@@ -255,7 +255,7 @@ services:
   # Alloy: the single collection agent -- container logs -> Loki, host
   # metrics -> Prometheus. Replaces Promtail.
   alloy:
-    image: grafana/alloy:v1.10.0
+    image: grafana/alloy:v1.10.0@sha256:1bc130e909116a4bf950eb5187a346007d3b796f96832b529acb14a64e41230f
     restart: unless-stopped
     user: "0"
     command:
@@ -275,7 +275,7 @@ services:
     mem_limit: 512m
 
   prometheus:
-    image: prom/prometheus:v3.15.0
+    image: prom/prometheus:v3.15.0@sha256:efd719c99d83b060d9daefdcf00360461adf279f45ef5391f8d111892118753e
     restart: unless-stopped
     command:
       - --config.file=/etc/prometheus/prometheus.yml
@@ -288,7 +288,7 @@ services:
     mem_limit: 384m
 
   loki:
-    image: grafana/loki:3.5.0
+    image: grafana/loki:3.5.0@sha256:4c431d2e6b9b38718694b31c5d56be7c80dc69c513215fde1aeb5b02cd4e2665
     restart: unless-stopped
     command: ["-config.file=/etc/loki/loki.yaml"]
     volumes:
@@ -299,7 +299,7 @@ services:
   # 2.7.2, not newer: the VM's virtual CPU has no SSE4.2 (x86-64-v1) and
   # Tempo >= 2.8 needs v2 ("only be run on AMD64 processors with v2").
   tempo:
-    image: grafana/tempo:2.7.2
+    image: grafana/tempo:2.7.2@sha256:4b0277a9b572a4b1fa43b01468e58911ec214dd69d033f2cd476596d14de9fe3
     restart: unless-stopped
     user: "0"
     command: ["-config.file=/etc/tempo/tempo.yaml"]
@@ -312,7 +312,7 @@ services:
   # Datasources (Prometheus, Loki, Tempo) and the overview dashboard are
   # provisioned from files -- nothing to click together.
   grafana:
-    image: grafana/grafana:12.0.0
+    image: grafana/grafana:12.0.0@sha256:263cbefd5d9b179893c47c415daab4da5c1f3d6770154741eca4f45c81119884
     restart: unless-stopped
     depends_on: [prometheus, loki, tempo, vault-agent]
     entrypoint:
