@@ -9,6 +9,14 @@ server:
   http_listen_port: 3200
   log_level: warn
 
+# Single binary: the querier's worker must reach the query frontend's gRPC
+# port. The default (127.0.0.1:9095) times out inside the container on the
+# VM ("error contacting frontend ... i/o timeout") and every query hangs,
+# while tempo:9095 over the compose network works.
+querier:
+  frontend_worker:
+    frontend_address: tempo:9095
+
 distributor:
   receivers:
     otlp:
