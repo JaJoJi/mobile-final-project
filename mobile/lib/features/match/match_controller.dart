@@ -471,9 +471,9 @@ class MatchController extends StateNotifier<MatchViewState> {
   }
 }
 
-int unitPrice(UnitId unitId) => UnitCatalogEntry.of(unitId).cost;
+int unitPrice(UnitId unitId) => unitCatalog[unitId]!.cost;
 
-int unitMaxHp(UnitId unitId) => UnitCatalogEntry.of(unitId).hp;
+int unitMaxHp(UnitId unitId) => unitCatalog[unitId]!.hp;
 
 String gameErrorMessage(String code) => switch (code) {
       'shop.insufficient_gold' => 'ทองไม่พอ',

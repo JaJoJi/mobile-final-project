@@ -13,7 +13,9 @@ import '../features/profile/profile_screen.dart';
 import '../features/rooms/create_room_screen.dart';
 import '../features/rooms/join_room_screen.dart';
 import '../features/splash/splash_screen.dart';
+import '../features/units/unit_detail_screen.dart';
 import '../features/units/units_screen.dart';
+import '../shared/models/unit.dart';
 import 'auth/auth_gate.dart';
 
 /// App routing — single source of truth for navigation.
@@ -92,6 +94,20 @@ GoRouter buildRouter() {
       GoRoute(
         path: UnitsScreen.path,
         builder: (_, __) => const UnitsScreen(),
+      ),
+      GoRoute(
+        path: UnitDetailScreen.path,
+        redirect: (context, state) {
+          final idString = state.pathParameters['unitId'];
+          if (idString == null ||
+              !UnitId.values.any((unitId) => unitId.toJson() == idString)) {
+            return UnitsScreen.path;
+          }
+          return null;
+        },
+        builder: (_, state) => UnitDetailScreen(
+          unitId: UnitId.fromJson(state.pathParameters['unitId']),
+        ),
       ),
       GoRoute(
         path: CreateRoomScreen.path,
