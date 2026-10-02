@@ -161,3 +161,41 @@ machine first. Not verified end to end yet (generated Android project, not
 committed): if `flutter create` complains about the package name, check
 `name:` in `pubspec.yaml` and pass that to `--project-name`.
 
+
+## 13. Load test (k6, #140 / #224)
+
+`k6/load.js` proves the NFRs: p95 round-state event < 500 ms (NFR-2), p95
+combat latency < 500 ms (NFR-14), >= 50 concurrent matches (NFR-3). Each
+VU is one player; matchmaking pairs two VUs, so `MATCHES=50` = 100 VUs =
+50 live matches, each playing `ROUNDS=3` rounds (buy -> ready -> battle ->
+combat events -> combat_done). Latencies are measured on the client that
+sent the request and are a conservative upper bound (see the file header).
+
+**On the university VM** (through nginx + ModSecurity, so this is also the
+#224 "WAF memory stays bounded" test):
+
+```bash
+# terminal 1: watch memory while it runs
+watch -n 2 "sudo docker stats --no-stream --format '{{.Name}} {{.CPUPerc}} {{.MemUsage}}' | sort -k3 -h -r | head -8"
+
+# terminal 2: the test (k6 prints the thresholds at the end; exit code 99 = an NFR failed)
+sudo docker run --rm -i --network host -e TARGETS=http://127.0.0.1 -e MATCHES=50 \
+  grafana/k6:1.3.0@sha256:3ddc8b1a33a2c3d8edc6e99b6a762ae36cba08788463458f5e6a7703e14eb77d run - < k6/load.js
+
+# afterwards: no errors in the app / WAF logs, nginx memory still below its 512m cap
+$C logs --since 10m nest-1 nest-2 nest-3 | grep -c '"level":50'
+sudo docker stats --no-stream auto-chess-nginx-1
+
+# remove the throwaway users (their matches stay in the history tables)
+$C exec postgres-primary psql -U auto_chess -d auto_chess -c "DELETE FROM users WHERE email LIKE '%@load.test'"
+```
+
+Read the result: `round_state_latency_ms` and `combat_latency_ms` p(95) must be
+< 500; `player_failed` must be 0 (a player that never got paired, a socket
+that closed, or a missing event within 20 s counts as failed). Put the k6
+summary + the `docker stats` lines in the issue as evidence.
+
+**In Jenkins** (opt-in): tick `ENABLE_LOAD_TEST` on a `dev`/`main` build. It
+runs 10 matches against the ephemeral 3-instance stack and fails the build
+on the same thresholds; `reports/k6/summary.json` is archived. Default off:
+the small Jenkins VM would be the bottleneck, not the app.

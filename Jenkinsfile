@@ -39,6 +39,7 @@ IMAGES = [
   trivy   : 'aquasec/trivy:0.74.0@sha256:62b1e65e8869bc4b4c6aa4fa2b21595256c7c2f6018a9d9ad61caf87187c1969',
   checkov : 'bridgecrew/checkov:3.3.19@sha256:d3e96adafdb315ca82e792ca8708c01adae85292800fb064c8b309b3d0cb7b80',
   zap     : 'zaproxy/zap-stable:2.17.0@sha256:781a2bdaea47324e7bab583e2263f21d257b0aee61ed51521a5be45f5f5081ef',
+  k6      : 'grafana/k6:1.3.0@sha256:3ddc8b1a33a2c3d8edc6e99b6a762ae36cba08788463458f5e6a7703e14eb77d',
   postgres: 'postgres:16-alpine@sha256:721873c34ceb9f8d8fc265984940dc982404c105f19ad51be9fdc5970a6080ea',
   redis   : 'redis:7-alpine@sha256:858f009f9709ce576febc734aa78b8f6d624b82571f9ddb6bda4377c833b3499',
 ]
@@ -110,6 +111,11 @@ pipeline {
       description: 'Backend *.smoke.ts against a real Postgres + Redis + 3 Nest instances')
     booleanParam(name: 'ENABLE_IMAGE_PUBLISH', defaultValue: true,
       description: 'Push the backend image to Docker Hub on main (dockerhub-token)')
+    // Opt-in (default OFF): a load test on the small Jenkins VM would
+    // measure the VM, not the app. The real 50-match run is on the
+    // university VM (runbook.md section 13); this is a 10-match CI gate.
+    booleanParam(name: 'ENABLE_LOAD_TEST', defaultValue: false,
+      description: 'k6: 10 concurrent matches against the ephemeral stack, fails on NFR p95 > 500 ms (dev/main only)')
     booleanParam(name: 'ENABLE_NOTIFICATIONS', defaultValue: true,
       description: 'Email SUCCESS/FAILURE (notify-email credential + SMTP, runbook §6)')
   }
@@ -318,7 +324,7 @@ pipeline {
           expression { params.ENABLE_INTEGRATION_TESTS != false || params.ENABLE_SECURITY_SCAN != false }
         }
       }
-      environment { IMAGE = "${env.IMAGE_NAME}:${env.IMAGE_TAG}" }
+      environment { IMAGE = "${env.IMAGE_NAME}:${env.IMAGE_TAG}"; K6_IMAGE = "${IMAGES.k6}" }
       stages {
         stage('Stack · up') {
           steps { sh 'bash ci/scripts/stack-up.sh' }
@@ -346,6 +352,24 @@ pipeline {
               }
             }
           }
+        }
+        stage('Load test · k6') {
+          when {
+            allOf {
+              expression { params.ENABLE_LOAD_TEST == true }
+              anyOf { branch 'dev'; branch 'main' }
+            }
+          }
+          options { timeout(time: 15, unit: 'MINUTES') }
+          // k6 exits non-zero when a threshold fails (p95 round-state /
+          // combat latency > 500 ms, or any player failed) -> build fails.
+          steps {
+            sh '''
+              mkdir -p reports/k6
+              docker run --rm --network "$CI_ID-net" -u "$(id -u):$(id -g)" -e HOME=/tmp                 -v "$PWD/k6:/k6:ro" -v "$PWD/reports/k6:/out"                 -e TARGETS=http://nest-1:3000,http://nest-2:3000,http://nest-3:3000 -e MATCHES=10                 "$K6_IMAGE" run --summary-export /out/summary.json /k6/load.js
+            '''
+          }
+          post { always { archiveArtifacts artifacts: 'reports/k6/**', allowEmptyArchive: true } }
         }
         stage('Security · ZAP') {
           when { expression { params.ENABLE_SECURITY_SCAN != false } }
