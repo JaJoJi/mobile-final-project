@@ -271,7 +271,8 @@ services:
       - /sys:/host/sys:ro
       - /:/host/root:ro
     depends_on: [loki, prometheus]
-    mem_limit: 256m
+    # Measured 223 MiB of the old 256m limit on the VM: no headroom for log bursts.
+    mem_limit: 512m
 
   prometheus:
     image: prom/prometheus:v3.15.0
