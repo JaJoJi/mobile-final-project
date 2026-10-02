@@ -241,7 +241,7 @@ services:
   # Beyla: eBPF auto-instrumentation -> RED metrics of nest + nginx with no
   # code change. Needs host PID namespace + privileges for eBPF.
   beyla:
-    image: grafana/beyla:2.5.0
+    image: grafana/beyla:3.37.0
     restart: unless-stopped
     privileged: true
     pid: host
