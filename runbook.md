@@ -135,3 +135,29 @@ $C down -v         # DELETES database, Vault data, dashboards (needs re-bootstra
 | No internet on VM | `sudo systemctl start psu-autologin.service`; `journalctl -u psu-autologin -n 30` |
 | Grafana empty | `$C logs alloy`, `$C logs prometheus`; targets page (section 6) |
 | Disk filling | `docker system df`; `docker image prune -f` |
+
+## 11. Mobile app (APK for the emulator)
+
+The repo has **no `mobile/android` folder** (only `lib/`, `web/`, ...), so the
+Android project is generated on your machine first. The backend URL is baked
+in at build time (`--dart-define`, see `mobile/lib/core/config/app_config.dart`);
+use the VM's address (`<vm-ip>` = the one you open Grafana on), so the
+emulator must run on a machine that is on the PSU network.
+
+```bash
+cd mobile
+flutter create --platforms=android --project-name auto_chess_mobile --org th.ac.psu .   # once: generates android/
+# release builds need the INTERNET permission, and the backend is plain http:
+sed -i 's#<application#<uses-permission android:name="android.permission.INTERNET"/>
+    <application android:usesCleartextTraffic="true"#' android/app/src/main/AndroidManifest.xml
+flutter pub get
+flutter build apk --release   --dart-define=API_BASE_URL=http://<vm-ip>   --dart-define=WS_BASE_URL=ws://<vm-ip>
+# -> build/app/outputs/flutter-apk/app-release.apk
+adb install -r build/app/outputs/flutter-apk/app-release.apk     # emulator running
+```
+
+Check the app reaches the backend: `curl http://<vm-ip>/health` from the same
+machine first. Not verified end to end yet (generated Android project, not
+committed): if `flutter create` complains about the package name, check
+`name:` in `pubspec.yaml` and pass that to `--project-name`.
+
