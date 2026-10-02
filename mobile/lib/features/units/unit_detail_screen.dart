@@ -1,23 +1,18 @@
 import 'package:flutter/material.dart';
 
+import '../../core/theme/app_motion.dart';
 import '../../core/theme/app_spacing.dart';
 import '../../core/theme/game_theme.dart';
 import '../../core/widgets/fantasy_page.dart';
 import '../../shared/models/unit.dart';
 import '../../shared/models/unit_catalog.dart';
-
 import '../lobby/player_hub_header.dart';
 import '../lobby/player_hub_navigation.dart';
 
-/// `/units/:unitId` — full-screen detail for a single unit archetype.
-///
-/// Shows name, gold cost, a star-form switcher (★1 ↔ ★2 ↔ ★3), the unit
-/// art at the selected star level, and the ability description for that
-/// form. The user taps left/right arrows to browse forms.
+/// `/units/:unitId` — a full-screen field guide for one unit archetype.
 class UnitDetailScreen extends StatefulWidget {
   const UnitDetailScreen({super.key, required this.unitId});
 
-  /// Route path template — matches `GoRoute(path: '/units/:unitId', …)`.
   static const path = '/units/:unitId';
 
   final UnitId unitId;
@@ -27,19 +22,21 @@ class UnitDetailScreen extends StatefulWidget {
 }
 
 class _UnitDetailScreenState extends State<UnitDetailScreen> {
-  /// Index into [UnitCatalogEntry.abilities] — 0, 1, or 2.
-  int _formIndex = 0;
+  int _fusionTier = 0;
 
   UnitCatalogEntry get _entry => unitCatalog[widget.unitId]!;
 
-  int get _maxIndex => _entry.abilities.length - 1;
+  void _selectTier(int tier) {
+    if (tier == _fusionTier || tier < 0 || tier > 2) return;
+    setState(() => _fusionTier = tier);
+  }
 
   @override
   Widget build(BuildContext context) {
     final theme = fantasySurfaceTheme(context);
-    final game = theme.extension<GameTheme>()!;
     final entry = _entry;
-    final ability = entry.abilities[_formIndex];
+    final accent = _unitAccent(widget.unitId);
+    final ability = entry.abilities[_fusionTier];
 
     return Theme(
       data: theme,
@@ -48,60 +45,14 @@ class _UnitDetailScreenState extends State<UnitDetailScreen> {
         body: FantasyBackdrop(
           lighter: true,
           child: SafeArea(
+            bottom: false,
             child: Column(
               children: [
                 const PlayerHubHeader(),
-                // ── Top bar ──────────────────────────────────────────
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(
-                    AppSpacing.xs,
-                    AppSpacing.xs,
-                    AppSpacing.lg,
-                    0,
-                  ),
-                  child: Row(
-                    children: [
-                      Semantics(
-                        button: true,
-                        label: 'กลับ',
-                        child: IconButton(
-                          onPressed: () => Navigator.of(context).pop(),
-                          icon: const Icon(Icons.arrow_back_rounded),
-                          tooltip: 'กลับ',
-                        ),
-                      ),
-                      Expanded(
-                        child: Text(
-                          entry.name,
-                          style: theme.textTheme.titleLarge?.copyWith(
-                            color: const Color(0xFFFFF5D6),
-                            fontWeight: FontWeight.w800,
-                          ),
-                        ),
-                      ),
-                      Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Icon(
-                            Icons.monetization_on,
-                            size: 18,
-                            color: game.gold,
-                          ),
-                          const SizedBox(width: AppSpacing.xxs),
-                          Text(
-                            '${entry.cost}',
-                            style: theme.textTheme.titleMedium?.copyWith(
-                              color: game.gold,
-                              fontWeight: FontWeight.w700,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ],
-                  ),
+                _DetailTopBar(
+                  entry: entry,
+                  onBack: () => Navigator.of(context).pop(),
                 ),
-
-                // ── Scrollable content ───────────────────────────────
                 Expanded(
                   child: MediaQuery.withClampedTextScaling(
                     maxScaleFactor: 1.3,
@@ -114,149 +65,31 @@ class _UnitDetailScreenState extends State<UnitDetailScreen> {
                       ),
                       child: Center(
                         child: ConstrainedBox(
-                          constraints: const BoxConstraints(maxWidth: 480),
+                          constraints: const BoxConstraints(maxWidth: 520),
                           child: Column(
                             children: [
-                              // ── Unit art ─────────────────────────
-                              FantasyPanel(
-                                translucent: true,
-                                padding: const EdgeInsets.all(AppSpacing.lg),
-                                child: Center(
-                                  child: Column(
-                                    children: [
-                                      Container(
-                                        padding: const EdgeInsets.symmetric(
-                                          horizontal: AppSpacing.sm,
-                                          vertical: AppSpacing.xxs,
-                                        ),
-                                        decoration: BoxDecoration(
-                                          color: const Color(0xFF0A1724),
-                                          border: Border.all(
-                                            color: game.starColor(_formIndex),
-                                          ),
-                                          borderRadius: AppRadius.allFull,
-                                        ),
-                                        child: Row(
-                                          mainAxisSize: MainAxisSize.min,
-                                          children: List.generate(
-                                            _formIndex + 1,
-                                            (index) => Icon(
-                                              Icons.star,
-                                              size: 14,
-                                              color: game.starColor(_formIndex),
-                                            ),
-                                          ),
-                                        ),
-                                      ),
-                                      const SizedBox(height: AppSpacing.lg),
-                                      Stack(
-                                        alignment: Alignment.center,
-                                        children: [
-                                          Container(
-                                            height: 180,
-                                            width: 180,
-                                            decoration: BoxDecoration(
-                                              shape: BoxShape.circle,
-                                              gradient: RadialGradient(
-                                                colors: [
-                                                  theme.colorScheme.primary
-                                                      .withValues(alpha: 0.25),
-                                                  Colors.transparent,
-                                                ],
-                                                radius: 0.7,
-                                              ),
-                                            ),
-                                          ),
-                                          Image.asset(
-                                            'assets/images/units/${entry.id.name}_${_formIndex + 1}.png',
-                                            height: 180,
-                                            fit: BoxFit.contain,
-                                          ),
-                                        ],
-                                      ),
-                                    ],
-                                  ),
-                                ),
+                              _UnitHero(
+                                entry: entry,
+                                fusionTier: _fusionTier,
+                                accent: accent,
                               ),
-
-                              const SizedBox(height: AppSpacing.lg),
-
-                              // ── Role subtitle ───────────────────
-                              Text(
-                                entry.role,
-                                style: theme.textTheme.bodyMedium?.copyWith(
-                                  color: const Color(0xFFB8CEF0),
-                                ),
-                                textAlign: TextAlign.center,
-                              ),
-
                               const SizedBox(height: AppSpacing.md),
-                              _UnitStats(
-                                hp: entry.hp,
-                                attack: entry.attackAtFusionTier(_formIndex),
-                                speed: entry.spd,
-                                fusionTier: _formIndex,
+                              _TierSelector(
+                                fusionTier: _fusionTier,
+                                accent: accent,
+                                onSelect: _selectTier,
                               ),
-
-                              const SizedBox(height: AppSpacing.lg),
-
-                              // ── Star form switcher ──────────────
-                              FantasyPanel(
-                                translucent: true,
-                                padding: const EdgeInsets.all(AppSpacing.lg),
-                                child: Column(
-                                  children: [
-                                    _StarFormSwitcher(
-                                      currentIndex: _formIndex,
-                                      maxIndex: _maxIndex,
-                                      starLevel: ability.starLevel,
-                                      starColor: game.starColor(_formIndex),
-                                      onPrevious: _formIndex > 0
-                                          ? () => setState(
-                                                () => _formIndex--,
-                                              )
-                                          : null,
-                                      onNext: _formIndex < _maxIndex
-                                          ? () => setState(
-                                                () => _formIndex++,
-                                              )
-                                          : null,
-                                    ),
-                                    const SizedBox(height: AppSpacing.md),
-                                    // ── Ability description ─────────
-                                    Semantics(
-                                      label:
-                                          'ความสามารถ ${ability.starLevel} ดาว: ${ability.description}',
-                                      child: Column(
-                                        children: [
-                                          Text(
-                                            'ความสามารถ',
-                                            style: theme.textTheme.titleMedium
-                                                ?.copyWith(
-                                              fontWeight: FontWeight.w700,
-                                            ),
-                                          ),
-                                          const SizedBox(
-                                            height: AppSpacing.sm,
-                                          ),
-                                          AnimatedSwitcher(
-                                            duration: const Duration(
-                                              milliseconds: 200,
-                                            ),
-                                            child: Text(
-                                              ability.description,
-                                              key: ValueKey(
-                                                '${entry.id}-${ability.starLevel}',
-                                              ),
-                                              style: theme.textTheme.bodyLarge,
-                                              textAlign: TextAlign.center,
-                                            ),
-                                          ),
-                                        ],
-                                      ),
-                                    ),
-                                  ],
-                                ),
+                              const SizedBox(height: AppSpacing.md),
+                              _StatsRow(
+                                entry: entry,
+                                fusionTier: _fusionTier,
+                                accent: accent,
+                              ),
+                              const SizedBox(height: AppSpacing.md),
+                              _AbilityPanel(
+                                ability: ability,
+                                accent: accent,
+                                fusionTier: _fusionTier,
                               ),
                             ],
                           ),
@@ -265,8 +98,6 @@ class _UnitDetailScreenState extends State<UnitDetailScreen> {
                     ),
                   ),
                 ),
-
-                // ── Bottom Navigation ────────────────────────────────
                 const PlayerHubNavigation(selected: PlayerHubTab.units),
               ],
             ),
@@ -277,68 +108,554 @@ class _UnitDetailScreenState extends State<UnitDetailScreen> {
   }
 }
 
-class _UnitStats extends StatelessWidget {
-  const _UnitStats({
-    required this.hp,
-    required this.attack,
-    required this.speed,
-    required this.fusionTier,
+class _DetailTopBar extends StatelessWidget {
+  const _DetailTopBar({
+    required this.entry,
+    required this.onBack,
   });
 
-  final int hp;
-  final int attack;
-  final int speed;
+  final UnitCatalogEntry entry;
+  final VoidCallback onBack;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final game = theme.extension<GameTheme>()!;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(
+        AppSpacing.sm,
+        AppSpacing.xs,
+        AppSpacing.lg,
+        AppSpacing.xs,
+      ),
+      child: Row(
+        children: [
+          IconButton(
+            onPressed: onBack,
+            icon: const Icon(Icons.arrow_back_rounded),
+            tooltip: 'กลับ',
+          ),
+          const SizedBox(width: AppSpacing.xs),
+          Expanded(
+            child: Text(
+              entry.name,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: theme.textTheme.headlineSmall?.copyWith(
+                color: const Color(0xFFFFF7DD),
+                fontWeight: FontWeight.w900,
+                height: 1,
+              ),
+            ),
+          ),
+          _PriceBadge(cost: entry.cost, color: game.gold),
+        ],
+      ),
+    );
+  }
+}
+
+class _PriceBadge extends StatelessWidget {
+  const _PriceBadge({required this.cost, required this.color});
+
+  final int cost;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) => Container(
+        padding: const EdgeInsets.symmetric(
+          horizontal: AppSpacing.md,
+          vertical: AppSpacing.xs,
+        ),
+        decoration: BoxDecoration(
+          color: const Color(0xE60A1724),
+          borderRadius: AppRadius.allFull,
+          border: Border.all(color: color.withValues(alpha: 0.72)),
+          boxShadow: [
+            BoxShadow(
+              color: color.withValues(alpha: 0.18),
+              blurRadius: AppSpacing.md,
+            ),
+          ],
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.monetization_on_rounded, size: 18, color: color),
+            const SizedBox(width: AppSpacing.xs),
+            Text(
+              '$cost',
+              style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                    color: color,
+                    fontWeight: FontWeight.w900,
+                  ),
+            ),
+          ],
+        ),
+      );
+}
+
+class _UnitHero extends StatelessWidget {
+  const _UnitHero({
+    required this.entry,
+    required this.fusionTier,
+    required this.accent,
+  });
+
+  final UnitCatalogEntry entry;
   final int fusionTier;
+  final Color accent;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final reduceMotion = MediaQuery.disableAnimationsOf(context);
+    return Container(
+      height: 260,
+      decoration: BoxDecoration(
+        borderRadius: AppRadius.allLg,
+        border: Border.all(color: accent.withValues(alpha: 0.88), width: 1.5),
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [
+            const Color(0xF20A1724),
+            Color.lerp(const Color(0xFF10283B), accent, 0.16)!,
+            const Color(0xFA07111C),
+          ],
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: accent.withValues(alpha: 0.2),
+            blurRadius: AppSpacing.xl,
+            spreadRadius: AppSpacing.xxs,
+          ),
+          const BoxShadow(
+            color: Color(0xB3000000),
+            blurRadius: AppSpacing.xl,
+            offset: Offset(0, AppSpacing.sm),
+          ),
+        ],
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: Stack(
+        fit: StackFit.expand,
+        children: [
+          Positioned.fill(
+            child: CustomPaint(
+              painter: _HeroGridPainter(accent: accent),
+            ),
+          ),
+          Align(
+            alignment: const Alignment(0, 0.18),
+            child: Container(
+              width: 220,
+              height: 220,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                gradient: RadialGradient(
+                  colors: [
+                    accent.withValues(alpha: 0.32),
+                    accent.withValues(alpha: 0.08),
+                    Colors.transparent,
+                  ],
+                ),
+              ),
+            ),
+          ),
+          Positioned(
+            top: AppSpacing.md,
+            left: AppSpacing.md,
+            child: _RoleBadge(
+              icon: _unitIcon(entry.id),
+              label: _unitClassLabel(entry.id),
+              accent: accent,
+            ),
+          ),
+          Positioned(
+            top: AppSpacing.md,
+            right: AppSpacing.md,
+            child: _TierBadge(tier: fusionTier, accent: accent),
+          ),
+          Positioned.fill(
+            top: AppSpacing.xxl,
+            bottom: AppSpacing.xxl,
+            child: AnimatedSwitcher(
+              duration: AppMotion.maybe(
+                AppMotion.medium2,
+                reduceMotion: reduceMotion,
+              ),
+              transitionBuilder: (child, animation) => FadeTransition(
+                opacity: animation,
+                child: ScaleTransition(
+                  scale: Tween(begin: 0.94, end: 1.0).animate(
+                    CurvedAnimation(parent: animation, curve: Curves.easeOut),
+                  ),
+                  child: child,
+                ),
+              ),
+              child: Image.asset(
+                'assets/images/units/${entry.id.name}_${fusionTier + 1}.png',
+                key: ValueKey('${entry.id.name}-$fusionTier'),
+                fit: BoxFit.contain,
+                filterQuality: FilterQuality.high,
+              ),
+            ),
+          ),
+          Positioned(
+            left: AppSpacing.lg,
+            right: AppSpacing.lg,
+            bottom: AppSpacing.md,
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Container(
+                  width: AppSpacing.xxl,
+                  height: 1,
+                  color: accent.withValues(alpha: 0.46),
+                ),
+                const SizedBox(width: AppSpacing.sm),
+                Text(
+                  'FORM ${fusionTier + 1}',
+                  style: theme.textTheme.labelSmall?.copyWith(
+                    color: accent,
+                    fontWeight: FontWeight.w900,
+                    letterSpacing: 1.6,
+                  ),
+                ),
+                const SizedBox(width: AppSpacing.sm),
+                Container(
+                  width: AppSpacing.xxl,
+                  height: 1,
+                  color: accent.withValues(alpha: 0.46),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _RoleBadge extends StatelessWidget {
+  const _RoleBadge({
+    required this.icon,
+    required this.label,
+    required this.accent,
+  });
+
+  final IconData icon;
+  final String label;
+  final Color accent;
+
+  @override
+  Widget build(BuildContext context) => Semantics(
+        label: 'ประเภทยูนิต: $label',
+        excludeSemantics: true,
+        child: Container(
+          padding: const EdgeInsets.symmetric(
+            horizontal: AppSpacing.sm,
+            vertical: AppSpacing.xs,
+          ),
+          decoration: BoxDecoration(
+            color: const Color(0xCC07131F),
+            borderRadius: AppRadius.allFull,
+            border: Border.all(color: accent.withValues(alpha: 0.64)),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(icon, size: 18, color: accent),
+              const SizedBox(width: AppSpacing.xs),
+              Text(
+                label,
+                style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                      color: const Color(0xFFE7F2FF),
+                      fontWeight: FontWeight.w800,
+                      height: 1,
+                    ),
+              ),
+            ],
+          ),
+        ),
+      );
+}
+
+class _TierBadge extends StatelessWidget {
+  const _TierBadge({required this.tier, required this.accent});
+
+  final int tier;
+  final Color accent;
+
+  @override
+  Widget build(BuildContext context) => Container(
+        padding: const EdgeInsets.symmetric(
+          horizontal: AppSpacing.sm,
+          vertical: AppSpacing.xs,
+        ),
+        decoration: BoxDecoration(
+          color: accent.withValues(alpha: 0.14),
+          borderRadius: AppRadius.allFull,
+          border: Border.all(color: accent.withValues(alpha: 0.72)),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            for (var index = 0; index <= tier; index++) ...[
+              if (index > 0) const SizedBox(width: AppSpacing.xxs),
+              Icon(Icons.star_rounded, size: 18, color: accent),
+            ],
+          ],
+        ),
+      );
+}
+
+class _TierSelector extends StatelessWidget {
+  const _TierSelector({
+    required this.fusionTier,
+    required this.accent,
+    required this.onSelect,
+  });
+
+  final int fusionTier;
+  final Color accent;
+  final ValueChanged<int> onSelect;
+
+  @override
+  Widget build(BuildContext context) => Container(
+        padding: const EdgeInsets.all(AppSpacing.sm),
+        decoration: BoxDecoration(
+          color: const Color(0xE60A1A29),
+          borderRadius: AppRadius.allLg,
+          border: Border.all(color: const Color(0x806FA5C4)),
+        ),
+        child: Row(
+          children: [
+            IconButton(
+              key: const ValueKey('star-form-previous'),
+              onPressed: fusionTier > 0 ? () => onSelect(fusionTier - 1) : null,
+              icon: const Icon(Icons.chevron_left_rounded),
+              tooltip: 'ร่างก่อนหน้า',
+            ),
+            Expanded(
+              child: Row(
+                children: [
+                  for (var tier = 0; tier < 3; tier++)
+                    Expanded(
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: AppSpacing.xxs,
+                        ),
+                        child: _TierOption(
+                          tier: tier,
+                          selected: tier == fusionTier,
+                          accent: accent,
+                          onTap: () => onSelect(tier),
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+            ),
+            IconButton(
+              key: const ValueKey('star-form-next'),
+              onPressed: fusionTier < 2 ? () => onSelect(fusionTier + 1) : null,
+              icon: const Icon(Icons.chevron_right_rounded),
+              tooltip: 'ร่างถัดไป',
+            ),
+          ],
+        ),
+      );
+}
+
+class _TierOption extends StatelessWidget {
+  const _TierOption({
+    required this.tier,
+    required this.selected,
+    required this.accent,
+    required this.onTap,
+  });
+
+  final int tier;
+  final bool selected;
+  final Color accent;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final reduceMotion = MediaQuery.disableAnimationsOf(context);
+    return Semantics(
+      button: true,
+      selected: selected,
+      label: '${tier + 1} ดาว',
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: AppRadius.allMd,
+          child: AnimatedContainer(
+            duration: AppMotion.maybe(
+              AppMotion.short4,
+              reduceMotion: reduceMotion,
+            ),
+            padding: const EdgeInsets.symmetric(vertical: AppSpacing.sm),
+            decoration: BoxDecoration(
+              color: selected
+                  ? accent.withValues(alpha: 0.18)
+                  : Colors.transparent,
+              borderRadius: AppRadius.allMd,
+              border: Border.all(
+                color: selected ? accent : const Color(0x336FA5C4),
+              ),
+              boxShadow: selected
+                  ? [
+                      BoxShadow(
+                        color: accent.withValues(alpha: 0.16),
+                        blurRadius: AppSpacing.md,
+                      ),
+                    ]
+                  : null,
+            ),
+            child: Column(
+              children: [
+                Icon(
+                  Icons.star_rounded,
+                  size: selected ? 24 : 20,
+                  color: selected ? accent : const Color(0xFF71869C),
+                ),
+                const SizedBox(height: AppSpacing.xxs),
+                Text(
+                  '${tier + 1} ดาว',
+                  maxLines: 1,
+                  style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                        color: selected
+                            ? const Color(0xFFFFFFFF)
+                            : const Color(0xFF9FB0C1),
+                        fontWeight:
+                            selected ? FontWeight.w900 : FontWeight.w600,
+                      ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _StatsRow extends StatelessWidget {
+  const _StatsRow({
+    required this.entry,
+    required this.fusionTier,
+    required this.accent,
+  });
+
+  final UnitCatalogEntry entry;
+  final int fusionTier;
+  final Color accent;
 
   @override
   Widget build(BuildContext context) => Row(
         children: [
-          Expanded(child: _StatTile(label: 'HP', value: hp)),
+          Expanded(
+            child: _StatCard(
+              label: 'HP',
+              value: entry.hp,
+              icon: Icons.favorite_rounded,
+              color: const Color(0xFF63C58C),
+            ),
+          ),
           const SizedBox(width: AppSpacing.sm),
           Expanded(
-            child: _StatTile(
+            child: _StatCard(
               label: 'ATK',
-              value: attack,
+              value: entry.attackAtFusionTier(fusionTier),
+              icon: Icons.bolt_rounded,
+              color: accent,
               valueKey: ValueKey('attack-$fusionTier'),
             ),
           ),
           const SizedBox(width: AppSpacing.sm),
-          Expanded(child: _StatTile(label: 'SPD', value: speed)),
+          Expanded(
+            child: _StatCard(
+              label: 'SPD',
+              value: entry.spd,
+              icon: Icons.speed_rounded,
+              color: const Color(0xFF74C7EC),
+            ),
+          ),
         ],
       );
 }
 
-class _StatTile extends StatelessWidget {
-  const _StatTile({
+class _StatCard extends StatelessWidget {
+  const _StatCard({
     required this.label,
     required this.value,
+    required this.icon,
+    required this.color,
     this.valueKey,
   });
 
   final String label;
   final int value;
+  final IconData icon;
+  final Color color;
   final Key? valueKey;
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    return FantasyPanel(
-      translucent: true,
+    final reduceMotion = MediaQuery.disableAnimationsOf(context);
+    return Container(
       padding: const EdgeInsets.symmetric(
         horizontal: AppSpacing.sm,
-        vertical: AppSpacing.xs,
+        vertical: AppSpacing.md,
+      ),
+      decoration: BoxDecoration(
+        color: const Color(0xE6112638),
+        borderRadius: AppRadius.allMd,
+        border: Border.all(color: color.withValues(alpha: 0.44)),
+        boxShadow: [
+          BoxShadow(
+            color: color.withValues(alpha: 0.08),
+            blurRadius: AppSpacing.md,
+          ),
+        ],
       ),
       child: Column(
         children: [
-          Text(label, style: theme.textTheme.labelSmall),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(icon, size: 15, color: color),
+              const SizedBox(width: AppSpacing.xs),
+              Text(
+                label,
+                style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                      color: color,
+                      fontWeight: FontWeight.w900,
+                      letterSpacing: 0.8,
+                    ),
+              ),
+            ],
+          ),
+          const SizedBox(height: AppSpacing.xs),
           AnimatedSwitcher(
-            duration: const Duration(milliseconds: 180),
+            duration: AppMotion.maybe(
+              AppMotion.short4,
+              reduceMotion: reduceMotion,
+            ),
             child: Text(
               '$value',
               key: valueKey,
-              style: theme.textTheme.titleMedium?.copyWith(
-                fontWeight: FontWeight.w800,
-              ),
+              textAlign: TextAlign.center,
+              style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                    color: const Color(0xFFFFFFFF),
+                    fontWeight: FontWeight.w900,
+                    height: 1,
+                  ),
             ),
           ),
         ],
@@ -347,73 +664,166 @@ class _StatTile extends StatelessWidget {
   }
 }
 
-/// Left / right arrows around the current star level indicator.
-class _StarFormSwitcher extends StatelessWidget {
-  const _StarFormSwitcher({
-    required this.currentIndex,
-    required this.maxIndex,
-    required this.starLevel,
-    required this.starColor,
-    required this.onPrevious,
-    required this.onNext,
+class _AbilityPanel extends StatelessWidget {
+  const _AbilityPanel({
+    required this.ability,
+    required this.accent,
+    required this.fusionTier,
   });
 
-  final int currentIndex;
-  final int maxIndex;
-  final int starLevel;
-  final Color starColor;
-  final VoidCallback? onPrevious;
-  final VoidCallback? onNext;
+  final UnitAbility ability;
+  final Color accent;
+  final int fusionTier;
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final disabledColor = theme.colorScheme.onSurface.withValues(alpha: 0.25);
-
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.center,
-      children: [
-        Semantics(
-          button: true,
-          label: 'ร่างก่อนหน้า',
-          child: IconButton(
-            key: const ValueKey('star-form-previous'),
-            onPressed: onPrevious,
-            icon: Icon(
-              Icons.chevron_left_rounded,
-              color: onPrevious != null ? starColor : disabledColor,
-              size: 32,
-            ),
-            tooltip: 'ร่างก่อนหน้า',
-          ),
-        ),
-        const SizedBox(width: AppSpacing.sm),
-        // Star icons row
-        Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            for (var i = 0; i < starLevel; i++) ...[
-              if (i > 0) const SizedBox(width: AppSpacing.xxs),
-              Icon(Icons.star, size: 24, color: starColor),
-            ],
+    final reduceMotion = MediaQuery.disableAnimationsOf(context);
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(AppSpacing.lg),
+      decoration: BoxDecoration(
+        borderRadius: AppRadius.allLg,
+        border: Border.all(color: accent.withValues(alpha: 0.62)),
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [
+            accent.withValues(alpha: 0.18),
+            const Color(0xED10283B),
+            const Color(0xF207131F),
           ],
         ),
-        const SizedBox(width: AppSpacing.sm),
-        Semantics(
-          button: true,
-          label: 'ร่างถัดไป',
-          child: IconButton(
-            key: const ValueKey('star-form-next'),
-            onPressed: onNext,
-            icon: Icon(
-              Icons.chevron_right_rounded,
-              color: onNext != null ? starColor : disabledColor,
-              size: 32,
-            ),
-            tooltip: 'ร่างถัดไป',
+        boxShadow: const [
+          BoxShadow(
+            color: Color(0x99000000),
+            blurRadius: AppSpacing.xl,
+            offset: Offset(0, AppSpacing.sm),
           ),
-        ),
-      ],
+        ],
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            width: AppSpacing.huge,
+            height: AppSpacing.huge,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: accent.withValues(alpha: 0.16),
+              border: Border.all(color: accent.withValues(alpha: 0.72)),
+            ),
+            child: Icon(Icons.auto_awesome_rounded, color: accent),
+          ),
+          const SizedBox(width: AppSpacing.md),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        'ความสามารถประจำร่าง',
+                        style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                              color: const Color(0xFFFFFFFF),
+                              fontWeight: FontWeight.w900,
+                            ),
+                      ),
+                    ),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: AppSpacing.sm,
+                        vertical: AppSpacing.xxs,
+                      ),
+                      decoration: BoxDecoration(
+                        color: accent.withValues(alpha: 0.14),
+                        borderRadius: AppRadius.allFull,
+                      ),
+                      child: Text(
+                        '${ability.starLevel} ดาว',
+                        style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                              color: accent,
+                              fontWeight: FontWeight.w900,
+                            ),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: AppSpacing.sm),
+                AnimatedSwitcher(
+                  duration: AppMotion.maybe(
+                    AppMotion.short4,
+                    reduceMotion: reduceMotion,
+                  ),
+                  child: Text(
+                    ability.description,
+                    key: ValueKey('ability-$fusionTier'),
+                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                          color: const Color(0xFFDCEBFA),
+                          height: 1.4,
+                        ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
+
+class _HeroGridPainter extends CustomPainter {
+  const _HeroGridPainter({required this.accent});
+
+  final Color accent;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final line = Paint()
+      ..color = accent.withValues(alpha: 0.08)
+      ..strokeWidth = 1;
+    final step = size.width / 6;
+    for (var x = -size.height; x < size.width; x += step) {
+      canvas.drawLine(
+        Offset(x, size.height),
+        Offset(x + size.height, 0),
+        line,
+      );
+    }
+    final ring = Paint()
+      ..color = accent.withValues(alpha: 0.12)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1.5;
+    canvas.drawCircle(
+      Offset(size.width / 2, size.height * 0.54),
+      size.shortestSide * 0.34,
+      ring,
+    );
+  }
+
+  @override
+  bool shouldRepaint(covariant _HeroGridPainter oldDelegate) =>
+      oldDelegate.accent != accent;
+}
+
+Color _unitAccent(UnitId id) => switch (id) {
+      UnitId.fighter => const Color(0xFFFF6B6B),
+      UnitId.healer => const Color(0xFFF0B66A),
+      UnitId.ranger => const Color(0xFF5DD6C0),
+      UnitId.tank => const Color(0xFF72A7FF),
+    };
+
+IconData _unitIcon(UnitId id) => switch (id) {
+      UnitId.fighter => Icons.sports_martial_arts_rounded,
+      UnitId.healer => Icons.health_and_safety_rounded,
+      UnitId.ranger => Icons.gps_fixed_rounded,
+      UnitId.tank => Icons.shield_rounded,
+    };
+
+String _unitClassLabel(UnitId id) => switch (id) {
+      UnitId.fighter => 'จู่โจม',
+      UnitId.healer => 'สนับสนุน',
+      UnitId.ranger => 'ระยะไกล',
+      UnitId.tank => 'แนวหน้า',
+    };

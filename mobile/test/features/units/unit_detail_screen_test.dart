@@ -43,9 +43,18 @@ void main() {
         expect(find.text(entry.name), findsOneWidget);
       });
 
-      testWidgets('shows correct role for ${id.name}', (tester) async {
+      testWidgets('exposes correct role for ${id.name}', (tester) async {
         await _pumpDetail(tester, id);
-        expect(find.text(entry.role), findsOneWidget);
+        final classLabel = switch (id) {
+          UnitId.fighter => 'จู่โจม',
+          UnitId.healer => 'สนับสนุน',
+          UnitId.ranger => 'ระยะไกล',
+          UnitId.tank => 'แนวหน้า',
+        };
+        expect(
+          find.bySemanticsLabel('ประเภทยูนิต: $classLabel'),
+          findsOneWidget,
+        );
       });
 
       testWidgets('shows cost for ${id.name}', (tester) async {

@@ -40,7 +40,7 @@ class UnitsScreen extends StatelessWidget {
                         child: GridView.builder(
                           padding: const EdgeInsets.fromLTRB(
                             AppSpacing.lg,
-                            AppSpacing.xs,
+                            0,
                             AppSpacing.lg,
                             AppSpacing.xl,
                           ),
@@ -49,7 +49,7 @@ class UnitsScreen extends StatelessWidget {
                             crossAxisCount: 2,
                             mainAxisSpacing: AppSpacing.md,
                             crossAxisSpacing: AppSpacing.md,
-                            childAspectRatio: 0.85,
+                            childAspectRatio: 0.9,
                           ),
                           itemCount: UnitId.values.length,
                           itemBuilder: (context, index) {
@@ -84,7 +84,7 @@ class _UnitsHeader extends StatelessWidget {
           AppSpacing.lg,
           AppSpacing.sm,
           AppSpacing.lg,
-          AppSpacing.xs,
+          0,
         ),
         child: Row(
           children: [
