@@ -26,10 +26,13 @@ x-nest: &nest
       condition: service_healthy
     vault-agent:
       condition: service_started
+    # Only present when the `pgbouncer` profile is on (see below).
     pgbouncer:
       condition: service_started
+      required: false
     pgbouncer-replica:
       condition: service_started
+      required: false
   # Wait for Vault Agent to render the secrets, load them into the process
   # environment only (never onto disk), then start the app.
   entrypoint:
@@ -123,12 +126,14 @@ services:
       timeout: 5s
       retries: 20
 
-  # pgBouncer (#139): transaction pooling in front of Postgres, one for the
-  # primary (writes) and one for the replica (reads). nest-1/2/3 hold
-  # long-lived pools; this caps what actually reaches Postgres.
+  # pgBouncer (#139), OPT-IN via the `pgbouncer` compose profile: transaction
+  # pooling in front of Postgres, one for the primary (writes) and one for
+  # the replica (reads). Off by default because transaction pooling has not
+  # been proven against the app yet -- enable it, test, keep or roll back.
   # The password is read from the Vault-rendered file at start.
   pgbouncer:
     image: edoburu/pgbouncer:v1.26.0-p0@sha256:b17551c776ef7e5769ef80b956d20f85e2fd25dd8912d31d58f782aad495b711
+    profiles: ["pgbouncer"]
     restart: unless-stopped
     depends_on:
       postgres-primary:
@@ -156,6 +161,7 @@ services:
 
   pgbouncer-replica:
     image: edoburu/pgbouncer:v1.26.0-p0@sha256:b17551c776ef7e5769ef80b956d20f85e2fd25dd8912d31d58f782aad495b711
+    profiles: ["pgbouncer"]
     restart: unless-stopped
     depends_on:
       postgres-replica:
@@ -325,13 +331,15 @@ services:
     environment:
       POSTGRES_USER: ${POSTGRES_USER:?}
       POSTGRES_DB: ${POSTGRES_DB:?}
-      # nest connects through pgBouncer. To bypass the pooler (debugging),
-      # set DB_PRIMARY_HOST=postgres-primary DB_PRIMARY_PORT=5432 (and the
-      # replica pair) in app.env and `up -d vault-agent nest-1 nest-2 nest-3`.
-      DB_PRIMARY_HOST: ${DB_PRIMARY_HOST:-pgbouncer}
-      DB_PRIMARY_PORT: ${DB_PRIMARY_PORT:-6432}
-      DB_REPLICA_HOST: ${DB_REPLICA_HOST:-pgbouncer-replica}
-      DB_REPLICA_PORT: ${DB_REPLICA_PORT:-6432}
+      # Default: nest talks to Postgres directly. pgBouncer is OPT-IN (#139):
+      # in app.env set COMPOSE_PROFILES=pgbouncer and
+      #   DB_PRIMARY_HOST=pgbouncer DB_PRIMARY_PORT=6432
+      #   DB_REPLICA_HOST=pgbouncer-replica DB_REPLICA_PORT=6432
+      # then `up -d` (runbook.md section 12). Unset them to go back.
+      DB_PRIMARY_HOST: ${DB_PRIMARY_HOST:-postgres-primary}
+      DB_PRIMARY_PORT: ${DB_PRIMARY_PORT:-5432}
+      DB_REPLICA_HOST: ${DB_REPLICA_HOST:-postgres-replica}
+      DB_REPLICA_PORT: ${DB_REPLICA_PORT:-5432}
     volumes:
       - ../vault/agent.hcl:/vault/config/agent.hcl:ro
       - /etc/auto-chess/vault-tls/vault.crt:/vault/tls/vault.crt:ro

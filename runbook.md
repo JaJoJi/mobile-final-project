@@ -184,22 +184,33 @@ $C up -d nginx
 curl -sI http://127.0.0.1/ | head -3   # 301 -> https://...
 ```
 
-### pgBouncer
+### pgBouncer (opt-in)
 
-`pgbouncer` (primary) and `pgbouncer-replica` sit between nest and Postgres:
-transaction pooling, `DEFAULT_POOL_SIZE=20`, `MAX_CLIENT_CONN=1000`. nest's
-`DATABASE_URL` / `DATABASE_REPLICA_URL` (rendered by Vault Agent) point at
-them (`pgbouncer:6432`).
+`pgbouncer` (primary) and `pgbouncer-replica` can sit between nest and
+Postgres: transaction pooling, `DEFAULT_POOL_SIZE=20`, `MAX_CLIENT_CONN=1000`.
+They are behind the compose profile `pgbouncer`, **off by default**: nest
+talks to Postgres directly until you turn it on, because transaction
+pooling has not been proven against this app (TypeORM) yet.
 
 ```bash
-$C logs --tail 20 pgbouncer
-$C exec pgbouncer sh -c 'psql -h 127.0.0.1 -p 6432 -U "$POSTGRES_USER" pgbouncer -c "SHOW POOLS;"'   # if psql exists in the image
-curl -s http://127.0.0.1/health/ready                    # postgres up through the pooler
+# 1. enable: add to /etc/auto-chess/app.env
+#      COMPOSE_PROFILES=pgbouncer
+#      DB_PRIMARY_HOST=pgbouncer         DB_PRIMARY_PORT=6432
+#      DB_REPLICA_HOST=pgbouncer-replica DB_REPLICA_PORT=6432
+$C up -d                                  # starts the poolers, vault-agent re-renders the URLs
+$C up -d --force-recreate nest-1 nest-2 nest-3   # pick up the new URLs (~1 min of downtime)
 
-# bypass the pooler (debug / rollback): in app.env set
-#   DB_PRIMARY_HOST=postgres-primary DB_PRIMARY_PORT=5432
-#   DB_REPLICA_HOST=postgres-replica DB_REPLICA_PORT=5432
-$C up -d vault-agent && $C up -d --force-recreate nest-1 nest-2 nest-3
+# 2. test it
+$C logs --tail 20 pgbouncer pgbouncer-replica          # listening on 6432, no auth errors
+$C exec vault-agent cat /vault/secrets/app.env | sed -E 's#(://[^:]+:)[^@]+@#\1***@#'   # URLs show pgbouncer:6432
+curl -s http://127.0.0.1/health/ready                  # postgres up through the pooler
+curl -s -X POST http://127.0.0.1/auth/register -H 'content-type: application/json' \
+  -d '{"email":"pgb@test.local","username":"pgbtest","password":"test-password-123"}' | head -c 150   # a write
+# play a short match from the app / run the k6 test (section 13): no errors in
+#   $C logs --since 5m nest-1 nest-2 nest-3 | grep -i 'error\|ECONN'
+
+# 3. keep it, or roll back: comment the five lines out of app.env, then
+$C up -d --remove-orphans && $C up -d --force-recreate nest-1 nest-2 nest-3
 ```
 
 ### Daily database backup
@@ -232,7 +243,7 @@ sudo docker rm -f pg_restore_test && sudo docker volume rm restore_test
 | Secret | When | How |
 |---|---|---|
 | `JWT_SECRET` | every 6 months, or if leaked | `vault kv patch secret/auto-chess/prod/app JWT_SECRET=$(openssl rand -hex 32)` (needs a token: `vault operator generate-root`, 2 unseal keys), wait for Agent (<= 5 min) or `$C restart vault-agent`, then restart nest **one at a time**: `$C restart nest-1; sleep 20; $C restart nest-2; sleep 20; $C restart nest-3`. All users are signed out (the app has no dual-secret support), and for the ~1 min of mixed instances some requests may get 401 and retry. |
-| `POSTGRES_PASSWORD` | yearly / if leaked | `ALTER ROLE auto_chess PASSWORD '<new>'` on the primary **and** `vault kv patch ...POSTGRES_PASSWORD=<new>`, then `$C restart vault-agent pgbouncer pgbouncer-replica nest-1 nest-2 nest-3` |
+| `POSTGRES_PASSWORD` | yearly / if leaked | `ALTER ROLE auto_chess PASSWORD '<new>'` on the primary **and** `vault kv patch ...POSTGRES_PASSWORD=<new>`, then `$C restart vault-agent nest-1 nest-2 nest-3` (plus `pgbouncer pgbouncer-replica` if the pooler is on) |
 | `POSTGRES_REPLICATION_PASSWORD` | yearly | `ALTER ROLE replicator PASSWORD '<new>'`, `vault kv patch`, restart `vault-agent pg-backup postgres-replica` (the replica re-reads it) |
 | Grafana admin | on staff change | Grafana UI, or `vault kv patch ...GRAFANA_ADMIN_PASSWORD=` + `grafana cli admin reset-admin-password` |
 | TLS cert | before expiry (825 days for the self-signed one) | replace files, `$C up -d nginx` |
