@@ -6,6 +6,135 @@
 เอกสารที่เกี่ยวข้อง: [runbook.md](runbook.md) (คำสั่งสำหรับ VM) · [docs/08-runbook.md](docs/08-runbook.md) (Jenkins) ·
 [docs/14-gate-evidence.md](docs/14-gate-evidence.md) (หลักฐานแต่ละ gate) · [infra/README.md](infra/README.md)
 
+ภาพหลักฐานที่ใช้ในรายงานอยู่ที่ [report-assets/](report-assets/) (เลือกเฉพาะภาพที่เป็นหลักฐานจริง 7 ภาพ)
+
+---
+
+## ก. สรุปสั้น (อ่านแค่นี้ก็พอ)
+
+- **ทำครบ pipeline หลัก:** Jenkins ตัวเดียว ตรวจ secret → ตรวจโค้ด/สแกน (ขนาน) → build image → SBOM + สแกน image →
+  stack ชั่วคราว (smoke + ZAP + k6) → publish จาก tar เดียวกับที่สแกน → APK; VM มหาวิทยาลัยดึงไป deploy เอง มี rollback อัตโนมัติ
+- **ความปลอดภัย 6 ชั้น:** Gitleaks, Semgrep, Trivy, Checkov, ZAP, SBOM + Vault (secret) + ModSecurity (WAF, ยัง log อย่างเดียว)
+- **มองเห็นระบบ:** Grafana 5 dashboard, metrics/logs/traces เชื่อมกันด้วย `trace_id`
+- **วัดผลจริง:** k6 50 แมตช์ (100 ผู้เล่น) p95 ~112–115 ms เทียบเกณฑ์ 500 ms, ผู้เล่นล้มเหลว 0, CPU VM ~10%
+- **ที่ยังไม่ได้ทำ/ไม่ได้ทดสอบ (พูดตรงๆ):** reboot และ restore เต็ม, red-proof ของ gate, เซ็น image, เพดานระบบ — ดูหัวข้อ 14
+
+## ข. เทียบกับ DevOps Master Guide
+
+ตรวจจาก `guide/DevOps_Master_Guide.md` (Part A: A1 pipeline 16 stage, A4 นโยบาย fail/warn, A7 Jenkins hardening, A9 ช่องว่าง, เช็คลิสต์ Day 0)
+สัญลักษณ์: ✅ ทำแล้ว · ⚠️ ทำบางส่วน/ต่างจาก guide · ❌ ยังไม่ทำ · ➖ ไม่เข้ากับสถาปัตยกรรมเรา
+
+### ข.1 Reference pipeline (A1)
+
+| # | Stage ใน guide | สถานะ | งานของเรา |
+|---|---|---|---|
+| 0 | Threat model / design review | ❌ | ไม่ได้ทำเป็นเอกสาร |
+| 1 | Pre-commit | ⚠️ | มี `.pre-commit-config.yaml` (format/typecheck); hook gitleaks + eslint ยังไม่มี (เก็บไว้ project หน้า) — guide ว่า "แค่แนะนำ" |
+| 2 | Server-side push protection | ⚠️ | Gitleaks สแกน **ทั้ง history** ใน CI (บล็อกเสมอ) แต่ไม่ได้ตั้ง push protection ฝั่ง GitHub |
+| 3 | PR checks ขนาน | ✅ | Gitleaks, Semgrep, Trivy fs, Checkov, backend, mobile ขนานกัน (สแกนทั้งหมด ไม่ใช่ diff — repo มี 0 finding จึงยังไม่จำเป็น) |
+| 4 | Unit + security unit test | ✅ | coverage floor บังคับ (game ≥ 90%) |
+| 5 | Build บน agent ชั่วคราว | ✅ | tool container ทิ้งหลังใช้, input ปักด้วย digest |
+| 6 | SBOM | ✅ | CycloneDX ของ **image** (ดีกว่าที่ guide บันทึกว่า lab ทำได้) |
+| 7 | Scan image **ก่อน push** | ✅ | build → tar → SBOM + Trivy → publish จาก tar เดิม (ปิดช่องว่าง A9 #3 แล้ว) |
+| 8 | Push ด้วย digest | ⚠️ | image แอป tag = commit; image โครงสร้างพื้นฐานใน compose ปักด้วย digest |
+| 9 | Sign + attest | ❌ | ไม่เซ็น image / ไม่มี attestation |
+| 10 | GitOps deploy | ➖ | VM หลัง NAT ใช้ pull-based `auto-chess-deploy` แทน (ไม่มี Kubernetes) |
+| 11 | E2E + DAST | ✅ | integration smoke + ZAP baseline/API บน stack ชั่วคราว, `rules.tsv` กำหนด FAIL |
+| 12 | Admission policy | ➖ | ไม่มี Kubernetes |
+| 13 | Progressive deploy + auto-rollback | ⚠️ | rollback อัตโนมัติเมื่อ `/health/ready` ไม่ผ่าน (ไม่มี canary / วิเคราะห์ metric) |
+| 14 | Post-deploy verification | ⚠️ | smoke + `/health/ready`; `/health` ยังไม่คืน version (เก็บไว้ใน #289) |
+| 15 | Continuous rescan | ❌ | เก็บไว้ใน #289 |
+
+### ข.2 นโยบาย fail / warn (A4)
+
+| หัวข้อ | สถานะ |
+|---|---|
+| Secret บล็อกเสมอ | ✅ Gitleaks `--exit-code 1` |
+| Image scan `--severity HIGH,CRITICAL --ignore-unfixed --exit-code 1` | ✅ |
+| ข้อยกเว้นต้องมีเหตุผล + วันหมดอายุ | ✅ `.trivyignore.yaml` (`statement` + `expired_at`) |
+| ZAP: กำหนด FAIL/IGNORE/WARN เอง | ✅ `rules.tsv` |
+| Scanner ปักด้วย digest (กัน supply-chain ที่ Trivy เคยโดน) | ✅ ทุกตัว |
+| ปัญหา "Trivy คืน 0 ถ้าไม่ใส่ `--exit-code 1`" | ✅ ใส่แล้ว |
+| Gate ใหม่เริ่มโหมด warn ก่อน | ⚠️ ZAP/WAF ใช้แนวนี้ (WAF = DetectionOnly); gate อื่นเปิด fail ตั้งแต่ต้น |
+| SCA/Licence allowlist, EPSS | ❌ ไม่ได้ทำ (Trivy fs ครอบ CVE; ไม่มีตรวจ licence) |
+
+### ข.3 Jenkins hardening (A7)
+
+| ข้อ | สถานะ |
+|---|---|
+| controller ไม่รัน build (executor = 0) | ⚠️ **ต่างจาก guide:** build รันบน built-in node (1 executor) เพราะมีเครื่องเดียว 4 GB; ลดความเสี่ยงด้วยการให้ทุก tool รันใน container ที่จำกัดหน่วยความจำ และไม่ให้ scanner เข้าถึง docker.sock |
+| patch สม่ำเสมอ | ✅ มีขั้นตอนใน runbook §7 (ไม่ได้ทำให้อัตโนมัติ) |
+| ไม่แทน credential ใน Groovy string แบบ double-quote | ✅ stage publish ใช้ `withCredentials` + `sh '''…$VAR…'''` |
+| โค้ดที่ไม่น่าเชื่อถือห้ามถึง stage ที่มี credential | ✅ publish / APK มี `not { changeRequest() }` + fork PR เชื่อเฉพาะ Admin/Write |
+| Pin plugin | ✅ 97 ตัวใน `plugins.txt` |
+| Backup `master.key` + `credentials.xml` | ✅ รายวัน (ทดสอบ restore เต็มยังไม่ได้ทำ) |
+| Audit Trail ส่งออก | ❌ |
+| Prometheus scrape Jenkins / SLO ของ CI | ❌ เก็บไว้ใน #289 |
+
+### ข.4 ช่องว่าง A9 และเช็คลิสต์ Day 0
+
+- **ปิดแล้ว:** pin image ของ scanner (#1), scan ก่อน push (#3), `gitleaks git` (#5), ZAP (#6), กัน fork PR (#8), pin plugin (#11)
+- **ยังเปิด:** เซ็น image (#2), diff-aware Semgrep (#7, ตัดสินใจข้ามเพราะ 0 finding), burn-rate alert (#9), Renovate/rescan (#12)
+- **ไม่เข้ากัน:** `docker:dind` / Kubernetes (#4, #10) — เราไม่ใช้ Kubernetes
+- Day 0: branch protection **ยังไม่ตั้ง (#280 รอเจ้าของ repo)**, CODEOWNERS ✅, runbook ✅, เช็คดิสก์ ✅ (Preflight),
+  Prometheus scrape Jenkins ❌, **"พิสูจน์ว่า gate แดงได้" ❌** (ตัดสินใจไม่ทำ)
+
+**สรุป:** แกนที่ guide เน้น (บล็อก secret เสมอ, scan ก่อน push, pin ทุกอย่าง, DAST, rollback) ทำครบ ส่วนที่ขาดคือชั้น supply-chain ขั้นสูง
+(เซ็น/attest, admission) และการวัด (DORA/SLO) — ระดับที่ guide เทียบ DSOMM Level 2 ซึ่งถือว่าเหมาะกับงานนักศึกษา เราทำได้เกือบครบ ยกเว้นบังคับ PR ผ่าน branch protection
+
+## ค. สิ่งที่ควรพูดตอน present ส่วน DevOps
+
+### ค.1 จากการค้นข้อมูล
+
+แหล่งที่ค้นได้ส่วนใหญ่เป็นแนวทางทั่วไป (ไม่มีสคริปต์ของ "การ present โปรเจกต์ DevOps" ที่เป็นทางการ) สิ่งที่ตรงกัน:
+
+1. **เล่าเป็นลำดับ pipeline:** Commit → Build → Test → Release/Deploy → Monitor
+2. **โชว์ว่าอัตโนมัติและตรวจได้:** ภาพ pipeline, ผล test/scan, อัตโนมัติแทนการตรวจมือ
+3. **ความปลอดภัย:** ครอบคลุม secret scan, SAST, DAST, dependency/container scan และ **SBOM** (ผู้ประเมินมักมองหาการครบชุดนี้และ shift-left)
+4. **จัดการ secret ให้ถูกวิธี:** ใช้ Vault หรือเทียบเท่า ไม่ฝังในโค้ด
+5. **rollback / กู้คืน:** บอกว่าถ้า deploy พังเกิดอะไรขึ้น
+6. **ตัวเลข:** DORA 4 ตัว (deployment frequency, lead time, change failure rate, time to restore) — เราไม่ได้วัด DORA ไว้ จึง **ห้ามอ้างตัวเลข DORA**
+   ให้ใช้ตัวเลขที่วัดจริงแทน (ผล k6, เวลา build, coverage, จำนวน component ใน SBOM)
+7. **ปัญหาที่เจอและบทเรียน** + **ข้อจำกัดตรงๆ** (ผู้ฟังเชื่อถือมากกว่าอวดว่าสมบูรณ์)
+
+### ค.2 โครงที่แนะนำ (ประมาณ 8–10 นาที)
+
+| นาที | หัวข้อ | พูดอะไร | ภาพ/หลักฐาน |
+|---|---|---|---|
+| 1 | ทำไมต้องมี DevOps ในโปรเจกต์นี้ | ทีมหลายคนส่งงานเข้า `dev`/`main` เกมออนไลน์ต้องเสถียร ตรวจมือไม่ทัน | – |
+| 1 | ภาพรวม toolchain | Jenkins → Docker Hub → VM pull · Ansible · Vault · Grafana stack | แผนภาพหัวข้อ 1 |
+| 2 | Pipeline | แต่ละ stage ทำอะไร, ขนานตรงไหน, ทำไมเรียงตามต้นทุน (Gitleaks ถูกสุดไปก่อน) | `01-jenkins-main-13-all-green.png` |
+| 1.5 | Security gates | 5 scanner + SBOM + นโยบาย (secret บล็อกเสมอ, ignore ต้องมีวันหมดอายุ) | `03-jenkins-build-with-parameters.png`, SBOM 434 components |
+| 1 | Release + rollback | ทำไม pull-based (หลัง NAT), health check, rollback อัตโนมัติ | `deploy.sh` |
+| 1 | Secret + WAF | Vault production mode, WAF พบ SQLi rule 942100 (ยังไม่ block) | `06-grafana-waf-dashboard.png` |
+| 1.5 | Observability | metrics/logs/traces เชื่อมกัน กดจาก log ไป trace | `07-loki-log-trace-link.png`, `04-…` |
+| 1 | Load test | 50 แมตช์, p95 ~112–115 ms, คอขวดคือ matchmaking 1/วินาที ไม่ใช่ CPU | `05-grafana-infrastructure-cpu.png`, `02-…k6-stage.png` |
+| 1 | บทเรียน + ข้อจำกัด | ตัวอย่าง: Gitleaks เจอ key ตัวอย่างใน history, Vault permission, Tempo ไม่รองรับ CPU | ตารางหัวข้อ 13–14 |
+
+**เดโมสด (ถ้ามีเวลา 2–3 นาที):** (1) เปิด Jenkins build ล่าสุดเขียวทั้งสาย (2) `curl` SQLi probe → เห็นบรรทัดใน Loki → กด *View trace* (3) `sudo auto-chess-deploy --status`
+แนะนำ **อัดวิดีโอสำรอง** เพราะ VM อยู่หลัง NAT มหาวิทยาลัยและต้องอยู่เครือข่าย PSU
+
+### ค.3 คำถามที่น่าจะโดน และคำตอบจากงานจริง
+
+| คำถาม | คำตอบ |
+|---|---|
+| ทำไม deploy แบบ pull ไม่ push | VM อยู่หลัง NAT Jenkins เข้าไม่ถึง และไม่อยากเก็บ credential ของ VM ใน Jenkins; VM ใช้ Docker Hub token แบบ read-only |
+| ถ้า deploy พังทำอย่างไร | `auto-chess-deploy` รอ `/health/ready` สูงสุด 3 นาที ถ้าไม่ผ่าน redeploy tag เดิมเอง |
+| กัน secret รั่วอย่างไร | Gitleaks สแกนทั้ง history และบล็อกเสมอ; secret จริงอยู่ใน Vault / credential ของ Jenkins ไม่อยู่ใน repo |
+| ทำไมไม่ใช้ Kubernetes | เป้าหมายคือ VM เดียวหลัง NAT; compose พอและดูแลง่ายกว่า (guide ส่วน K8s เป็น lab ไม่ใช่เป้าหมาย deploy จริง) |
+| WAF ทำไมไม่ block | ตั้งใจเริ่ม DetectionOnly เพื่อดู false positive ก่อน |
+| ระบบรับได้เท่าไร | ทดสอบ 50 แมตช์ผ่านหมด CPU ~10% **ยังไม่ได้หาเพดาน**; คอขวดที่พบคือ matchmaking จับคู่ 1 แมตช์/วินาที |
+| Jenkins ล่มทำไง | มี backup รายวัน (master.key + credentials) แต่ **ยังไม่ได้ทดสอบ restore เต็ม** |
+| DORA ได้เท่าไร | **ไม่ได้วัด** (ถ้าจะวัดใช้ Apache DevLake; ตั้งชื่อ stage เป็น `Release - Production` อยู่ในแผน #289) |
+| ปัญหายากสุด | OOM บนเครื่อง Jenkins 4 GB (แก้ด้วย memory cap ทุก container), ดิสก์เต็ม (cache ร่วม + preflight), Tempo ต้องการ CPU SSE4.2 |
+
+### ค.4 ห้ามพูด / ห้ามอ้าง
+
+- ห้ามบอกว่า "ทดสอบ reboot/restore ผ่านแล้ว" — ไม่ได้ทดสอบ
+- ห้ามบอกว่า gate ทุกตัว "พิสูจน์ว่าแดงได้" — ส่วนใหญ่เห็นแค่เขียว
+- ห้ามบอกว่า WAF "บล็อก" โจมตีได้ — ตอนนี้แค่บันทึก
+- ห้ามอ้าง DORA, เพดาน concurrency, หรือผลทดสอบ APK ใน emulator (เพื่อนยังทดสอบอยู่)
+
 ---
 
 ## 1. ภาพรวม
@@ -72,6 +201,18 @@
 พารามิเตอร์ปิด/เปิด gate (กด *Build with Parameters*): `ENABLE_SECURITY_SCAN`, `ENABLE_INTEGRATION_TESTS`,
 `ENABLE_IMAGE_PUBLISH`, `ENABLE_APK_BUILD`, `APK_API_BASE_URL`, `ENABLE_LOAD_TEST` (ค่าเริ่มต้นปิด), `ENABLE_NOTIFICATIONS`.
 build อัตโนมัติ (webhook) ใช้ค่าเริ่มต้นเสมอ — พารามิเตอร์ที่ติ๊กมีผลเฉพาะตอนกด build เอง
+
+**หลักฐาน:** Jenkins `main` #13 ผ่านทุก stage รวมถึง publish ขึ้น Docker Hub
+
+![Jenkins main #13 เขียวทั้งสาย](report-assets/01-jenkins-main-13-all-green.png)
+
+Build `dev` #51: stage ใหม่ `Load test · k6` ทำงานใน Jenkins (เครื่องหมาย `»` = stage ที่ถูกปิดด้วยพารามิเตอร์ในรอบนั้น ไม่ใช่ผ่าน)
+
+![Jenkins dev #51 มี stage k6](report-assets/02-jenkins-dev-51-k6-stage.png)
+
+หน้า *Build with Parameters* เปิด/ปิดแต่ละ gate ได้
+
+![Build with Parameters](report-assets/03-jenkins-build-with-parameters.png)
 
 ### ค่าความน่าเชื่อถือ
 
@@ -172,6 +313,10 @@ API scan 4 Informational, ไม่มี rule class FAIL
 - HTTPS: self-signed cert (`site.yml` สร้างให้); ตัวแปร `HTTPS_REDIRECT` ปิดเป็นค่าเริ่มต้น เพราะแอปบน emulator ไม่เชื่อ cert นี้
 - แผน: ดู false positive จาก traffic จริงก่อนเปิดโหมด block
 
+**หลักฐาน:** dashboard WAF ช่วง load test
+
+![Grafana WAF dashboard](report-assets/06-grafana-waf-dashboard.png)
+
 ## 10. Observability
 
 | สัญญาณ | ที่มา | เก็บที่ |
@@ -186,6 +331,12 @@ API scan 4 Informational, ไม่มี rule class FAIL
   (ตรวจแล้ว: Tempo รับ span 150 อัน, ดึง trace ด้วย id จาก log ได้)
 - ใช้ RAM: Alloy ~224 MB, Beyla ~394 MB (วัดจริง)
 - ปัญหาจริง: query ของ Tempo ค้าง → ตั้ง `frontend_worker.frontend_address: tempo:9095`; Beyla OOM → 768m; ไม่มี tag 2.5.0 → ใช้ 3.37.0
+
+**หลักฐาน:** dashboard Application (golden signals) และ log ที่มี `trace_id` + ปุ่ม *View trace*
+
+![Grafana Application dashboard](report-assets/04-grafana-application-dashboard.png)
+
+![Loki log กับ View trace](report-assets/07-loki-log-trace-link.png)
 
 ## 11. Load test (k6, `k6/load.js`)
 
@@ -206,6 +357,10 @@ API scan 4 Informational, ไม่มี rule class FAIL
 สิ่งที่เจอ: คอขวดแรกคือ **matchmaking จับคู่ได้ 1 แมตช์/วินาที** (BullMQ poll 1000 ms, จับคู่ 1 แมตช์ต่อ tick) ไม่ใช่ CPU;
 สมัครพร้อมกัน 100 คน p95 ~4.5 s (bcrypt) แต่เมื่อทยอยเข้าเหลือ ~0.2 s;
 รอบแรกล้ม 58% เพราะสคริปต์ไม่สมจริง (ผู้เล่น 100 คนเข้าใน 3 วินาที) → ปรับให้ทยอยเข้าและมีเวลาคิด แล้ววัดใหม่ได้ 0 error
+
+**หลักฐาน:** ทรัพยากร VM ช่วงยิง (CPU ~10%, RAM ~38%, disk ~19%)
+
+![Grafana Infrastructure ช่วง load test](report-assets/05-grafana-infrastructure-cpu.png)
 
 ## 12. Mobile (APK จาก Jenkins)
 
@@ -279,3 +434,27 @@ Jenkins health ใน Grafana, pre-commit (gitleaks + eslint) — ไว้โ�
 | คำสั่งสำหรับ VM | `runbook.md` |
 | Runbook Jenkins + hardening | `docs/08-runbook.md` |
 | หลักฐาน gate | `docs/14-gate-evidence.md` |
+
+## 17. ภาพที่ควรถ่ายเพิ่มเอง (ผมไม่มีภาพเหล่านี้)
+
+โฟลเดอร์ `report-assets/` มีเฉพาะ 7 ภาพที่เป็นหลักฐานจริงและตรงกับรายงาน ภาพต่อไปนี้ควรถ่ายเองบน VM / Jenkins:
+
+1. `docker compose ps` บน VM — แสดงครบ 16 container สถานะ healthy
+2. `sudo auto-chess-deploy --status` และท้าย `/var/lib/auto-chess/deploy.log` — หลักฐาน deploy/rollback
+3. บรรทัด WAF audit ของ SQLi probe (rule 942100, score 8) ใน Loki
+4. `vault status` (sealed=false, Raft) และหน้า audit dashboard
+5. สรุปผล k6 ใน terminal (threshold ✓ ทุกข้อ) — ใช้ยืนยันตัวเลข p95 112/115 ms
+6. หน้า Artifacts ของ build main (`sbom.cdx.json`, `apk/auto-chess-<commit>.apk`)
+7. หน้า tag ใน Docker Hub (`fiatthanapon/mobile-final-project:<commit>`)
+8. อีเมลแจ้งผล build (หลังแก้ credential `notify-email`)
+
+## 18. แหล่งอ้างอิง
+
+- DevOps Master Guide (ภายในทีม): `guide/DevOps_Master_Guide.md` — A1, A4, A7, A8, A9, เช็คลิสต์ Day 0
+- ข้อมูลทั่วไปเกี่ยวกับการนำเสนอโปรเจกต์ CI/CD และคำถามที่พบบ่อย (ค้นเว็บ ไม่ใช่เกณฑ์ทางการของวิชา):
+  [SlideTeam — CI/CD presentation](https://www.slideteam.net/blog/top-7-cicd-ppt-templates-with-samples-and-examples) ·
+  [DEV Community — CI/CD project](https://dev.to/hanzla-baig/devops-project-production-level-cicd-pipeline-project-92c) ·
+  [Tampere University — DevSecOps exercise](https://trepo.tuni.fi/handle/10024/228239) ·
+  [Codefresh — DORA metrics](https://codefresh.io/learn/software-deployment/dora-metrics-4-key-metrics-for-improving-devops-performance) ·
+  [Atlassian — DORA metrics](https://www.atlassian.com/devops/frameworks/dora-metrics) ·
+  [Jenkins interview questions (DEV Community)](https://dev.to/udoh_deborah_b1e484c474bf/day-29-jenkins-interview-questions-3i1i)
