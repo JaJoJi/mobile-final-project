@@ -46,7 +46,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('ตารางอันดับ'), findsOneWidget);
-    expect(find.text('ผู้บัญชาการแห่งสนาม · เรียงตามเรตติ้ง'), findsOneWidget);
+    expect(find.text('ผู้บัญชาการแห่งสนาม · เรียงตามเรตติ้ง'), findsNothing);
     expect(find.text('MoonKnight'), findsOneWidget);
     expect(find.text('อันดับผู้เล่น'), findsOneWidget);
     expect(find.text('ForestMage'), findsOneWidget);
@@ -54,7 +54,7 @@ void main() {
     expect(find.text('อันดับของคุณ'), findsOneWidget);
     expect(find.text('28'), findsOneWidget);
     expect(find.text('JaJoJi'), findsWidgets);
-    expect(find.text('1,240'), findsOneWidget);
+    expect(find.text('1,240'), findsWidgets);
   });
 
   testWidgets('reveals the final fixture rows only after loading more', (

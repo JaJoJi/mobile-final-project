@@ -125,7 +125,7 @@ class _LeaderboardScreenState extends ConsumerState<LeaderboardScreen> {
       children: [
         _CurrentRankCard(entry: data.currentPlayer),
         const SizedBox(height: AppSpacing.lg),
-        _RankingSectionHeader(count: rows.length),
+        const _RankingSectionHeader(),
         const SizedBox(height: AppSpacing.sm),
         if (rows.isEmpty)
           const FantasyPanel(
@@ -247,40 +247,19 @@ class _LeaderboardHeader extends StatelessWidget {
                 icon: const Icon(Icons.arrow_back_rounded),
               ),
               const SizedBox(width: AppSpacing.xs),
-              Container(
-                width: 40,
-                height: 40,
-                decoration: BoxDecoration(
-                  color: const Color(0x26FFD35A),
-                  shape: BoxShape.circle,
-                  border: Border.all(color: const Color(0x80FFD35A)),
-                ),
-                child: const Icon(
-                  Icons.emoji_events_rounded,
-                  color: Color(0xFFFFD35A),
-                ),
+              const Icon(
+                Icons.emoji_events_rounded,
+                size: 30,
+                color: Color(0xFFFFD35A),
               ),
               const SizedBox(width: AppSpacing.sm),
               Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'ตารางอันดับ',
-                      style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                            color: const Color(0xFFFFF5D6),
-                            fontWeight: FontWeight.w900,
-                          ),
-                    ),
-                    Text(
-                      'ผู้บัญชาการแห่งสนาม · เรียงตามเรตติ้ง',
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                            color: const Color(0xFFD7E8FF),
-                          ),
-                    ),
-                  ],
+                child: Text(
+                  'ตารางอันดับ',
+                  style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                        color: const Color(0xFFFFF5D6),
+                        fontWeight: FontWeight.w900,
+                      ),
                 ),
               ),
             ],
@@ -290,9 +269,7 @@ class _LeaderboardHeader extends StatelessWidget {
 }
 
 class _RankingSectionHeader extends StatelessWidget {
-  const _RankingSectionHeader({required this.count});
-
-  final int count;
+  const _RankingSectionHeader();
 
   @override
   Widget build(BuildContext context) => Row(
@@ -311,12 +288,6 @@ class _RankingSectionHeader extends StatelessWidget {
                     fontWeight: FontWeight.w800,
                   ),
             ),
-          ),
-          Text(
-            '$count คน',
-            style: Theme.of(context).textTheme.labelMedium?.copyWith(
-                  color: const Color(0xFFB8CEF0),
-                ),
           ),
         ],
       );
