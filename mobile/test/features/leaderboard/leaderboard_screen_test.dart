@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:auto_chess_mobile/core/theme/app_theme.dart';
 import 'package:auto_chess_mobile/features/leaderboard/leaderboard_screen.dart';
+import 'package:auto_chess_mobile/features/lobby/profile_card.dart';
 import 'package:auto_chess_mobile/features/player_hub/player_hub_fixture_provider.dart';
 import 'package:auto_chess_mobile/features/player_hub/player_hub_models.dart';
 import 'package:flutter/material.dart';
@@ -15,6 +16,13 @@ void main() {
   }) =>
       ProviderScope(
         overrides: [
+          currentUserProvider.overrideWith(
+            (_) async => {
+              'id': 'self',
+              'username': 'JaJoJi',
+              'rating': 1240,
+            },
+          ),
           leaderboardSourceProvider.overrideWith(
             source ?? (_) async => PlayerHubFixtures.leaderboard,
           ),
@@ -31,7 +39,7 @@ void main() {
         ),
       );
 
-  testWidgets('shows the V2 champion, first five rows, and current rank', (
+  testWidgets('shows current rank before the first five leaderboard rows', (
     tester,
   ) async {
     await tester.pumpWidget(app());
@@ -39,15 +47,13 @@ void main() {
 
     expect(find.text('ตารางอันดับ'), findsOneWidget);
     expect(find.text('ผู้บัญชาการแห่งสนาม · เรียงตามเรตติ้ง'), findsOneWidget);
-    expect(find.text('MoonKnight'), findsWidgets);
-    expect(find.text('อันดับ'), findsOneWidget);
-    expect(find.text('ผู้เล่น'), findsOneWidget);
-    expect(find.text('เรตติ้ง'), findsWidgets);
+    expect(find.text('MoonKnight'), findsOneWidget);
+    expect(find.text('อันดับผู้เล่น'), findsOneWidget);
     expect(find.text('ForestMage'), findsOneWidget);
     expect(find.text('SilverPawn'), findsNothing);
     expect(find.text('อันดับของคุณ'), findsOneWidget);
-    expect(find.text('#28'), findsOneWidget);
-    expect(find.text('JaJoJi'), findsOneWidget);
+    expect(find.text('28'), findsOneWidget);
+    expect(find.text('JaJoJi'), findsWidgets);
     expect(find.text('1,240'), findsOneWidget);
   });
 
@@ -57,13 +63,34 @@ void main() {
     await tester.pumpWidget(app());
     await tester.pumpAndSettle();
 
-    await tester.ensureVisible(find.text('โหลดเพิ่มเติม'));
+    await tester.scrollUntilVisible(
+      find.text('โหลดเพิ่มเติม'),
+      240,
+      scrollable: find.byType(Scrollable).last,
+    );
+    await tester.drag(find.byType(ListView).last, const Offset(0, -120));
+    await tester.pumpAndSettle();
     await tester.tap(find.text('โหลดเพิ่มเติม'));
     await tester.pumpAndSettle();
 
     expect(find.text('SilverPawn'), findsOneWidget);
     expect(find.text('NightOwl'), findsOneWidget);
     expect(find.text('โหลดเพิ่มเติม'), findsNothing);
+    expect(find.text('ย่อรายการ'), findsOneWidget);
+
+    await tester.scrollUntilVisible(
+      find.text('ย่อรายการ'),
+      200,
+      scrollable: find.byType(Scrollable).last,
+    );
+    await tester.drag(find.byType(ListView).last, const Offset(0, -120));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('ย่อรายการ'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('SilverPawn'), findsNothing);
+    expect(find.text('NightOwl'), findsNothing);
+    expect(find.text('โหลดเพิ่มเติม'), findsOneWidget);
   });
 
   testWidgets('shows a loading state while the source is pending',
@@ -72,7 +99,7 @@ void main() {
     await tester.pumpWidget(app(source: (_) => pending.future));
     await tester.pump();
 
-    expect(find.text('กำลังโหลดข้อมูล…'), findsOneWidget);
+    expect(find.bySemanticsLabel('กำลังโหลดข้อมูล…'), findsOneWidget);
   });
 
   testWidgets('shows an empty leaderboard state', (tester) async {
@@ -89,7 +116,7 @@ void main() {
 
     expect(find.text('ยังไม่มีข้อมูลอันดับ'), findsOneWidget);
     expect(find.text('อันดับของคุณ'), findsOneWidget);
-    expect(find.text('#28'), findsOneWidget);
+    expect(find.text('28'), findsOneWidget);
   });
 
   testWidgets('highlights the current player when present in loaded rows', (
@@ -147,8 +174,29 @@ void main() {
 
     expect(tester.takeException(), isNull);
     expect(
-      find.byKey(const ValueKey('leaderboard-champion-compact')),
+      find.byKey(const ValueKey('leaderboard-current-rank-card')),
       findsOneWidget,
+    );
+  });
+
+  testWidgets('keeps the home destination selected in bottom navigation', (
+    tester,
+  ) async {
+    await tester.pumpWidget(app());
+    await tester.pumpAndSettle();
+
+    expect(
+      find.bySemanticsLabel('หน้าหลัก'),
+      findsOneWidget,
+    );
+    expect(
+      tester.getSemantics(find.bySemanticsLabel('หน้าหลัก')),
+      matchesSemantics(
+        label: 'หน้าหลัก',
+        isButton: true,
+        hasSelectedState: true,
+        isSelected: true,
+      ),
     );
   });
 }

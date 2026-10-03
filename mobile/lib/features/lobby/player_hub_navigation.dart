@@ -11,7 +11,7 @@ enum PlayerHubTab { home, units, history, profile }
 class PlayerHubNavigation extends StatelessWidget {
   const PlayerHubNavigation({super.key, required this.selected});
 
-  final PlayerHubTab selected;
+  final PlayerHubTab? selected;
 
   @override
   Widget build(BuildContext context) {

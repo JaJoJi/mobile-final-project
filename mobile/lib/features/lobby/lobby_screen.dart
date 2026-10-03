@@ -17,6 +17,7 @@ import '../history/history_providers.dart';
 import '../history/match_models.dart';
 import '../leaderboard/leaderboard_screen.dart';
 import '../player_hub/player_hub_fixture_provider.dart';
+import '../player_hub/player_hub_models.dart';
 import '../rooms/create_room_screen.dart';
 import '../rooms/join_room_screen.dart';
 import 'find_match_button.dart';
@@ -304,6 +305,7 @@ class _LeaderboardPreview extends ConsumerWidget {
           children: [
             _SectionHeader(
               title: 'อันดับประจำฤดูกาล',
+              icon: Icons.emoji_events_rounded,
               onPressed: () => context.go(LeaderboardScreen.path),
             ),
             const SizedBox(height: AppSpacing.sm),
@@ -325,31 +327,19 @@ class _LeaderboardPreview extends ConsumerWidget {
                       if (board.entries.isEmpty)
                         const Text('ยังไม่มีข้อมูลอันดับ')
                       else
-                        for (final entry in board.entries.take(3))
+                        for (final (index, entry)
+                            in board.entries.take(3).indexed)
                           Padding(
                             padding: const EdgeInsets.symmetric(
                               vertical: AppSpacing.xs,
                             ),
-                            child: Row(
-                              children: [
-                                SizedBox(
-                                  width: 42,
-                                  child: Text('#${entry.rank}'),
-                                ),
-                                Expanded(
-                                  child: Text(
-                                    entry.username,
-                                    overflow: TextOverflow.ellipsis,
-                                  ),
-                                ),
-                                Text('${entry.rating}'),
-                              ],
+                            child: _LeaderboardPreviewRow(
+                              entry: entry,
+                              displayRank: index + 1,
                             ),
                           ),
-                      const SizedBox(height: AppSpacing.xs),
-                      Text('อันดับของคุณ #${board.currentPlayer.rank} · '
-                          '${board.currentPlayer.username} · '
-                          '${board.currentPlayer.rating}'),
+                      const SizedBox(height: AppSpacing.sm),
+                      _CurrentPlayerPreview(entry: board.currentPlayer),
                     ],
                   ),
                 ),
@@ -357,6 +347,175 @@ class _LeaderboardPreview extends ConsumerWidget {
         ),
       );
 }
+
+class _LeaderboardPreviewRow extends StatelessWidget {
+  const _LeaderboardPreviewRow({
+    required this.entry,
+    required this.displayRank,
+  });
+
+  final LeaderboardEntry entry;
+  final int displayRank;
+
+  @override
+  Widget build(BuildContext context) {
+    final (medalColor, icon) = switch (displayRank) {
+      1 => (const Color(0xFFFFD35A), Icons.emoji_events_rounded),
+      2 => (const Color(0xFFC9D7E5), Icons.workspace_premium_rounded),
+      3 => (const Color(0xFFD99A62), Icons.military_tech_rounded),
+      _ => (const Color(0xFF8FA8BE), Icons.shield_outlined),
+    };
+
+    return Container(
+      constraints: const BoxConstraints(minHeight: 48),
+      padding: const EdgeInsets.symmetric(
+        horizontal: AppSpacing.sm,
+        vertical: AppSpacing.xs,
+      ),
+      decoration: BoxDecoration(
+        color: const Color(0x80102538),
+        borderRadius: AppRadius.allMd,
+        border: Border.all(color: const Color(0x526FA5C4)),
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 34,
+            height: 34,
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              color: medalColor.withValues(alpha: 0.15),
+              shape: BoxShape.circle,
+              border: Border.all(color: medalColor.withValues(alpha: 0.72)),
+            ),
+            child: Stack(
+              alignment: Alignment.center,
+              children: [
+                Icon(icon, size: 25, color: medalColor.withValues(alpha: 0.26)),
+                Text(
+                  '$displayRank',
+                  style: Theme.of(context).textTheme.labelLarge?.copyWith(
+                        color: medalColor,
+                        fontWeight: FontWeight.w900,
+                      ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: AppSpacing.sm),
+          Expanded(
+            child: Text(
+              entry.username,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: Theme.of(context).textTheme.bodyLarge?.copyWith(
+                    color: const Color(0xFFF4F7FB),
+                    fontWeight: FontWeight.w700,
+                  ),
+            ),
+          ),
+          const SizedBox(width: AppSpacing.sm),
+          _RatingBadge(
+            rating: entry.rating,
+            accent: const Color(0xFFD7E8FF),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _CurrentPlayerPreview extends StatelessWidget {
+  const _CurrentPlayerPreview({required this.entry});
+
+  final LeaderboardEntry entry;
+
+  @override
+  Widget build(BuildContext context) => Container(
+        key: const ValueKey('lobby-current-rank'),
+        padding: const EdgeInsets.all(AppSpacing.sm),
+        decoration: BoxDecoration(
+          color: const Color(0xB3071726),
+          borderRadius: AppRadius.allMd,
+          border: Border.all(color: const Color(0x526FA5C4)),
+        ),
+        child: Row(
+          children: [
+            const Icon(
+              Icons.person_rounded,
+              size: 20,
+              color: Color(0xFFB8CEF0),
+            ),
+            const SizedBox(width: AppSpacing.sm),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'อันดับของคุณ · ${entry.rank}',
+                    style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                          color: const Color(0xFFB8CEF0),
+                        ),
+                  ),
+                  Text(
+                    entry.username,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: Theme.of(context).textTheme.labelLarge?.copyWith(
+                          color: const Color(0xFFF4F7FB),
+                          fontWeight: FontWeight.w800,
+                        ),
+                  ),
+                ],
+              ),
+            ),
+            _RatingBadge(
+              rating: entry.rating,
+              accent: const Color(0xFFFFD35A),
+            ),
+          ],
+        ),
+      );
+}
+
+class _RatingBadge extends StatelessWidget {
+  const _RatingBadge({required this.rating, required this.accent});
+
+  final int rating;
+  final Color accent;
+
+  @override
+  Widget build(BuildContext context) => Container(
+        padding: const EdgeInsets.symmetric(
+          horizontal: AppSpacing.sm,
+          vertical: AppSpacing.xs,
+        ),
+        decoration: BoxDecoration(
+          color: const Color(0xB3071726),
+          borderRadius: AppRadius.allFull,
+          border: Border.all(color: accent.withValues(alpha: 0.46)),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.military_tech_rounded, size: 16, color: accent),
+            const SizedBox(width: AppSpacing.xxs),
+            Text(
+              _formatPreviewRating(rating),
+              style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                    color: accent,
+                    fontWeight: FontWeight.w900,
+                  ),
+            ),
+          ],
+        ),
+      );
+}
+
+String _formatPreviewRating(int rating) => rating.toString().replaceFirstMapped(
+      RegExp(r'(?<=\d)(?=(\d{3})+$)'),
+      (_) => ',',
+    );
 
 class _RecentMatchPreview extends ConsumerWidget {
   const _RecentMatchPreview();
@@ -485,14 +644,23 @@ class _RecentMatchRow extends StatelessWidget {
 }
 
 class _SectionHeader extends StatelessWidget {
-  const _SectionHeader({required this.title, required this.onPressed});
+  const _SectionHeader({
+    required this.title,
+    required this.onPressed,
+    this.icon,
+  });
 
   final String title;
   final VoidCallback onPressed;
+  final IconData? icon;
 
   @override
   Widget build(BuildContext context) => Row(
         children: [
+          if (icon != null) ...[
+            Icon(icon, size: 22, color: const Color(0xFFFFD35A)),
+            const SizedBox(width: AppSpacing.sm),
+          ],
           Expanded(
             child: Text(
               title,

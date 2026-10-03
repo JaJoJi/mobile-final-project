@@ -33,6 +33,7 @@ class ProfileCard extends ConsumerWidget {
       data: (user) => _ProfileContent(
         username: user['username'] as String? ?? 'unknown',
         rating: user['rating'] as int? ?? 0,
+        compact: embedded,
       ),
       loading: () => const _ProfileSkeleton(),
       error: (_, __) => const Padding(
@@ -48,10 +49,15 @@ class ProfileCard extends ConsumerWidget {
 }
 
 class _ProfileContent extends StatelessWidget {
-  const _ProfileContent({required this.username, required this.rating});
+  const _ProfileContent({
+    required this.username,
+    required this.rating,
+    required this.compact,
+  });
 
   final String username;
   final int rating;
+  final bool compact;
 
   @override
   Widget build(BuildContext context) {
@@ -61,22 +67,28 @@ class _ProfileContent extends StatelessWidget {
     return Row(
       children: [
         CircleAvatar(
-          radius: 28,
+          radius: compact ? 24 : 28,
           backgroundColor: scheme.primaryContainer,
           foregroundColor: scheme.onPrimaryContainer,
           child: Text(
             initials,
-            style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w600),
+            style: TextStyle(
+              fontSize: compact ? 18 : 20,
+              fontWeight: FontWeight.w700,
+            ),
           ),
         ),
-        const SizedBox(width: AppSpacing.md),
+        SizedBox(width: compact ? AppSpacing.sm : AppSpacing.md),
         Expanded(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
                 username,
-                style: Theme.of(context).textTheme.titleLarge,
+                style: (compact
+                        ? Theme.of(context).textTheme.titleMedium
+                        : Theme.of(context).textTheme.titleLarge)
+                    ?.copyWith(fontWeight: FontWeight.w800),
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
               ),
@@ -87,14 +99,32 @@ class _ProfileContent extends StatelessWidget {
                   vertical: AppSpacing.xs,
                 ),
                 decoration: BoxDecoration(
-                  color: scheme.secondaryContainer,
-                  borderRadius: BorderRadius.circular(AppRadius.sm),
+                  gradient: const LinearGradient(
+                    colors: [Color(0x26FFD35A), Color(0xE617243A)],
+                  ),
+                  borderRadius: AppRadius.allFull,
+                  border: Border.all(color: const Color(0x80FFD35A)),
                 ),
-                child: Text(
-                  'เรตติ้ง: $rating',
-                  style: TextStyle(
-                    color: scheme.onSecondaryContainer,
-                    fontWeight: FontWeight.w500,
+                child: Semantics(
+                  label: 'เรตติ้ง $rating',
+                  excludeSemantics: true,
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Icon(
+                        Icons.military_tech_rounded,
+                        size: 17,
+                        color: Color(0xFFFFD35A),
+                      ),
+                      const SizedBox(width: AppSpacing.xs),
+                      Text(
+                        '$rating',
+                        style: Theme.of(context).textTheme.labelLarge?.copyWith(
+                              color: const Color(0xFFFFD35A),
+                              fontWeight: FontWeight.w900,
+                            ),
+                      ),
+                    ],
                   ),
                 ),
               ),
@@ -131,7 +161,7 @@ class _ProfileSkeleton extends StatelessWidget {
             children: [
               SkeletonBox(width: 120, height: 18),
               SizedBox(height: AppSpacing.sm),
-              SkeletonBox(width: 80, height: 14),
+              SkeletonBox(width: 72, height: 28, radius: AppRadius.full),
             ],
           ),
         ),
