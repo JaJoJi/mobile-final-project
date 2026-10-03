@@ -15,4 +15,8 @@ regexes = [
   # `garbage` JWT with signature "invalid_signature_xxx...", used to test
   # that the server rejects a tampered/garbage token.
   '''invalid_signature_xxxxxxxxxxxxxxxxxxxxxxxxxx''',
+  # ci/scripts/gate-proof.sh (added in ec4a3de, removed in 6011058, still in
+  # git history): an invented key whose only purpose was to make Gitleaks go
+  # red in a throwaway demo branch. Not a credential for anything.
+  '''k3Gh29sLpQ7vXz81MnB4cD5eF6gH7iJ0uV2wX3yZ''',
 ]
