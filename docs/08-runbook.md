@@ -228,3 +228,48 @@ build the image, then `CI_ID=local IMAGE=<image:tag> PG_IMAGE=postgres:16-alpine
 REDIS_IMAGE=redis:7-alpine bash ci/scripts/stack-up.sh`, run smoke / ZAP
 (`ZAP_IMAGE=zaproxy/zap-stable:2.17.0 bash ci/scripts/zap-scan.sh`), and
 `CI_ID=local bash ci/scripts/stack-down.sh` to clean up.
+
+## 7. Jenkins controller hardening (#288)
+
+Decisions and routines for the Azure Jenkins (`mfp-jenkins`). What is
+enforced by Ansible (`infra/ansible/jenkins-host.yml`) vs. set in the UI.
+
+| Area | Decision | Where |
+|---|---|---|
+| Execution isolation | **Keep the built-in node, 1 executor** (4 GB VM, one build at a time). Every tool runs in a pinned Docker container (version + digest), never directly on the controller. Accepted risk: a PR build runs `npm`/`flutter` scripts with the host's Docker. Mitigated by the next two rows. | Jenkinsfile |
+| Fork PRs | Multibranch source → *Discover pull requests from forks* → trust **Nobody** (or *users with Admin/Write permission*). Only team members' branches are built. | UI, per job |
+| Credentials | Only two exist in the job: `dockerhub-token` (publish stage, `main` only) and `notify-email` (post step). Fork/PR code never reaches the publish stage. | Jenkinsfile |
+| Access | Anonymous read off, sign-up off, team accounts only (checked by `jenkins-host.yml` before it exposes the UI). | UI + Ansible assert |
+| Webhook | GitHub webhook signed with a shared secret (`github-webhook-secret`). | UI + GitHub |
+| TLS | **Caddy** on 443 with a Let's Encrypt cert it obtains and renews itself; Jenkins itself only on `127.0.0.1:8080`. | Ansible |
+| Network | NSG: 443 + 80 (ACME/redirect) open, 22 limited to `admin_cidrs`, 8080 never public. | `provision.yml` |
+| Plugins | Minimal set. Pin it in git: run `infra/jenkins/export-plugins.sh` (needs an API token) and commit `infra/jenkins/plugins.txt`; reinstall with `jenkins-plugin-cli --latest=false -f plugins.txt`. | `infra/jenkins/` |
+| Budget | Azure Cost Management budget is **alert-only**, not a cap; the VM (B2als_v2) stays on 24/7 for the webhook. | `provision.yml` |
+
+**Backup (`jenkins-backup.timer`, daily 03:15):** `/var/backups/jenkins/jenkins-home-*.tar.gz`,
+root-only, last 7 kept. Contains `credentials.xml` and `secrets/master.key`
+(together they decrypt every credential) -- treat the archives as secrets
+and copy them off the VM. Workspaces, build logs, caches, the war and
+plugins are excluded (rebuildable).
+
+```bash
+sudo systemctl start jenkins-backup && sudo ls -lh /var/backups/jenkins   # backup now
+```
+
+**Restore drill** (do once, on a scratch VM or after a controller rebuild):
+
+```bash
+./run.sh ansible-playbook jenkins-host.yml                 # fresh Jenkins
+ssh azureuser@<vm>
+sudo systemctl stop jenkins
+sudo tar xzf /var/backups/jenkins/jenkins-home-<stamp>.tar.gz -C /var/lib/jenkins
+sudo chown -R jenkins:jenkins /var/lib/jenkins
+sudo systemctl start jenkins
+# reinstall plugins from infra/jenkins/plugins.txt, then log in with the
+# restored accounts; credentials must show up and decrypt (run a build)
+```
+
+**Patch routine (monthly, first week):** Manage Jenkins → *Plugins* →
+update; apply the new LTS (`sudo apt-get update && sudo apt-get install --only-upgrade jenkins`);
+`sudo systemctl start jenkins-backup` first; run one PR build afterwards;
+re-run `export-plugins.sh` and commit the new `plugins.txt`.
