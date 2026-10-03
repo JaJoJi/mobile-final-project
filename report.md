@@ -99,6 +99,18 @@ build อัตโนมัติ (webhook) ใช้ค่าเริ่มต
 | OWASP ZAP 2.17.0 | baseline + API scan บน stack ชั่วคราว | `rules.tsv` กำหนด FAIL/IGNORE/WARN; พบจริง ZAP OOM → ปิดเฉพาะ rule 40026 |
 | SBOM CycloneDX | ส่วนประกอบของ image | 434 components (main #13) |
 
+### SBOM (รายการส่วนประกอบของ image)
+
+- stage `Security · SBOM + Trivy image`: Trivy อ่าน `backend-image.tar` (ไม่ต้องใช้ docker.sock ใน scanner)
+  แล้วสร้าง SBOM รูปแบบ **CycloneDX** ลง `sbom.cdx.json`
+- สร้างทุก build ของ `dev`/`main` และ PR ที่เข้าสองสาย แม้ปิด `ENABLE_SECURITY_SCAN` (SBOM ไม่ถูกข้าม ส่วนการ block ด้วย CVE ถูกข้าม)
+  เก็บเป็น artifact ของ build นั้น
+- ผลล่าสุดที่เก็บหลักฐาน (main #13): CycloneDX 1.7, **434 components**
+- ทำไม: รู้ว่า image ที่ release มีไลบรารีอะไรบ้าง เวอร์ชันไหน ตรวจย้อนหลังได้เมื่อมี CVE ใหม่ โดยไม่ต้อง build ใหม่
+- image ติด OCI label ต่อ build (`revision` = commit, `version` = tag, `created`) เพื่อโยง SBOM กับ commit
+- **ขอบเขต:** มีเฉพาะ backend image; ไม่มี SBOM ของ mobile/APK, ไม่ได้ผูก SBOM เข้ากับ image บน Docker Hub (ไม่มี attestation/ลายเซ็น),
+  ไม่มีระบบรวมศูนย์ติดตาม (เช่น Dependency-Track) — ต้องเปิด artifact จาก Jenkins เอง
+
 ภาพ scanner ทุกตัวปักด้วย digest (กัน supply-chain) · รายงานทุกชนิดเก็บเป็น artifact ใน Jenkins
 
 ผลสแกนรอบ main #13: Gitleaks 0, Semgrep 0, ZAP baseline 2 Medium / 3 Low / 3 Informational,
