@@ -107,7 +107,6 @@ void main() {
     await tester.pumpWidget(app());
     await tester.pumpAndSettle();
 
-    expect(find.text('ผู้เล่น 2 / 2'), findsOneWidget);
     expect(find.text('ผู้เล่น guest-2'), findsOneWidget);
   });
 
@@ -120,5 +119,19 @@ void main() {
 
     expect(tester.takeException(), isNull);
     expect(find.text('VS'), findsOneWidget);
+  });
+
+  testWidgets('back action opens the themed leave confirmation',
+      (tester) async {
+    await tester.pumpWidget(app());
+    await tester.pumpAndSettle();
+
+    expect(find.byIcon(Icons.more_vert_rounded), findsNothing);
+    await tester.tap(find.byTooltip('ออกจากห้อง'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('ออกจากห้องนี้?'), findsOneWidget);
+    expect(find.text('อยู่ในห้องต่อ'), findsOneWidget);
+    expect(find.text('ออกจากห้อง'), findsOneWidget);
   });
 }

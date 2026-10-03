@@ -7,12 +7,12 @@ import 'package:go_router/go_router.dart';
 import '../../core/api/api_client.dart';
 import '../../core/auth/auth_repository.dart';
 import '../../core/theme/app_spacing.dart';
+import '../../core/widgets/fantasy_page.dart';
 import '../../core/ws/ws_client.dart';
 import '../../core/ws/ws_providers.dart';
-import '../player_hub/player_crest.dart';
+import '../lobby/player_hub_navigation.dart';
 import '../player_hub/player_hub_models.dart';
 import '../player_hub/player_hub_shell.dart';
-import '../profile/player_hub_navigation.dart';
 
 class CreateRoomScreen extends ConsumerStatefulWidget {
   const CreateRoomScreen({super.key});
@@ -110,6 +110,89 @@ class _CreateRoomScreenState extends ConsumerState<CreateRoomScreen> {
     }
   }
 
+  Future<void> _confirmLeave() async {
+    final leave = await showDialog<bool>(
+      context: context,
+      barrierColor: const Color(0xB3000000),
+      builder: (dialogContext) => Dialog(
+        backgroundColor: Colors.transparent,
+        insetPadding: const EdgeInsets.all(AppSpacing.lg),
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 420),
+          child: FantasyPanel(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  width: AppSpacing.huge + AppSpacing.lg,
+                  height: AppSpacing.huge + AppSpacing.lg,
+                  decoration: BoxDecoration(
+                    color: const Color(0x26FF8E88),
+                    shape: BoxShape.circle,
+                    border: Border.all(color: const Color(0xB3FF8E88)),
+                    boxShadow: const [
+                      BoxShadow(
+                        color: Color(0x40FF746D),
+                        blurRadius: AppSpacing.lg,
+                      ),
+                    ],
+                  ),
+                  child: const Icon(
+                    Icons.logout_rounded,
+                    color: Color(0xFFFFA19C),
+                    size: AppSpacing.xxl,
+                  ),
+                ),
+                const SizedBox(height: AppSpacing.md),
+                Text(
+                  'ออกจากห้องนี้?',
+                  textAlign: TextAlign.center,
+                  style:
+                      Theme.of(dialogContext).textTheme.headlineSmall?.copyWith(
+                            color: const Color(0xFFFFF1C4),
+                            fontWeight: FontWeight.w900,
+                          ),
+                ),
+                const SizedBox(height: AppSpacing.xs),
+                Text(
+                  'ห้องจะถูกยกเลิกและคุณจะกลับไปยังหน้าหลัก',
+                  textAlign: TextAlign.center,
+                  style: Theme.of(dialogContext).textTheme.bodyMedium?.copyWith(
+                        color: const Color(0xFFB8CEF0),
+                      ),
+                ),
+                const SizedBox(height: AppSpacing.xl),
+                Row(
+                  children: [
+                    Expanded(
+                      child: OutlinedButton(
+                        onPressed: () => Navigator.pop(dialogContext, false),
+                        child: const Text('อยู่ในห้องต่อ'),
+                      ),
+                    ),
+                    const SizedBox(width: AppSpacing.sm),
+                    Expanded(
+                      child: FilledButton.icon(
+                        style: FilledButton.styleFrom(
+                          backgroundColor: const Color(0xFFE6817C),
+                          foregroundColor: const Color(0xFF251112),
+                        ),
+                        onPressed: () => Navigator.pop(dialogContext, true),
+                        icon: const Icon(Icons.logout_rounded),
+                        label: const Text('ออกจากห้อง'),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+    if (leave == true && mounted) await _leaveRoom();
+  }
+
   @override
   Widget build(BuildContext context) {
     ref.listen(wsEventProvider('game:room:state'), (previous, next) {
@@ -143,8 +226,14 @@ class _CreateRoomScreenState extends ConsumerState<CreateRoomScreen> {
     return PlayerHubShell(
       title: 'ห้องส่วนตัว',
       subtitle: 'ออโต้เชส / ประลองกับเพื่อน',
-      badge: '1 vs 1',
-      navigation: const PlayerHubNavigation(),
+      badge: '1 VS 1',
+      lighter: true,
+      headerLeading: IconButton(
+        tooltip: 'ออกจากห้อง',
+        onPressed: _room == null ? () => context.go('/lobby') : _confirmLeave,
+        icon: const Icon(Icons.arrow_back_rounded),
+      ),
+      navigation: const PlayerHubNavigation(selected: PlayerHubTab.home),
       body: _loading && _room == null
           ? const Center(child: CircularProgressIndicator())
           : _room == null
@@ -168,8 +257,6 @@ class _CreateRoomScreenState extends ConsumerState<CreateRoomScreen> {
                     Expanded(
                       child: RoomArenaContent(
                         room: _room!,
-                        canLeave: online && !_leaving,
-                        onLeave: _leaveRoom,
                       ),
                     ),
                   ],
@@ -183,13 +270,9 @@ class RoomArenaContent extends StatelessWidget {
   const RoomArenaContent({
     super.key,
     required this.room,
-    this.onLeave,
-    this.canLeave = true,
   });
 
   final RoomViewState room;
-  final VoidCallback? onLeave;
-  final bool canLeave;
 
   @override
   Widget build(BuildContext context) {
@@ -210,85 +293,24 @@ class RoomArenaContent extends StatelessWidget {
               compact ? AppSpacing.md : AppSpacing.xl,
               AppSpacing.xl,
             ),
-            child: Container(
-              width: double.infinity,
-              decoration: BoxDecoration(
-                color: const Color(0xD90B1C2C),
-                border: Border.all(color: const Color(0x66829EB2)),
-                borderRadius: AppRadius.allMd,
-                image: const DecorationImage(
-                  image: AssetImage(
-                    'assets/images/backgrounds/arena_background_landscape.webp',
-                  ),
-                  fit: BoxFit.cover,
-                  opacity: .20,
+            child: Center(
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 760),
+                child: Column(
+                  children: [
+                    _InviteBar(room: room, canCopy: canAct),
+                    const SizedBox(height: AppSpacing.lg),
+                    _BattleStage(room: room, compact: compact),
+                    const SizedBox(height: AppSpacing.lg),
+                    _RoomStatus(room: room),
+                  ],
                 ),
-              ),
-              child: Column(
-                children: [
-                  _InviteBar(room: room, canCopy: canAct),
-                  Padding(
-                    padding: EdgeInsets.fromLTRB(
-                      compact ? AppSpacing.sm : AppSpacing.xl,
-                      AppSpacing.lg,
-                      compact ? AppSpacing.sm : AppSpacing.xl,
-                      0,
-                    ),
-                    child: Column(
-                      children: [
-                        Row(
-                          children: [
-                            Expanded(
-                              child: Text(
-                                'เตรียมเข้าสู่สนาม',
-                                style: Theme.of(context).textTheme.titleMedium,
-                              ),
-                            ),
-                            Text(
-                              'ผู้เล่น ${room.guest == null ? 1 : 2} / 2',
-                              style: Theme.of(context).textTheme.bodySmall,
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: AppSpacing.md),
-                        _BattleStage(room: room, compact: compact),
-                      ],
-                    ),
-                  ),
-                  _RoomStatus(room: room),
-                  _RoomFooter(
-                    room: room,
-                    canCancel: canAct && canLeave,
-                    onCancel: () => _confirmLeave(context),
-                  ),
-                ],
               ),
             ),
           ),
         );
       },
     );
-  }
-
-  Future<void> _confirmLeave(BuildContext context) async {
-    final leave = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('ออกจากห้องนี้?'),
-        content: const Text('ออกจากห้องเพื่อกลับหน้าหลัก'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('อยู่ในห้องต่อ'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(context, true),
-            child: const Text('ยกเลิกห้อง'),
-          ),
-        ],
-      ),
-    );
-    if (leave == true && context.mounted) onLeave?.call();
   }
 }
 
@@ -298,53 +320,68 @@ class _InviteBar extends StatelessWidget {
   final bool canCopy;
 
   @override
-  Widget build(BuildContext context) => Container(
-        width: double.infinity,
-        padding: const EdgeInsets.symmetric(
-          horizontal: AppSpacing.md,
-          vertical: AppSpacing.sm,
-        ),
-        decoration: const BoxDecoration(
-          color: Color(0xCC071322),
-          border: Border(bottom: BorderSide(color: Color(0x44829EB2))),
-        ),
-        child: Wrap(
-          alignment: WrapAlignment.spaceBetween,
-          crossAxisAlignment: WrapCrossAlignment.center,
-          runSpacing: AppSpacing.xs,
-          spacing: AppSpacing.md,
+  Widget build(BuildContext context) => FantasyPanel(
+        translucent: true,
+        padding: const EdgeInsets.all(AppSpacing.lg),
+        child: Row(
           children: [
-            Wrap(
-              crossAxisAlignment: WrapCrossAlignment.center,
-              spacing: AppSpacing.sm,
-              children: [
-                const Text('รหัสห้อง'),
-                SelectableText(
-                  room.roomCode,
-                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                        letterSpacing: 2,
-                        fontWeight: FontWeight.w800,
-                      ),
-                ),
-                OutlinedButton.icon(
-                  onPressed: canCopy
-                      ? () async {
-                          await Clipboard.setData(
-                            ClipboardData(text: room.roomCode),
-                          );
-                          if (context.mounted) {
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(content: Text('คัดลอกรหัสแล้ว')),
-                            );
-                          }
-                        }
-                      : null,
-                  icon: const Icon(Icons.copy, size: 16),
-                  label: const Text('คัดลอก'),
-                ),
-              ],
+            Container(
+              width: AppSpacing.huge + AppSpacing.sm,
+              height: AppSpacing.huge + AppSpacing.sm,
+              decoration: const BoxDecoration(
+                color: Color(0x1FF2C14E),
+                borderRadius: AppRadius.allMd,
+                boxShadow: [
+                  BoxShadow(
+                    color: Color(0x55F2C14E),
+                    blurRadius: AppSpacing.md,
+                  ),
+                ],
+              ),
+              child: const Icon(
+                Icons.vpn_key_rounded,
+                color: Color(0xFFFFD35A),
+              ),
             ),
-            const Text('ห้องส่วนตัว · 1 vs 1'),
+            const SizedBox(width: AppSpacing.md),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'รหัสห้อง',
+                    style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                          color: const Color(0xFF8AD6FF),
+                          fontWeight: FontWeight.w700,
+                        ),
+                  ),
+                  SelectableText(
+                    room.roomCode,
+                    style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                          color: const Color(0xFFFFD35A),
+                          letterSpacing: 3,
+                          fontWeight: FontWeight.w900,
+                        ),
+                  ),
+                ],
+              ),
+            ),
+            IconButton.outlined(
+              tooltip: 'คัดลอกรหัสห้อง',
+              onPressed: canCopy
+                  ? () async {
+                      await Clipboard.setData(
+                        ClipboardData(text: room.roomCode),
+                      );
+                      if (context.mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(content: Text('คัดลอกรหัสแล้ว')),
+                        );
+                      }
+                    }
+                  : null,
+              icon: const Icon(Icons.copy_rounded),
+            ),
           ],
         ),
       );
@@ -358,127 +395,217 @@ class _BattleStage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final guest = room.guest;
-    return Row(
-      children: [
-        Expanded(
-          child: _PlayerSide(
-            player: room.host,
-            side: 'ฝั่งคุณ',
-            enemy: false,
-            compact: compact,
-          ),
+    return Container(
+      width: double.infinity,
+      padding: EdgeInsets.all(compact ? AppSpacing.md : AppSpacing.lg),
+      decoration: BoxDecoration(
+        gradient: const LinearGradient(
+          colors: [
+            Color(0xE6254562),
+            Color(0xF20B1C2C),
+            Color(0xE646252F),
+          ],
+          stops: [0, .5, 1],
         ),
-        Padding(
-          padding:
-              EdgeInsets.symmetric(horizontal: compact ? 0 : AppSpacing.md),
-          child: Column(
+        borderRadius: AppRadius.allLg,
+        border: Border.all(color: const Color(0x6659B7E8)),
+        boxShadow: const [
+          BoxShadow(
+            color: Color(0x4D59B7E8),
+            blurRadius: AppSpacing.lg,
+            offset: Offset(-AppSpacing.xs, AppSpacing.xs),
+          ),
+          BoxShadow(
+            color: Color(0x40FF746D),
+            blurRadius: AppSpacing.lg,
+            offset: Offset(AppSpacing.xs, AppSpacing.xs),
+          ),
+        ],
+      ),
+      child: Column(
+        children: [
+          Row(
             children: [
-              Container(
-                width: 1,
-                height: compact ? 24 : 48,
-                color: const Color(0x99D5BB76),
+              const Expanded(
+                child: Divider(color: Color(0x8070D7FF)),
               ),
-              Text(
-                'VS',
-                style: Theme.of(context).textTheme.headlineMedium?.copyWith(
-                      color: const Color(0xFFFFE5A4),
-                      fontStyle: FontStyle.italic,
-                      fontWeight: FontWeight.w900,
-                      letterSpacing: -2,
-                    ),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: AppSpacing.sm),
+                child: Text(
+                  compact ? 'สนามดวล · 1 VS 1' : 'เตรียมเข้าสู่สนาม · 1 VS 1',
+                  style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                        color: const Color(0xFFFFE5A4),
+                        fontWeight: FontWeight.w800,
+                      ),
+                ),
               ),
-              Container(
-                width: 1,
-                height: compact ? 24 : 48,
-                color: const Color(0x99D5BB76),
+              const Expanded(
+                child: Divider(color: Color(0x80FF8E88)),
               ),
             ],
           ),
-        ),
-        Expanded(
-          child: _PlayerSide(
-            player: guest,
-            side: 'ผู้ท้าชิง',
-            enemy: true,
-            compact: compact,
+          const SizedBox(height: AppSpacing.md),
+          Row(
+            children: [
+              Expanded(
+                child: _PlayerSide(
+                  player: room.host,
+                  enemy: false,
+                  compact: compact,
+                ),
+              ),
+              Padding(
+                padding: EdgeInsets.symmetric(
+                  horizontal: compact ? AppSpacing.xs : AppSpacing.md,
+                ),
+                child: _VersusBadge(compact: compact),
+              ),
+              Expanded(
+                child: _PlayerSide(
+                  player: guest,
+                  enemy: true,
+                  compact: compact,
+                ),
+              ),
+            ],
           ),
-        ),
-      ],
+        ],
+      ),
     );
   }
+}
+
+class _VersusBadge extends StatelessWidget {
+  const _VersusBadge({required this.compact});
+
+  final bool compact;
+
+  @override
+  Widget build(BuildContext context) => Container(
+        width: compact ? AppSpacing.huge : AppSpacing.huge + AppSpacing.sm,
+        height: compact ? AppSpacing.huge : AppSpacing.huge + AppSpacing.sm,
+        alignment: Alignment.center,
+        decoration: BoxDecoration(
+          color: const Color(0xFF111B2A),
+          shape: BoxShape.circle,
+          border: Border.all(color: const Color(0xFFF2C14E), width: 2),
+          boxShadow: const [
+            BoxShadow(
+              color: Color(0x5559B7E8),
+              blurRadius: AppSpacing.md,
+              offset: Offset(-AppSpacing.xs, 0),
+            ),
+            BoxShadow(
+              color: Color(0x55FF746D),
+              blurRadius: AppSpacing.md,
+              offset: Offset(AppSpacing.xs, 0),
+            ),
+          ],
+        ),
+        child: Text(
+          'VS',
+          style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                color: const Color(0xFFFFD35A),
+                fontStyle: FontStyle.italic,
+                fontWeight: FontWeight.w900,
+              ),
+        ),
+      );
 }
 
 class _PlayerSide extends StatelessWidget {
   const _PlayerSide({
     required this.player,
-    required this.side,
     required this.enemy,
     required this.compact,
   });
 
   final RoomPlayer? player;
-  final String side;
   final bool enemy;
   final bool compact;
 
   @override
   Widget build(BuildContext context) {
     final player = this.player;
-    final accent = enemy ? const Color(0xFFFFAB99) : const Color(0xFF7ED8FF);
+    final accent = enemy ? const Color(0xFFFF8E88) : const Color(0xFF70D7FF);
+    final avatarSize = compact ? 72.0 : 92.0;
     return Column(
       children: [
+        Container(
+          width: avatarSize,
+          height: avatarSize,
+          alignment: Alignment.center,
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            gradient: RadialGradient(
+              colors: player == null
+                  ? const [Color(0xFF202938), Color(0xFF101722)]
+                  : enemy
+                      ? const [Color(0xFF49252B), Color(0xFF171622)]
+                      : const [Color(0xFF214C70), Color(0xFF172454)],
+            ),
+            border: Border.all(color: accent, width: 2),
+            boxShadow: [
+              BoxShadow(
+                color: accent.withValues(alpha: .28),
+                blurRadius: AppSpacing.lg,
+              ),
+            ],
+          ),
+          child: Text(
+            player?.crestLabel ?? '?',
+            style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                  color: player == null
+                      ? const Color(0xFF8090A3)
+                      : const Color(0xFFF4F7FF),
+                  fontWeight: FontWeight.w800,
+                ),
+          ),
+        ),
+        const SizedBox(height: AppSpacing.sm),
         Text(
-          side,
-          style: TextStyle(
-            color: accent,
-            fontSize: 12,
-          ),
+          player?.username ?? 'รอผู้ท้าชิง',
+          textAlign: TextAlign.center,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                fontWeight: FontWeight.w800,
+              ),
         ),
-        Padding(
-          padding: EdgeInsets.symmetric(
-            vertical: compact ? AppSpacing.sm : AppSpacing.md,
-          ),
-          child: Opacity(
-            opacity: player == null ? .56 : 1,
-            child:
-                PlayerCrest(label: player?.crestLabel ?? '?', compact: compact),
-          ),
-        ),
+        const SizedBox(height: AppSpacing.xs),
         Container(
           width: double.infinity,
           padding: const EdgeInsets.symmetric(
-            horizontal: AppSpacing.xs,
-            vertical: AppSpacing.sm,
+            horizontal: AppSpacing.sm,
+            vertical: AppSpacing.xs,
           ),
           decoration: BoxDecoration(
-            color: enemy ? const Color(0xCC30232C) : const Color(0xCC193A55),
-            border: Border(
-              top: BorderSide(color: accent, width: 2),
-              bottom: BorderSide(
-                color: accent.withValues(
-                  alpha: .35,
-                ),
-              ),
-            ),
+            color: accent.withValues(alpha: .09),
+            borderRadius: AppRadius.allFull,
+            border: Border.all(color: accent.withValues(alpha: .38)),
           ),
-          child: Column(
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Text(
-                player?.username ?? 'รอคู่แข่ง',
-                textAlign: TextAlign.center,
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-                style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                      fontWeight: FontWeight.w800,
-                    ),
-              ),
-              const SizedBox(height: AppSpacing.xxs),
-              Text(
-                player?.roleLabel ?? 'ส่งรหัสห้องให้เพื่อน',
-                textAlign: TextAlign.center,
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-                style: Theme.of(context).textTheme.bodySmall,
+              if (!enemy && player != null) ...[
+                const Icon(
+                  Icons.workspace_premium_rounded,
+                  size: AppSpacing.lg,
+                  color: Color(0xFFFFD35A),
+                ),
+                const SizedBox(width: AppSpacing.xs),
+              ],
+              Flexible(
+                child: Text(
+                  player?.roleLabel ?? 'ยังไม่มีผู้เล่น',
+                  textAlign: TextAlign.center,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                        color:
+                            player == null ? const Color(0xFF91A2B8) : accent,
+                      ),
+                ),
               ),
             ],
           ),
@@ -504,29 +631,52 @@ class _RoomStatus extends StatelessWidget {
       RoomFixtureStatus.joined => 'กำลังเตรียมการแข่งขัน',
       RoomFixtureStatus.reconnecting => 'รอสถานะล่าสุดจากเซิร์ฟเวอร์',
     };
-    return Padding(
-      padding: const EdgeInsets.symmetric(
-        horizontal: AppSpacing.md,
-        vertical: AppSpacing.lg,
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(AppSpacing.lg),
+      decoration: BoxDecoration(
+        gradient: const LinearGradient(
+          colors: [Color(0xD928352E), Color(0xE60D2132)],
+        ),
+        borderRadius: AppRadius.allLg,
+        border: Border.all(color: const Color(0x80F2C14E)),
+        boxShadow: const [
+          BoxShadow(
+            color: Color(0x33F2C14E),
+            blurRadius: AppSpacing.lg,
+          ),
+        ],
       ),
       child: Semantics(
         liveRegion: true,
         child: Row(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            const Icon(Icons.diamond_outlined, color: Color(0xFFF2C14E)),
-            const SizedBox(width: AppSpacing.sm),
+            Container(
+              width: AppSpacing.huge,
+              height: AppSpacing.huge,
+              decoration: const BoxDecoration(
+                color: Color(0x1FF2C14E),
+                borderRadius: AppRadius.allMd,
+              ),
+              child: const Icon(
+                Icons.hourglass_top_rounded,
+                color: Color(0xFFFFD35A),
+              ),
+            ),
+            const SizedBox(width: AppSpacing.md),
             Flexible(
               child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
                     title,
-                    textAlign: TextAlign.center,
+                    textAlign: TextAlign.start,
                     style: Theme.of(context).textTheme.titleMedium?.copyWith(
                           color: const Color(0xFFFFE5A4),
                         ),
                   ),
-                  Text(description, textAlign: TextAlign.center),
+                  Text(description, textAlign: TextAlign.start),
                 ],
               ),
             ),
@@ -535,37 +685,4 @@ class _RoomStatus extends StatelessWidget {
       ),
     );
   }
-}
-
-class _RoomFooter extends StatelessWidget {
-  const _RoomFooter({
-    required this.room,
-    required this.canCancel,
-    required this.onCancel,
-  });
-  final RoomViewState room;
-  final bool canCancel;
-  final VoidCallback onCancel;
-
-  @override
-  Widget build(BuildContext context) => Container(
-        padding: const EdgeInsets.all(AppSpacing.md),
-        decoration: const BoxDecoration(
-          color: Color(0xCC080F1B),
-          border: Border(top: BorderSide(color: Color(0x44829EB2))),
-        ),
-        child: Wrap(
-          alignment: WrapAlignment.spaceBetween,
-          crossAxisAlignment: WrapCrossAlignment.center,
-          runSpacing: AppSpacing.sm,
-          spacing: AppSpacing.md,
-          children: [
-            Text('ห้องของ ${room.host.username}\nออกจากห้องเพื่อกลับหน้าหลัก'),
-            OutlinedButton(
-              onPressed: canCancel ? onCancel : null,
-              child: const Text('ยกเลิกห้อง'),
-            ),
-          ],
-        ),
-      );
 }

@@ -6,10 +6,11 @@ import 'package:go_router/go_router.dart';
 
 import '../../core/api/api_client.dart';
 import '../../core/theme/app_spacing.dart';
+import '../../core/widgets/fantasy_page.dart';
 import '../../core/ws/ws_client.dart';
 import '../../core/ws/ws_providers.dart';
+import '../lobby/player_hub_navigation.dart';
 import '../player_hub/player_hub_shell.dart';
-import '../profile/player_hub_navigation.dart';
 import 'create_room_screen.dart';
 
 class JoinRoomScreen extends ConsumerStatefulWidget {
@@ -48,8 +49,15 @@ class _JoinRoomScreenState extends ConsumerState<JoinRoomScreen> {
     return PlayerHubShell(
       title: 'เข้าร่วมห้อง',
       subtitle: 'พบเพื่อนในสนามส่วนตัว',
-      badge: '1 vs 1',
-      navigation: const PlayerHubNavigation(),
+      badge: '1 VS 1',
+      lighter: true,
+      headerLeading: IconButton(
+        tooltip: 'ย้อนกลับ',
+        onPressed: () =>
+            context.canPop() ? context.pop() : context.go('/lobby'),
+        icon: const Icon(Icons.arrow_back_rounded),
+      ),
+      navigation: const PlayerHubNavigation(selected: PlayerHubTab.home),
       body: _buildJoinForm(context, online),
     );
   }
@@ -59,39 +67,20 @@ class _JoinRoomScreenState extends ConsumerState<JoinRoomScreen> {
           final compact = constraints.maxWidth < 650;
           return SingleChildScrollView(
             padding: EdgeInsets.all(compact ? AppSpacing.md : AppSpacing.xl),
-            child: compact
-                ? Column(
-                    children: [
-                      const _ChallengerArt(compact: true),
-                      const SizedBox(height: AppSpacing.md),
-                      _JoinForm(
-                        controller: _codeController,
-                        error: _error,
-                        onCodeChanged: _onCodeChanged,
-                        onJoin: _join,
-                        joining: _joining,
-                        online: online,
-                        onCreateRoom: () => context.go(CreateRoomScreen.path),
-                      ),
-                    ],
-                  )
-                : Row(
-                    children: [
-                      const Expanded(child: _ChallengerArt()),
-                      const SizedBox(width: AppSpacing.xl),
-                      Expanded(
-                        child: _JoinForm(
-                          controller: _codeController,
-                          error: _error,
-                          onCodeChanged: _onCodeChanged,
-                          onJoin: _join,
-                          joining: _joining,
-                          online: online,
-                          onCreateRoom: () => context.go(CreateRoomScreen.path),
-                        ),
-                      ),
-                    ],
-                  ),
+            child: Center(
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 560),
+                child: _JoinForm(
+                  controller: _codeController,
+                  error: _error,
+                  onCodeChanged: _onCodeChanged,
+                  onJoin: _join,
+                  joining: _joining,
+                  online: online,
+                  onCreateRoom: () => context.go(CreateRoomScreen.path),
+                ),
+              ),
+            ),
           );
         },
       );
@@ -152,51 +141,6 @@ class _JoinRoomScreenState extends ConsumerState<JoinRoomScreen> {
   }
 }
 
-class _ChallengerArt extends StatelessWidget {
-  const _ChallengerArt({this.compact = false});
-  final bool compact;
-
-  @override
-  Widget build(BuildContext context) => Container(
-        width: double.infinity,
-        padding: EdgeInsets.all(compact ? AppSpacing.sm : AppSpacing.xl),
-        decoration: const BoxDecoration(
-          gradient: RadialGradient(
-            colors: [Color(0x4D5D9BD3), Color(0x000B1726)],
-            radius: .9,
-          ),
-        ),
-        child: Column(
-          children: [
-            Image.asset(
-              'assets/images/units/fighter.png',
-              height: compact ? 136 : 250,
-              fit: BoxFit.contain,
-              errorBuilder: (_, __, ___) => const Icon(
-                Icons.shield_outlined,
-                size: 110,
-                color: Color(0xFF8AD6FF),
-              ),
-            ),
-            const SizedBox(height: AppSpacing.sm),
-            Text(
-              'ผู้ท้าชิงคนต่อไป คือคุณ',
-              textAlign: TextAlign.center,
-              style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                    color: const Color(0xFFFFE7AC),
-                    fontWeight: FontWeight.w800,
-                  ),
-            ),
-            const SizedBox(height: AppSpacing.xs),
-            const Text(
-              'รับรหัสจากเพื่อน แล้วเข้าสู่สนามเดียวกัน',
-              textAlign: TextAlign.center,
-            ),
-          ],
-        ),
-      );
-}
-
 class _JoinForm extends StatelessWidget {
   const _JoinForm({
     required this.controller,
@@ -217,73 +161,291 @@ class _JoinForm extends StatelessWidget {
   final VoidCallback onCreateRoom;
 
   @override
-  Widget build(BuildContext context) => Container(
-        padding: const EdgeInsets.all(AppSpacing.xl),
-        decoration: const BoxDecoration(
-          color: Color(0xF20B1C2C),
-          border: Border(
-            top: BorderSide(color: Color(0xFFF2C14E), width: 2),
-            bottom: BorderSide(color: Color(0x33829EB2)),
-          ),
-        ),
+  Widget build(BuildContext context) => FantasyPanel(
+        translucent: true,
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Text(
-              'มีรหัสห้องแล้ว?',
-              style: Theme.of(context).textTheme.titleLarge,
+            Align(
+              child: Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: AppSpacing.md,
+                  vertical: AppSpacing.xs,
+                ),
+                decoration: BoxDecoration(
+                  gradient: const LinearGradient(
+                    colors: [Color(0x332BD9FF), Color(0x33F2C14E)],
+                  ),
+                  borderRadius: AppRadius.allFull,
+                  border: Border.all(color: const Color(0x80F2C14E)),
+                ),
+                child: const Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(
+                      Icons.sports_martial_arts_rounded,
+                      size: AppSpacing.lg,
+                      color: Color(0xFFFFD35A),
+                    ),
+                    SizedBox(width: AppSpacing.xs),
+                    Text('การดวลส่วนตัว · 1 VS 1'),
+                  ],
+                ),
+              ),
             ),
-            const SizedBox(height: AppSpacing.xs),
-            const Text('ใส่รหัสเชิญเพื่อเข้าร่วมกับเพื่อน'),
             const SizedBox(height: AppSpacing.lg),
-            TextField(
+            Row(
+              children: [
+                Container(
+                  width: AppSpacing.huge + AppSpacing.sm,
+                  height: AppSpacing.huge + AppSpacing.sm,
+                  decoration: const BoxDecoration(
+                    color: Color(0x1FF2C14E),
+                    borderRadius: AppRadius.allMd,
+                  ),
+                  child: const Icon(
+                    Icons.vpn_key_rounded,
+                    color: Color(0xFFFFD35A),
+                  ),
+                ),
+                const SizedBox(width: AppSpacing.md),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'กรอกรหัสห้อง',
+                        style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                              color: const Color(0xFFFFF1C4),
+                              fontWeight: FontWeight.w900,
+                            ),
+                      ),
+                      const SizedBox(height: AppSpacing.xxs),
+                      Text(
+                        'ใช้รหัส 6 ตัวที่ได้รับจากเพื่อน',
+                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                              color: const Color(0xFFB8CEF0),
+                            ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: AppSpacing.xl),
+            _RoomCodeField(
               controller: controller,
               onChanged: onCodeChanged,
-              textCapitalization: TextCapitalization.characters,
-              autocorrect: false,
-              enableSuggestions: false,
-              textInputAction: TextInputAction.done,
-              onSubmitted: (_) {
+              error: error,
+              onSubmitted: () {
                 if (controller.text.trim().isNotEmpty && !joining) onJoin();
               },
-              inputFormatters: [
-                FilteringTextInputFormatter.allow(RegExp(r'[a-zA-Z0-9\s]')),
-                LengthLimitingTextInputFormatter(12),
-              ],
-              decoration: InputDecoration(
-                labelText: 'รหัสห้อง',
-                hintText: 'ABC234',
-                errorText: error,
-                helperText:
-                    error == null ? 'วางรหัสได้ ระบบจัดรูปแบบให้' : null,
-                prefixIcon: const Icon(Icons.key_outlined),
-                filled: true,
-                fillColor: const Color(0xFF071321),
+            ),
+            const SizedBox(height: AppSpacing.sm),
+            Container(
+              padding: const EdgeInsets.symmetric(
+                horizontal: AppSpacing.md,
+                vertical: AppSpacing.sm,
               ),
-              style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                    letterSpacing: 4,
-                    fontWeight: FontWeight.w700,
+              decoration: BoxDecoration(
+                color: online
+                    ? const Color(0x1F62DDB2)
+                    : Theme.of(context)
+                        .colorScheme
+                        .errorContainer
+                        .withValues(alpha: .32),
+                borderRadius: AppRadius.allSm,
+              ),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(
+                    online ? Icons.bolt_rounded : Icons.wifi_off_rounded,
+                    size: AppSpacing.lg,
+                    color: online
+                        ? const Color(0xFF62DDB2)
+                        : Theme.of(context).colorScheme.error,
                   ),
+                  const SizedBox(width: AppSpacing.xs),
+                  Text(
+                    online
+                        ? 'พร้อมเชื่อมต่อเข้าสู่สนาม'
+                        : 'กำลังเชื่อมต่อเซิร์ฟเวอร์ใหม่…',
+                    textAlign: TextAlign.center,
+                    style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                          color: online
+                              ? const Color(0xFF9BEBCF)
+                              : Theme.of(context).colorScheme.error,
+                          fontWeight: FontWeight.w700,
+                        ),
+                  ),
+                ],
+              ),
             ),
             const SizedBox(height: AppSpacing.md),
-            FilledButton(
+            FilledButton.icon(
               onPressed: controller.text.trim().isEmpty || joining || !online
                   ? null
                   : onJoin,
-              child: Text(joining ? 'กำลังเข้าร่วมห้อง…' : 'เข้าร่วมห้อง'),
+              icon: const Icon(Icons.login_rounded),
+              label: Text(joining ? 'กำลังเข้าร่วมห้อง…' : 'เข้าร่วมห้อง'),
             ),
-            const SizedBox(height: AppSpacing.xs),
-            OutlinedButton(
-              onPressed: onCreateRoom,
-              child: const Text('สร้างห้องของฉันแทน'),
+            const SizedBox(height: AppSpacing.md),
+            Row(
+              children: [
+                const Expanded(child: Divider()),
+                Padding(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: AppSpacing.md),
+                  child: Text(
+                    'หรือ',
+                    style: Theme.of(context).textTheme.bodySmall,
+                  ),
+                ),
+                const Expanded(child: Divider()),
+              ],
             ),
             const SizedBox(height: AppSpacing.sm),
-            if (!online)
-              const Text(
-                'ขาดการเชื่อมต่อเกม กำลังเชื่อมต่อใหม่…',
-                textAlign: TextAlign.center,
-              ),
+            TextButton.icon(
+              onPressed: onCreateRoom,
+              icon: const Icon(Icons.add_box_outlined),
+              label: const Text('สร้างห้องใหม่'),
+            ),
           ],
         ),
       );
+}
+
+class _RoomCodeField extends StatelessWidget {
+  const _RoomCodeField({
+    required this.controller,
+    required this.onChanged,
+    required this.error,
+    required this.onSubmitted,
+  });
+
+  final TextEditingController controller;
+  final ValueChanged<String> onChanged;
+  final String? error;
+  final VoidCallback onSubmitted;
+
+  @override
+  Widget build(BuildContext context) {
+    const placeholder = 'ABC234';
+    final normalized =
+        controller.text.replaceAll(RegExp(r'\s+'), '').toUpperCase();
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Semantics(
+          textField: true,
+          label: 'รหัสห้อง 6 ตัว',
+          child: SizedBox(
+            height: 72,
+            child: Stack(
+              children: [
+                Row(
+                  children: List.generate(6, (index) {
+                    final hasValue = index < normalized.length;
+                    final character =
+                        hasValue ? normalized[index] : placeholder[index];
+                    return Expanded(
+                      child: Padding(
+                        padding: EdgeInsets.only(
+                          right: index == 5 ? 0 : AppSpacing.xs,
+                        ),
+                        child: Container(
+                          alignment: Alignment.center,
+                          decoration: BoxDecoration(
+                            gradient: LinearGradient(
+                              begin: Alignment.topCenter,
+                              end: Alignment.bottomCenter,
+                              colors: hasValue
+                                  ? const [
+                                      Color(0xFF173A55),
+                                      Color(0xFF081827),
+                                    ]
+                                  : const [
+                                      Color(0xFF102538),
+                                      Color(0xFF071321),
+                                    ],
+                            ),
+                            borderRadius: AppRadius.allSm,
+                            border: Border.all(
+                              color: hasValue
+                                  ? const Color(0xFF8AD6FF)
+                                  : const Color(0x806FA5C4),
+                            ),
+                            boxShadow: hasValue
+                                ? const [
+                                    BoxShadow(
+                                      color: Color(0x4059B7E8),
+                                      blurRadius: AppSpacing.sm,
+                                    ),
+                                  ]
+                                : null,
+                          ),
+                          child: Text(
+                            character,
+                            style: Theme.of(context)
+                                .textTheme
+                                .titleLarge
+                                ?.copyWith(
+                                  color: hasValue
+                                      ? const Color(0xFFF4F7FF)
+                                      : const Color(0x4DF4F7FF),
+                                  fontWeight: FontWeight.w900,
+                                ),
+                          ),
+                        ),
+                      ),
+                    );
+                  }),
+                ),
+                Positioned.fill(
+                  child: Opacity(
+                    opacity: .01,
+                    child: TextField(
+                      controller: controller,
+                      onChanged: onChanged,
+                      onSubmitted: (_) => onSubmitted(),
+                      textCapitalization: TextCapitalization.characters,
+                      autocorrect: false,
+                      enableSuggestions: false,
+                      textInputAction: TextInputAction.done,
+                      inputFormatters: [
+                        FilteringTextInputFormatter.allow(
+                          RegExp(r'[a-zA-Z0-9\s]'),
+                        ),
+                        LengthLimitingTextInputFormatter(12),
+                      ],
+                      decoration: const InputDecoration(
+                        border: InputBorder.none,
+                        enabledBorder: InputBorder.none,
+                        focusedBorder: InputBorder.none,
+                        filled: false,
+                        contentPadding: EdgeInsets.zero,
+                      ),
+                      style: const TextStyle(color: Colors.transparent),
+                      cursorColor: Colors.transparent,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+        const SizedBox(height: AppSpacing.xs),
+        Text(
+          error ?? 'ตัวอักษร A-Z หรือตัวเลข 2-9',
+          style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                color: error == null
+                    ? const Color(0xFF91A2B8)
+                    : Theme.of(context).colorScheme.error,
+              ),
+        ),
+      ],
+    );
+  }
 }

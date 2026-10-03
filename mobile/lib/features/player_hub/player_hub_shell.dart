@@ -13,12 +13,16 @@ class PlayerHubShell extends StatelessWidget {
     required this.navigation,
     this.badge,
     this.headerAction,
+    this.headerLeading,
+    this.lighter = false,
   });
 
   final String title;
   final String subtitle;
   final String? badge;
   final Widget? headerAction;
+  final Widget? headerLeading;
+  final bool lighter;
   final Widget body;
   final Widget navigation;
 
@@ -28,6 +32,7 @@ class PlayerHubShell extends StatelessWidget {
         child: Scaffold(
           backgroundColor: Colors.transparent,
           body: FantasyBackdrop(
+            lighter: lighter,
             child: SafeArea(
               child: Column(
                 children: [
@@ -36,6 +41,7 @@ class PlayerHubShell extends StatelessWidget {
                     subtitle: subtitle,
                     badge: badge,
                     action: headerAction,
+                    leading: headerLeading,
                   ),
                   Expanded(child: body),
                   navigation,
@@ -53,12 +59,14 @@ class _PlayerHubHeader extends StatelessWidget {
     required this.subtitle,
     required this.badge,
     required this.action,
+    required this.leading,
   });
 
   final String title;
   final String subtitle;
   final String? badge;
   final Widget? action;
+  final Widget? leading;
 
   @override
   Widget build(BuildContext context) => Container(
@@ -77,6 +85,10 @@ class _PlayerHubHeader extends StatelessWidget {
           maxScaleFactor: 1.25,
           child: Row(
             children: [
+              if (leading != null) ...[
+                leading!,
+                const SizedBox(width: AppSpacing.sm),
+              ],
               Expanded(
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
