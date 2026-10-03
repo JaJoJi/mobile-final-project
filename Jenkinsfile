@@ -117,6 +117,12 @@ pipeline {
       description: 'Build a release Android APK on main and archive it (installable in the emulator, #194)')
     string(name: 'APK_API_BASE_URL', defaultValue: 'http://172.30.58.10',
       description: 'Backend the APK talks to (--dart-define API_BASE_URL; WS_BASE_URL is derived). The university VM address, reachable on the campus network')
+    // Opt-in (default OFF): a load test on the small Jenkins VM would
+    // measure the VM, not the app. The real 50-match run is done from outside
+    // the university VM (runbook.md section 13); this is a 10-match CI gate
+    // against the ephemeral stack, dev/main only.
+    booleanParam(name: 'ENABLE_LOAD_TEST', defaultValue: false,
+      description: 'k6: 10 concurrent matches against the ephemeral stack, fails on NFR p95 > 500 ms (dev/main only)')
     booleanParam(name: 'ENABLE_NOTIFICATIONS', defaultValue: true,
       description: 'Email SUCCESS/FAILURE (notify-email credential + SMTP, runbook §6)')
   }
@@ -322,7 +328,7 @@ pipeline {
       when {
         allOf {
           anyOf { branch 'dev'; branch 'main'; changeRequest target: 'dev'; changeRequest target: 'main' }
-          expression { params.ENABLE_INTEGRATION_TESTS != false || params.ENABLE_SECURITY_SCAN != false }
+          expression { params.ENABLE_INTEGRATION_TESTS != false || params.ENABLE_SECURITY_SCAN != false || params.ENABLE_LOAD_TEST == true }
         }
       }
       environment { IMAGE = "${env.IMAGE_NAME}:${env.IMAGE_TAG}"; K6_IMAGE = "${IMAGES.k6}" }

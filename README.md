@@ -1,6 +1,6 @@
 # Auto Chess Mobile — University Project
 
-CI/CD: **Jenkins** on Azure (`Jenkinsfile`, [infra/README.md](infra/README.md)) — the only CI; there are no GitHub Actions workflows.
+CI/CD: **Jenkins** on Azure (`Jenkinsfile`, [infra/README.md](infra/README.md)) — the only CI; there are no GitHub Actions workflows. Every DevOps script and where to read about it: [§14](#14-devops-what-every-script-does-and-where-to-read).
 
 2-player auto-chess mobile game. Flutter client + Nest.js backend + PostgreSQL + Redis. **Stateless backend with horizontal scaling** behind an nginx load balancer, primary + read-replica Postgres, BullMQ-delayed jobs, and an authoritative-server combat engine.
 
@@ -487,6 +487,34 @@ See [`docs/01-game-design.md`](./docs/01-game-design.md) through [`docs/05-comba
 Hard rules the reviewer will check: no `Colors.*` / `Color(0x…)` / `fontSize:` / off-scale padding / raw `Duration` under `mobile/lib/features/**`; every network screen implements all four states; tap targets ≥ 48 dp; nothing communicated by colour alone; the phase countdown is derived from a deadline, never `Timer.periodic`; combat outcomes are never predicted client-side.
 
 ---
+
+## 14. DevOps: what every script does and where to read
+
+Day-to-day commands for the production VM: [`runbook.md`](./runbook.md) (copy-paste).
+CI and Jenkins controller: [`docs/08-runbook.md`](./docs/08-runbook.md). Infra overview: [`infra/README.md`](./infra/README.md).
+
+| Path | What it does | Run by | Read |
+|---|---|---|---|
+| `Jenkinsfile` | the whole pipeline: Preflight disk → Gitleaks → (backend quality, mobile quality, Semgrep, Trivy fs, Checkov in parallel) → image build → SBOM → Trivy image → ephemeral stack (integration smoke, optional k6, ZAP) → publish image to Docker Hub (`main`) → release APK (`main`). Parameters switch stages on/off (`ENABLE_*`, `APK_API_BASE_URL`) | Jenkins (webhook) | header of the file, `docs/08-runbook.md` §6 |
+| `ci/scripts/stack-up.sh` / `stack-down.sh` | start / remove the throwaway Postgres + Redis + 3 Nest stack the integration tests, k6 and ZAP run against | Jenkinsfile; also by hand | `docs/08-runbook.md` §6 ("Running pieces outside Jenkins") |
+| `ci/scripts/zap-scan.sh` | OWASP ZAP baseline + API scan of that stack, rules from `backend/zap/rules.tsv` (FAIL / WARN / IGNORE) | Jenkinsfile | comments in the script and `rules.tsv` |
+| `ci/scripts/lcov-floor.sh` | fails the build if line coverage is below a floor (mobile 84 %) | Jenkinsfile | the script |
+| `k6/load.js` | load test: 100 players = 50 matches over WebSocket; thresholds p95 < 500 ms (NFR-2/14), 0 failed players | you (from outside the VM) or Jenkins (`ENABLE_LOAD_TEST`) | header of the file, `runbook.md` §13 |
+| `.gitleaks.toml`, `.trivyignore.yaml`, `backend/zap/rules.tsv` | scanner policy: allow-lists and rule levels; every ignore needs a reason and an expiry | scanners | comments inside |
+| `infra/ansible/provision.yml` | creates the Azure VM, network rules (SSH from allowed IPs, 80/443), DNS name, budget alert | `./run.sh ansible-playbook provision.yml` on your laptop | `infra/ansible/README.md` |
+| `infra/ansible/jenkins-host.yml` | sets up the Jenkins VM: Docker, Jenkins on 127.0.0.1, Caddy HTTPS, nightly disk cleanup, daily `jenkins_home` backup (`jenkins-backup.timer`), lock-down check | `./run.sh ansible-playbook jenkins-host.yml` | `infra/ansible/README.md`, `docs/08-runbook.md` §6-7 |
+| `infra/ansible/run.sh` | runs Azure CLI / Ansible inside a pinned container (Ansible can't run on native Windows) | you | header of the file |
+| `infra/jenkins/export-plugins.sh` | writes `plugins.txt` (plugin:version) from the running Jenkins to pin plugins in git | you (needs an API token in env) | header of the file |
+| `infra/uni-vm/site.yml` | configures the university VM **on itself**: Docker, log rotation, PSU auto-login, `/etc/auto-chess`, TLS certs (app + Vault), unseal command, Vault backup timer. Safe to re-run after every `git pull` that changes infra | `sudo ansible-playbook -i localhost, -c local infra/uni-vm/site.yml` | `infra/uni-vm/README.md` |
+| `infra/uni-vm/app/compose.yml` | the production stack: nginx + ModSecurity, Nest ×3, Postgres primary/replica, Redis, Vault + Vault Agent, Beyla, Alloy, Prometheus, Loki, Tempo, Grafana, `pg-backup`, optional pgBouncer (profile `pgbouncer`) | `docker compose -f infra/uni-vm/app/compose.yml up -d` | comments in the file |
+| `infra/uni-vm/app/deploy.sh` | `auto-chess-deploy <tag>`: pull, up, wait for `/health/ready`, roll back on failure | you | `infra/uni-vm/README.md` |
+| `infra/uni-vm/vault/bootstrap.sh` | one-time Vault setup: init (3 keys, threshold 2), KV, AppRoles, move secrets from `app.env`, revoke root token | you, once | header of the script, `runbook.md` §5 |
+| `infra/uni-vm/vault/unseal.sh` | `auto-chess-vault-unseal`: unseal after a reboot (asks for 2 keys) | you | header |
+| `infra/uni-vm/vault/backup.sh` | daily Raft snapshot (last 7) | systemd timer | header (also has the restore steps) |
+| `infra/uni-vm/psu-autologin/*` | keeps the VM online by logging in to the PSU captive portal when the session drops | systemd timer (every minute) | its README |
+| `infra/uni-vm/monitoring/*` | Alloy, Prometheus, Loki, Tempo config and the 5 Grafana dashboards (Overview, Application, Infrastructure, WAF, Vault audit), all provisioned from files | Grafana at start | `infra/uni-vm/README.md` |
+| `nginx/modsec/*` | WAF: server block + the OWASP CRS rules we include (paranoia 1, `DetectionOnly` until switched to `On`) | nginx container | `runbook.md` §7 |
+| `postgres/init-primary.sh` | creates the replication role and `pg_hba` rule on first start | Postgres container | comments |
 
 ## 13. AI agent assistance
 
