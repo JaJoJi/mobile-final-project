@@ -75,6 +75,8 @@ MEM = [
   small : '--memory=512m --memory-swap=1g',
   medium: '--memory=1g --memory-swap=2g',
   large : '--memory=1536m --memory-swap=3g',
+  // Android/Gradle (JVM heap + Kotlin daemon + aapt2): 4 GB VM, one build at a time.
+  huge  : '--memory=3g --memory-swap=6g',
 ]
 
 // One dependency cache for every job (npm, pub, Trivy DB), outside the
@@ -435,7 +437,7 @@ pipeline {
       options { timeout(time: 30, unit: 'MINUTES') }
       // Root: the Flutter SDK in this image is root-owned (same as the
       // mobile quality stage). Gradle's cache lives in the shared CI cache.
-      agent { docker { image IMAGES.flutter; args "-u 0:0 ${MEM.large} ${CACHE_MOUNT}"; reuseNode true } }
+      agent { docker { image IMAGES.flutter; args "-u 0:0 ${MEM.huge} ${CACHE_MOUNT}"; reuseNode true } }
       environment {
         HOME = '/tmp'
         PUB_CACHE = "${CACHE_DIR}/pub"
