@@ -7,7 +7,7 @@
   ],
   "timezone": "browser",
   "schemaVersion": 39,
-  "version": 1,
+  "version": 2,
   "refresh": "30s",
   "time": {
     "from": "now-3h",
@@ -448,7 +448,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "sum by (mode) (rate(node_cpu_seconds_total{mode!=\"idle\"}[5m])) * 100 / count(count by (cpu) (node_cpu_seconds_total))",
+          "expr": "sum by (mode) (rate(node_cpu_seconds_total{mode!=\"idle\"}[5m])) * 100 / scalar(count(count by (cpu) (node_cpu_seconds_total)))",
           "legendFormat": "{{mode}}",
           "refId": "A"
         }
