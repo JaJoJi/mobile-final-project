@@ -106,7 +106,7 @@ class _ProfileContent extends StatelessWidget {
                   border: Border.all(color: const Color(0x80FFD35A)),
                 ),
                 child: Semantics(
-                  label: 'เรตติ้ง $rating',
+                  label: 'เรตติ้ง ${_formatRating(rating)}',
                   excludeSemantics: true,
                   child: Row(
                     mainAxisSize: MainAxisSize.min,
@@ -118,7 +118,7 @@ class _ProfileContent extends StatelessWidget {
                       ),
                       const SizedBox(width: AppSpacing.xs),
                       Text(
-                        '$rating',
+                        _formatRating(rating),
                         style: Theme.of(context).textTheme.labelLarge?.copyWith(
                               color: const Color(0xFFFFD35A),
                               fontWeight: FontWeight.w900,
@@ -142,6 +142,11 @@ class _ProfileContent extends StatelessWidget {
     if (cleaned.length == 1) return cleaned.toUpperCase();
     return cleaned.substring(0, 2).toUpperCase();
   }
+
+  static String _formatRating(int rating) => rating.toString().replaceAllMapped(
+        RegExp(r'(?<=\d)(?=(\d{3})+$)'),
+        (_) => ',',
+      );
 }
 
 class _ProfileSkeleton extends StatelessWidget {

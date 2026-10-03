@@ -111,7 +111,7 @@ void main() {
     expect(find.text('#2'), findsNothing);
     expect(find.text('#3'), findsNothing);
     expect(find.byKey(const ValueKey('lobby-current-rank')), findsOneWidget);
-    expect(find.bySemanticsLabel('เรตติ้ง 1234'), findsOneWidget);
+    expect(find.bySemanticsLabel('เรตติ้ง 1,234'), findsOneWidget);
     expect(find.text('การแข่งขันล่าสุด'), findsOneWidget);
     expect(find.text('สร้างห้อง'), findsOneWidget);
     expect(find.text('เข้าร่วมห้อง'), findsOneWidget);

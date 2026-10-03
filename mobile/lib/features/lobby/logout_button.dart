@@ -19,12 +19,36 @@ import '../../core/widgets/app_modal.dart';
 ///      `refreshListenable` so the redirect bounces them away from
 ///      any non-auth route they're currently on.
 class LogoutButton extends ConsumerWidget {
-  const LogoutButton({super.key, this.decorated = false});
+  const LogoutButton({
+    super.key,
+    this.decorated = false,
+    this.showLabel = false,
+  });
 
   final bool decorated;
+  final bool showLabel;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    if (showLabel) {
+      return Tooltip(
+        message: 'ออกจากระบบ',
+        child: OutlinedButton.icon(
+          style: OutlinedButton.styleFrom(
+            foregroundColor: const Color(0xFFFF9A9A),
+            minimumSize: const Size(0, 48),
+            padding: const EdgeInsets.symmetric(horizontal: 6),
+            textStyle: Theme.of(context).textTheme.labelSmall?.copyWith(
+                  fontWeight: FontWeight.w800,
+                ),
+            side: const BorderSide(color: Color(0x99FF7A7A)),
+          ),
+          onPressed: () => _confirmAndLogout(context, ref),
+          icon: const Icon(Icons.logout_rounded, size: 18),
+          label: const Text('ออกจากระบบ'),
+        ),
+      );
+    }
     return IconButton(
       tooltip: 'ออกจากระบบ',
       style: decorated

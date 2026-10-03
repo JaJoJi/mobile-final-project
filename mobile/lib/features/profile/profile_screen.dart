@@ -4,14 +4,12 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../core/api/api_client.dart';
-import '../../core/auth/auth_gate.dart';
-import '../../core/auth/auth_repository.dart';
 import '../../core/theme/app_spacing.dart';
 import '../../core/widgets/fantasy_page.dart';
 import '../../core/widgets/widgets.dart';
-import '../player_hub/player_crest.dart';
-import '../player_hub/player_hub_shell.dart';
-import 'player_hub_navigation.dart';
+import '../lobby/logout_button.dart';
+import '../lobby/player_hub_navigation.dart';
+import '../lobby/profile_card.dart';
 import 'settings_provider.dart';
 import 'settings_tile.dart';
 
@@ -24,35 +22,71 @@ class ProfileScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final me = ref.watch(_meProvider);
+    final me = ref.watch(currentUserProvider);
+    final statistics = ref.watch(_myStatsProvider);
 
-    return PlayerHubShell(
-      title: 'โปรไฟล์ผู้บัญชาการ',
-      subtitle: 'ตัวตนและผลงานในสนาม',
-      badge: 'บัญชีของคุณ',
-      body: me.when(
-        loading: () => const SingleChildScrollView(
-          padding: EdgeInsets.all(AppSpacing.lg),
-          child: _ProfileSkeleton(),
-        ),
-        error: (_, __) => ErrorView(
-          message: 'โหลดข้อมูลบัญชีไม่ได้ ลองอีกครั้ง',
-          onRetry: () => ref.invalidate(_meProvider),
-        ),
-        data: (u) => SingleChildScrollView(
-          padding: const EdgeInsets.all(AppSpacing.lg),
-          child: _Content(user: u),
+    return Theme(
+      data: fantasySurfaceTheme(context),
+      child: Scaffold(
+        backgroundColor: Colors.transparent,
+        body: FantasyBackdrop(
+          lighter: true,
+          child: SafeArea(
+            bottom: false,
+            child: Column(
+              children: [
+                Expanded(
+                  child: me.when(
+                    loading: () => const SingleChildScrollView(
+                      padding: EdgeInsets.all(AppSpacing.lg),
+                      child: _ProfileSkeleton(),
+                    ),
+                    error: (_, __) => Padding(
+                      padding: const EdgeInsets.all(AppSpacing.lg),
+                      child: FantasyPanel(
+                        translucent: true,
+                        child: ErrorView(
+                          message: 'โหลดข้อมูลบัญชีไม่ได้ ลองอีกครั้ง',
+                          onRetry: () => ref.invalidate(currentUserProvider),
+                        ),
+                      ),
+                    ),
+                    data: (u) => Column(
+                      children: [
+                        _ProfileHero(
+                          user: u,
+                          statistics: statistics,
+                          onEdit: () => _editUsername(
+                            context,
+                            ref,
+                            u['username'] as String? ?? '',
+                          ),
+                        ),
+                        const SizedBox(height: AppSpacing.sm),
+                        const Expanded(
+                          child: SingleChildScrollView(
+                            padding: EdgeInsets.fromLTRB(
+                              AppSpacing.lg,
+                              AppSpacing.xs,
+                              AppSpacing.lg,
+                              AppSpacing.xl,
+                            ),
+                            child: _Content(),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+                const PlayerHubNavigation(selected: PlayerHubTab.profile),
+              ],
+            ),
+          ),
         ),
       ),
-      navigation: const PlayerHubNavigation(),
     );
   }
 }
-
-/// `GET /user/me` → `{ id, email, username, rating }`.
-final _meProvider = FutureProvider.autoDispose<Map<String, dynamic>>((ref) {
-  return ref.read(apiClientProvider).getMe();
-});
 
 /// Statistics are deliberately independent from the account request: profile
 /// actions remain available if the optional statistics endpoint is unavailable.
@@ -61,10 +95,245 @@ final _myStatsProvider =
   return ref.read(apiClientProvider).getMyStats();
 });
 
-class _Content extends ConsumerWidget {
-  const _Content({required this.user});
+Future<void> _editUsername(
+  BuildContext context,
+  WidgetRef ref,
+  String current,
+) async {
+  final saved = await AppModal.sheet<bool>(
+    context,
+    builder: (_) => _EditUsernameSheet(current: current),
+  );
+  if (saved == true) ref.invalidate(currentUserProvider);
+}
+
+class _ProfileHero extends StatelessWidget {
+  const _ProfileHero({
+    required this.user,
+    required this.statistics,
+    required this.onEdit,
+  });
 
   final Map<String, dynamic> user;
+  final AsyncValue<Map<String, dynamic>> statistics;
+  final VoidCallback onEdit;
+
+  @override
+  Widget build(BuildContext context) {
+    final username = user['username'] as String? ?? '—';
+    final email = user['email'] as String? ?? '—';
+    final rating = (user['rating'] as num?)?.round();
+    final statisticsValue = statistics.valueOrNull;
+    final currentRank = statisticsValue?['currentRank'];
+    final rankLabel = statisticsValue == null
+        ? 'อันดับ —'
+        : currentRank == null
+            ? 'ยังไม่มีอันดับ'
+            : 'อันดับ $currentRank';
+
+    return MediaQuery.withClampedTextScaling(
+      maxScaleFactor: 1.3,
+      child: Container(
+        key: const ValueKey('profile-hero'),
+        margin: const EdgeInsets.fromLTRB(
+          AppSpacing.lg,
+          AppSpacing.sm,
+          AppSpacing.lg,
+          0,
+        ),
+        padding: const EdgeInsets.all(AppSpacing.md),
+        decoration: BoxDecoration(
+          gradient: const LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: [Color(0xE61B425A), Color(0xF20A1B2E)],
+          ),
+          borderRadius: AppRadius.allLg,
+          border: Border.all(color: const Color(0x9959B7E8)),
+          boxShadow: const [
+            BoxShadow(
+              color: Color(0x66000000),
+              blurRadius: AppSpacing.xl,
+              offset: Offset(0, AppSpacing.sm),
+            ),
+            BoxShadow(
+              color: Color(0x2459B7E8),
+              blurRadius: AppSpacing.lg,
+            ),
+          ],
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Row(
+              children: [
+                Container(
+                  width: 68,
+                  height: 68,
+                  alignment: Alignment.center,
+                  decoration: const BoxDecoration(
+                    shape: BoxShape.circle,
+                    gradient: LinearGradient(
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                      colors: [Color(0xFF355AA8), Color(0xFF182A68)],
+                    ),
+                    border: Border.fromBorderSide(
+                      BorderSide(color: Color(0xB39DDCFF), width: 2),
+                    ),
+                  ),
+                  child: Text(
+                    _initials(username),
+                    style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                          color: const Color(0xFFFFFFFF),
+                          fontWeight: FontWeight.w900,
+                        ),
+                  ),
+                ),
+                const SizedBox(width: AppSpacing.md),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        username,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                              color: const Color(0xFFFFFFFF),
+                              fontWeight: FontWeight.w900,
+                            ),
+                      ),
+                      const SizedBox(height: AppSpacing.xxs),
+                      Text(
+                        email,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                              color: const Color(0xFFD7E8FF),
+                            ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(width: AppSpacing.xs),
+                IconButton(
+                  tooltip: 'แก้ไขชื่อผู้ใช้',
+                  style: IconButton.styleFrom(
+                    backgroundColor: const Color(0x66101F31),
+                    side: const BorderSide(color: Color(0x406FA5C4)),
+                  ),
+                  onPressed: onEdit,
+                  icon: const Icon(Icons.edit_rounded),
+                ),
+              ],
+            ),
+            const SizedBox(height: AppSpacing.md),
+            Row(
+              children: [
+                Expanded(
+                  child: _HeroMetric(
+                    icon: Icons.military_tech_rounded,
+                    label: rating == null
+                        ? 'เรตติ้ง —'
+                        : 'เรตติ้ง ${_formatNumber(rating)}',
+                    color: const Color(0xFFFFD35A),
+                  ),
+                ),
+                const SizedBox(width: AppSpacing.xs),
+                Expanded(
+                  child: _HeroMetric(
+                    key: const ValueKey('profile-rank-action'),
+                    icon: Icons.emoji_events_rounded,
+                    label: rankLabel,
+                    color: const Color(0xFF9DDCFF),
+                    onTap: () => context.go('/leaderboard'),
+                  ),
+                ),
+                const SizedBox(width: AppSpacing.xs),
+                const Expanded(
+                  child: LogoutButton(showLabel: true),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  static String _initials(String name) {
+    final cleaned = name.trim();
+    if (cleaned.isEmpty) return '?';
+    return cleaned.substring(0, cleaned.length >= 2 ? 2 : 1).toUpperCase();
+  }
+
+  static String _formatNumber(int value) => value.toString().replaceAllMapped(
+        RegExp(r'(?<=\d)(?=(\d{3})+$)'),
+        (_) => ',',
+      );
+}
+
+class _HeroMetric extends StatelessWidget {
+  const _HeroMetric({
+    super.key,
+    required this.icon,
+    required this.label,
+    required this.color,
+    this.onTap,
+  });
+
+  final IconData icon;
+  final String label;
+  final Color color;
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context) => Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: AppRadius.allFull,
+          child: Container(
+            constraints: const BoxConstraints(minHeight: 48),
+            padding: const EdgeInsets.symmetric(
+              horizontal: AppSpacing.sm,
+              vertical: AppSpacing.xs,
+            ),
+            decoration: BoxDecoration(
+              color: const Color(0xB3071726),
+              borderRadius: AppRadius.allFull,
+              border: Border.all(color: color.withValues(alpha: 0.45)),
+            ),
+            child: Row(
+              children: [
+                Icon(icon, size: 17, color: color),
+                const SizedBox(width: AppSpacing.xs),
+                Expanded(
+                  child: Text(
+                    label,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    textAlign: TextAlign.center,
+                    style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                          color: color,
+                          fontWeight: FontWeight.w800,
+                        ),
+                  ),
+                ),
+                if (onTap != null) ...[
+                  const SizedBox(width: AppSpacing.xs),
+                  Icon(Icons.chevron_right_rounded, size: 17, color: color),
+                ],
+              ],
+            ),
+          ),
+        ),
+      );
+}
+
+class _Content extends ConsumerWidget {
+  const _Content();
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -72,18 +341,7 @@ class _Content extends ConsumerWidget {
     final settingsNotifier = ref.read(settingsProvider.notifier);
     final stats = ref.watch(_myStatsProvider);
 
-    final username = user['username'] as String? ?? '—';
-    final email = user['email'] as String? ?? '—';
-    final rating = user['rating'];
-
-    final identity = _IdentityPanel(
-      username: username,
-      email: email,
-      rating: rating,
-      initials: _initials(username),
-      onEdit: () => _editUsername(context, ref, username),
-    );
-    final details = _ProfileDetails(
+    return _ProfileDetails(
       statistics: stats,
       themeMode: settings.themeMode,
       soundEnabled: settings.soundEnabled,
@@ -92,184 +350,8 @@ class _Content extends ConsumerWidget {
       onSoundChanged: settingsNotifier.setSoundEnabled,
       onReconnectChanged: settingsNotifier.setWsAutoReconnect,
       onRetryStats: () => ref.invalidate(_myStatsProvider),
-      onLogout: () => _logout(context, ref),
-    );
-
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        if (constraints.maxWidth >= 720) {
-          return Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              SizedBox(width: 276, child: identity),
-              const SizedBox(width: AppSpacing.xl),
-              Expanded(child: details),
-            ],
-          );
-        }
-        return Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [identity, const SizedBox(height: AppSpacing.lg), details],
-        );
-      },
     );
   }
-
-  Future<void> _logout(BuildContext context, WidgetRef ref) async {
-    final ok = await AppModal.confirm(
-      context,
-      title: 'ออกจากระบบ?',
-      message: 'ต้องเข้าสู่ระบบใหม่เพื่อเล่นอีกครั้ง',
-      confirmLabel: 'ออกจากระบบ',
-      destructive: true,
-    );
-    if (!ok) return;
-    await ref.read(authRepositoryProvider).logout();
-    AuthGate.instance.signalSignedOut();
-    if (context.mounted) context.go('/login');
-  }
-
-  Future<void> _editUsername(
-    BuildContext context,
-    WidgetRef ref,
-    String current,
-  ) async {
-    final saved = await AppModal.sheet<bool>(
-      context,
-      builder: (_) => _EditUsernameSheet(current: current),
-    );
-    if (saved == true) ref.invalidate(_meProvider);
-  }
-
-  static String _initials(String name) {
-    final parts = name.trim().split(RegExp(r'[\s_]+'));
-    final letters = parts.where((p) => p.isNotEmpty).take(2).map((p) => p[0]);
-    return letters.join().toUpperCase();
-  }
-}
-
-class _IdentityPanel extends StatelessWidget {
-  const _IdentityPanel({
-    required this.username,
-    required this.email,
-    required this.rating,
-    required this.initials,
-    required this.onEdit,
-  });
-
-  final String username;
-  final String email;
-  final Object? rating;
-  final String initials;
-  final VoidCallback onEdit;
-
-  @override
-  Widget build(BuildContext context) => FantasyPanel(
-        child: LayoutBuilder(
-          builder: (context, constraints) {
-            final compact = constraints.maxWidth < 480;
-            final details = _IdentityDetails(
-              username: username,
-              email: email,
-              rating: _formatRating(rating),
-              compact: compact,
-              onEdit: onEdit,
-            );
-            if (!compact) {
-              return Column(
-                children: [
-                  PlayerCrest(label: initials),
-                  const SizedBox(height: AppSpacing.md),
-                  details,
-                ],
-              );
-            }
-            return Row(
-              key: const ValueKey('profile-identity-compact-row'),
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                PlayerCrest(label: initials, compact: true),
-                const SizedBox(width: AppSpacing.md),
-                Expanded(child: details),
-              ],
-            );
-          },
-        ),
-      );
-
-  static String _formatRating(Object? rating) {
-    final raw = rating?.toString();
-    final value = raw == null ? null : num.tryParse(raw)?.round();
-    if (value == null) return '—';
-    return value.toString().replaceAllMapped(
-          RegExp(r'(?<=\d)(?=(\d{3})+$)'),
-          (_) => ',',
-        );
-  }
-}
-
-class _IdentityDetails extends StatelessWidget {
-  const _IdentityDetails({
-    required this.username,
-    required this.email,
-    required this.rating,
-    required this.compact,
-    required this.onEdit,
-  });
-
-  final String username;
-  final String email;
-  final String rating;
-  final bool compact;
-  final VoidCallback onEdit;
-
-  @override
-  Widget build(BuildContext context) => Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment:
-            compact ? CrossAxisAlignment.start : CrossAxisAlignment.center,
-        children: [
-          Text(
-            username,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: compact
-                ? Theme.of(context).textTheme.titleMedium
-                : Theme.of(context).textTheme.headlineSmall,
-          ),
-          const SizedBox(height: AppSpacing.xxs),
-          Text(
-            email,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                  color: Theme.of(context).colorScheme.onSurfaceVariant,
-                ),
-          ),
-          SizedBox(height: compact ? AppSpacing.sm : AppSpacing.xl),
-          Text(
-            rating,
-            style: (compact
-                    ? Theme.of(context).textTheme.headlineSmall
-                    : Theme.of(context).textTheme.displaySmall)
-                ?.copyWith(
-              color: const Color(0xFFF2C14E),
-              fontWeight: FontWeight.w800,
-            ),
-          ),
-          Text(
-            'เรตติ้งปัจจุบัน',
-            style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                  color: Theme.of(context).colorScheme.onSurfaceVariant,
-                ),
-          ),
-          SizedBox(height: compact ? AppSpacing.sm : AppSpacing.lg),
-          OutlinedButton(
-            onPressed: onEdit,
-            child: const Text('แก้ไขชื่อผู้ใช้'),
-          ),
-        ],
-      );
 }
 
 class _ProfileDetails extends StatelessWidget {
@@ -282,7 +364,6 @@ class _ProfileDetails extends StatelessWidget {
     required this.onSoundChanged,
     required this.onReconnectChanged,
     required this.onRetryStats,
-    required this.onLogout,
   });
 
   final AsyncValue<Map<String, dynamic>> statistics;
@@ -293,7 +374,6 @@ class _ProfileDetails extends StatelessWidget {
   final ValueChanged<bool> onSoundChanged;
   final ValueChanged<bool> onReconnectChanged;
   final VoidCallback onRetryStats;
-  final VoidCallback onLogout;
 
   @override
   Widget build(BuildContext context) => Column(
@@ -322,65 +402,31 @@ class _ProfileDetails extends StatelessWidget {
             data: (data) => _StatisticsCard(statistics: data),
           ),
           const SizedBox(height: AppSpacing.lg),
-          _RankBanner(statistics: statistics),
-          const SizedBox(height: AppSpacing.lg),
           FantasyPanel(
+            translucent: true,
+            padding: const EdgeInsets.all(AppSpacing.lg),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
-                  'ทุกแมตช์คือประสบการณ์',
-                  style: Theme.of(context).textTheme.titleLarge,
-                ),
-                const SizedBox(height: AppSpacing.xs),
-                Text(
-                  'ย้อนดูผลการแข่งขันและรอบที่จบในแต่ละเกม',
-                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                        color: Theme.of(context).colorScheme.onSurfaceVariant,
+                Row(
+                  children: [
+                    const Icon(
+                      Icons.tune_rounded,
+                      color: Color(0xFF9DDCFF),
+                    ),
+                    const SizedBox(width: AppSpacing.sm),
+                    Expanded(
+                      child: Text(
+                        'ตั้งค่า',
+                        style: Theme.of(context)
+                            .textTheme
+                            .titleLarge
+                            ?.copyWith(fontWeight: FontWeight.w800),
                       ),
+                    ),
+                  ],
                 ),
-                const SizedBox(height: AppSpacing.md),
-                OutlinedButton(
-                  onPressed: () => context.go('/history'),
-                  child: const Text('ดูประวัติการแข่งขัน'),
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(height: AppSpacing.lg),
-          Container(
-            key: const ValueKey('private-account-row'),
-            padding: const EdgeInsets.only(top: AppSpacing.md),
-            decoration: const BoxDecoration(
-              border: Border(top: BorderSide(color: Color(0x4D82A9C7))),
-            ),
-            child: Wrap(
-              alignment: WrapAlignment.spaceBetween,
-              crossAxisAlignment: WrapCrossAlignment.center,
-              spacing: AppSpacing.md,
-              runSpacing: AppSpacing.xs,
-              children: [
-                Text(
-                  'ข้อมูลบัญชีเป็นส่วนตัว',
-                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                        color: Theme.of(context).colorScheme.onSurfaceVariant,
-                      ),
-                ),
-                OutlinedButton.icon(
-                  onPressed: onLogout,
-                  icon: const Icon(Icons.logout),
-                  label: const Text('ออกจากระบบ'),
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(height: AppSpacing.lg),
-          FantasyPanel(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text('ตั้งค่า', style: Theme.of(context).textTheme.titleLarge),
-                const Divider(),
+                const Divider(color: Color(0x406FA5C4)),
                 SettingsTile(
                   leading: Icons.brightness_6_outlined,
                   title: 'ธีม',
@@ -428,7 +474,7 @@ class _ProfileDetails extends StatelessWidget {
                     onChanged: onSoundChanged,
                   ),
                 ),
-                const Divider(),
+                const Divider(color: Color(0x406FA5C4)),
                 const SettingsTile(
                   leading: Icons.info_outline,
                   title: 'เวอร์ชัน',
@@ -439,77 +485,6 @@ class _ProfileDetails extends StatelessWidget {
           ),
         ],
       );
-}
-
-class _RankBanner extends StatelessWidget {
-  const _RankBanner({required this.statistics});
-
-  final AsyncValue<Map<String, dynamic>> statistics;
-
-  @override
-  Widget build(BuildContext context) {
-    final rank = statistics.valueOrNull?['currentRank'];
-    final matches = statistics.valueOrNull?['matches'] ?? 0;
-    return Container(
-      key: const ValueKey('profile-rank-banner'),
-      padding: const EdgeInsets.all(AppSpacing.lg),
-      decoration: const BoxDecoration(
-        gradient: LinearGradient(
-          colors: [Color(0x8866532B), Color(0xDD14263A)],
-        ),
-        border: Border(left: BorderSide(color: Color(0xFFF2C14E), width: 3)),
-      ),
-      child: LayoutBuilder(
-        builder: (context, constraints) => Wrap(
-          alignment: WrapAlignment.spaceBetween,
-          crossAxisAlignment: WrapCrossAlignment.center,
-          spacing: AppSpacing.md,
-          runSpacing: AppSpacing.md,
-          children: [
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'อันดับปัจจุบัน',
-                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                        color: Theme.of(context).colorScheme.onSurfaceVariant,
-                      ),
-                ),
-                const SizedBox(height: AppSpacing.xxs),
-                Text(
-                  rank == null ? 'ยังไม่มีอันดับ' : 'อันดับ #$rank',
-                  style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                        color: const Color(0xFFF2C14E),
-                        fontWeight: FontWeight.w800,
-                      ),
-                ),
-                const SizedBox(height: AppSpacing.xxs),
-                Text(
-                  'บนตารางอันดับ',
-                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                        color: Theme.of(context).colorScheme.onSurfaceVariant,
-                      ),
-                ),
-                if (matches == 0) ...[
-                  const SizedBox(height: AppSpacing.xs),
-                  Text(
-                    'ลงสนามครั้งแรกเพื่อเริ่มบันทึกสถิติ',
-                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                          color: Theme.of(context).colorScheme.onSurfaceVariant,
-                        ),
-                  ),
-                ],
-              ],
-            ),
-            FilledButton(
-              onPressed: () => context.go('/leaderboard'),
-              child: const Text('ดูตารางอันดับ'),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
 }
 
 class _SectionHeading extends StatelessWidget {
@@ -526,7 +501,7 @@ class _SectionHeading extends StatelessWidget {
           Text(
             subtitle,
             style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                  color: const Color(0xFFF4F7FB),
                 ),
           ),
         ],
@@ -544,56 +519,109 @@ class _StatisticsCard extends StatelessWidget {
     final wins = statistics['wins'] ?? 0;
     final losses = statistics['losses'] ?? 0;
     final winRate = statistics['winRate'];
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        Container(
-          padding: const EdgeInsets.symmetric(vertical: AppSpacing.md),
-          decoration: const BoxDecoration(
-            color: Color(0xE60E2438),
-            border: Border(
-              top: BorderSide(color: Color(0xFF739ABD), width: 2),
-              bottom: BorderSide(color: Color(0x6682A9C7)),
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final itemWidth = (constraints.maxWidth - AppSpacing.sm) / 2;
+        return Wrap(
+          spacing: AppSpacing.sm,
+          runSpacing: AppSpacing.sm,
+          children: [
+            SizedBox(
+              width: itemWidth,
+              child: _Statistic(
+                value: '$matches',
+                label: 'แข่งขัน',
+                icon: Icons.sports_esports_rounded,
+                accent: const Color(0xFF9DDCFF),
+              ),
             ),
-          ),
-          child: Wrap(
-            alignment: WrapAlignment.spaceEvenly,
-            spacing: AppSpacing.lg,
-            runSpacing: AppSpacing.md,
-            children: [
-              _Statistic(value: '$matches', label: 'แข่งขัน'),
-              _Statistic(value: '$wins', label: 'ชนะ'),
-              _Statistic(value: '$losses', label: 'แพ้'),
-              _Statistic(
+            SizedBox(
+              width: itemWidth,
+              child: _Statistic(
+                value: '$wins',
+                label: 'ชนะ',
+                icon: Icons.emoji_events_rounded,
+                accent: const Color(0xFF67DDA8),
+              ),
+            ),
+            SizedBox(
+              width: itemWidth,
+              child: _Statistic(
+                value: '$losses',
+                label: 'แพ้',
+                icon: Icons.heart_broken_rounded,
+                accent: const Color(0xFFFF8A8A),
+              ),
+            ),
+            SizedBox(
+              width: itemWidth,
+              child: _Statistic(
                 value: winRate == null ? '—' : '$winRate%',
                 label: 'อัตราชนะ',
+                icon: Icons.insights_rounded,
+                accent: const Color(0xFFFFD35A),
               ),
-            ],
-          ),
-        ),
-      ],
+            ),
+          ],
+        );
+      },
     );
   }
 }
 
 class _Statistic extends StatelessWidget {
-  const _Statistic({required this.value, required this.label});
+  const _Statistic({
+    required this.value,
+    required this.label,
+    required this.icon,
+    required this.accent,
+  });
 
   final String value;
   final String label;
+  final IconData icon;
+  final Color accent;
 
   @override
-  Widget build(BuildContext context) => Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(value, style: Theme.of(context).textTheme.titleLarge),
-          Text(
-            label,
-            style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                  color: Theme.of(context).colorScheme.onSurfaceVariant,
-                ),
-          ),
-        ],
+  Widget build(BuildContext context) => Container(
+        constraints: const BoxConstraints(minHeight: 82),
+        padding: const EdgeInsets.all(AppSpacing.md),
+        decoration: BoxDecoration(
+          color: const Color(0xB30A1B2E),
+          borderRadius: AppRadius.allMd,
+          border: Border.all(color: accent.withValues(alpha: 0.38)),
+        ),
+        child: Row(
+          children: [
+            Icon(icon, size: 22, color: accent),
+            const SizedBox(width: AppSpacing.sm),
+            Expanded(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    value,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                          color: const Color(0xFFFFFFFF),
+                          fontWeight: FontWeight.w900,
+                        ),
+                  ),
+                  Text(
+                    label,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          color: const Color(0xFFB8CEF0),
+                        ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
       );
 }
 
