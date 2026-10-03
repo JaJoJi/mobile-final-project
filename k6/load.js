@@ -18,22 +18,33 @@
 // (both bots send ready within a few ms of each other, so that skew is
 // about the action latency): the numbers are a conservative upper bound.
 //
-// Needs k6 >= 1.0 (k6/websockets). Run:
+// Needs k6 1.3 (k6/experimental/websockets; plain k6/websockets only exists in newer releases). Run:
 //   # one stack on :80 (nginx) or :3000 (one nest)
 //   docker run --rm -i --network host -e TARGETS=http://localhost grafana/k6 run - < k6/load.js
 //   # several instances, round-robin (exercises the Redis pub/sub path)
 //   k6 run -e TARGETS=http://nest-1:3000,http://nest-2:3000,http://nest-3:3000 -e MATCHES=50 k6/load.js
 //
+// Realism (first run on the VM, 2026-10-03: 100 players queued in 3 s, the
+// backend pairs ONE match per second (BullMQ poll 1000 ms), so pair 21+
+// timed out): players arrive spread over ARRIVAL_SPREAD_S (default 60 s ->
+// 0.83 matches/s, under that ceiling) and "think" THINK_MS before every
+// ready (default 16 s), so with ROUNDS=4 a match lasts ~65 s and the last
+// pairs overlap the first ones: ~MATCHES matches are live at the same time.
+//
 // Env: TARGETS (comma list, default http://localhost) - MATCHES (50) -
-//      ROUNDS (3) - EVENT_TIMEOUT_MS (20000)
+//      ROUNDS (4) - THINK_MS (16000) - ARRIVAL_SPREAD_S (60) -
+//      MM_TIMEOUT_MS (90000) - EVENT_TIMEOUT_MS (20000)
 import http from 'k6/http';
-import { WebSocket } from 'k6/websockets';
+import { WebSocket } from 'k6/experimental/websockets';
 import { Trend, Counter, Rate } from 'k6/metrics';
 import { check } from 'k6';
 
 const TARGETS = (__ENV.TARGETS || 'http://localhost').split(',').map((s) => s.trim()).filter(Boolean);
 const MATCHES = parseInt(__ENV.MATCHES || '50', 10);
-const ROUNDS = parseInt(__ENV.ROUNDS || '3', 10);
+const ROUNDS = parseInt(__ENV.ROUNDS || '4', 10);
+const THINK_MS = parseInt(__ENV.THINK_MS || '16000', 10);
+const ARRIVAL_SPREAD_S = parseInt(__ENV.ARRIVAL_SPREAD_S || '60', 10);
+const MM_TIMEOUT_MS = parseInt(__ENV.MM_TIMEOUT_MS || '90000', 10);
 const EVENT_TIMEOUT_MS = parseInt(__ENV.EVENT_TIMEOUT_MS || '20000', 10);
 
 const roundStateLatency = new Trend('round_state_latency_ms', true);
@@ -49,7 +60,7 @@ export const options = {
       executor: 'per-vu-iterations',
       vus: MATCHES * 2,
       iterations: 1,
-      maxDuration: '10m',
+      maxDuration: '15m',
     },
   },
   thresholds: {
@@ -85,6 +96,12 @@ function register(base) {
 
 export default function () {
   const base = TARGETS[__VU % TARGETS.length];
+  // spread arrivals; the two players of a match are neighbours in the queue
+  const arrive = new Promise((r) => setTimeout(r, Math.floor(Math.random() * ARRIVAL_SPREAD_S * 1000)));
+  return arrive.then(() => play(base));
+}
+
+function play(base) {
   const token = register(base);
 
   let done = false;
@@ -110,9 +127,15 @@ export default function () {
     try { ws.close(); } catch (e) { /* already closed */ }
   };
 
-  const arm = (what) => {
+  const arm = (what, ms) => {
     if (timer) clearTimeout(timer);
-    timer = setTimeout(() => finish(`timeout waiting for ${what} (round ${round})`), EVENT_TIMEOUT_MS);
+    timer = setTimeout(() => finish(`timeout waiting for ${what} (round ${round})`), ms || EVENT_TIMEOUT_MS);
+  };
+
+  // think time (no timeout armed), then ready
+  const thinkThenReady = () => {
+    if (timer) clearTimeout(timer);
+    setTimeout(() => { if (!done) sendReady(); }, THINK_MS);
   };
 
   const sendReady = () => {
@@ -125,7 +148,7 @@ export default function () {
     if (done) return;
     if (ev === 'game:error') {
       // a rejected buy (e.g. not enough gold) is fine: carry on to ready
-      if (buyAt && /shop|buy/.test(String((p && p.code) || ''))) { buyAt = 0; sendReady(); return; }
+      if (buyAt && /shop|buy/.test(String((p && p.code) || ''))) { buyAt = 0; thinkThenReady(); return; }
       return;
     }
     if (ev === 'game:match:phase') {
@@ -146,7 +169,7 @@ export default function () {
     } else if (ev === 'game:match:state' && buyAt) {
       actionLatency.add(Date.now() - buyAt);
       buyAt = 0;
-      sendReady();
+      thinkThenReady();
     } else if (ev === 'game:combat:events' && readyAt && !gotCombat) {
       gotCombat = true;
       combatLatency.add(Date.now() - readyAt);
@@ -170,7 +193,7 @@ export default function () {
     } else if (m.indexOf('40/game') === 0) {
       joinAt = Date.now();                                       // namespace connected -> queue
       emit('game:matchmaking:join', {});
-      arm('matchmaking pair');
+      arm('matchmaking pair', MM_TIMEOUT_MS);
     } else if (m.indexOf('44/game') === 0) {
       finish('namespace refused: ' + m);
     } else if (m.indexOf('42/game,') === 0) {
