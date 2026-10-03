@@ -376,6 +376,73 @@
         enabled: true
         daemon_reload: true
 
+    # ── Backup of jenkins_home (#288) ───────────────────────────────────
+    # Everything that cannot be re-created from git: credentials.xml and
+    # secrets/ (master.key decrypts the credentials -- treat the archive
+    # as a secret), job + user + node config, plugin list. Excluded:
+    # workspaces, build logs/artifacts, caches, the war (all rebuildable).
+    # Daily, root-only, last 7 kept. Copy them off the VM too.
+    - name: Jenkins backup dir
+      ansible.builtin.file:
+        path: /var/backups/jenkins
+        state: directory
+        owner: root
+        group: root
+        mode: "0700"
+
+    - name: Jenkins backup script
+      ansible.builtin.copy:
+        dest: /usr/local/sbin/jenkins-backup
+        mode: "0750"
+        content: |
+          #!/bin/bash
+          # Managed by infra/ansible/jenkins-host.yml
+          set -euo pipefail
+          umask 077
+          OUT=/var/backups/jenkins
+          name="jenkins-home-$(date +%Y%m%d-%H%M).tar.gz"
+          ls -1 /var/lib/jenkins/plugins 2>/dev/null | grep -E '\.(jpi|hpi)$' | sort > "$OUT/plugins-installed.txt" || true
+          tar czf "$OUT/$name" -C /var/lib/jenkins \
+            --exclude='./workspace' --exclude='./ci-cache' --exclude='./caches' \
+            --exclude='./logs' --exclude='./war' --exclude='./plugins' \
+            --exclude='./jobs/*/builds' --exclude='./jobs/*/*/builds' \
+            --exclude='./jobs/*/branches/*/builds' \
+            .
+          ls -1t "$OUT"/jenkins-home-*.tar.gz | tail -n +8 | xargs -r rm -f
+          echo "saved $OUT/$name ($(du -h "$OUT/$name" | cut -f1))"
+
+    - name: Jenkins backup service
+      ansible.builtin.copy:
+        dest: /etc/systemd/system/jenkins-backup.service
+        mode: "0644"
+        content: |
+          [Unit]
+          Description=Backup of jenkins_home (credentials, secrets, job config)
+          [Service]
+          Type=oneshot
+          ExecStart=/usr/local/sbin/jenkins-backup
+
+    - name: Jenkins backup timer
+      ansible.builtin.copy:
+        dest: /etc/systemd/system/jenkins-backup.timer
+        mode: "0644"
+        content: |
+          [Unit]
+          Description=Daily backup of jenkins_home
+          [Timer]
+          OnCalendar=*-*-* 03:15:00
+          Persistent=true
+          RandomizedDelaySec=10m
+          [Install]
+          WantedBy=timers.target
+
+    - name: Jenkins backup timer enabled
+      ansible.builtin.systemd_service:
+        name: jenkins-backup.timer
+        state: started
+        enabled: true
+        daemon_reload: true
+
     - name: Apply pending handlers before verifying
       ansible.builtin.meta: flush_handlers
 
