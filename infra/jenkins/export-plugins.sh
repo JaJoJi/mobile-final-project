@@ -11,7 +11,7 @@
 set -euo pipefail
 : "${JENKINS_URL:?set JENKINS_URL}" "${JENKINS_USER:?set JENKINS_USER}" "${JENKINS_TOKEN:?set JENKINS_TOKEN}"
 out="$(dirname "$(readlink -f "$0")")/plugins.txt"
-curl -fsS --netrc-file <(printf 'machine %s login %s password %s\n' \
+curl -g -fsS --netrc-file <(printf 'machine %s login %s password %s\n' \
     "$(echo "$JENKINS_URL" | sed -E 's#https?://([^/:]+).*#\1#')" "$JENKINS_USER" "$JENKINS_TOKEN") \
   "${JENKINS_URL%/}/pluginManager/api/json?depth=1&tree=plugins[shortName,version]" \
   | python3 -c "import json,sys; [print(p['shortName']+':'+p['version']) for p in sorted(json.load(sys.stdin)['plugins'], key=lambda p: p['shortName'])]" \
