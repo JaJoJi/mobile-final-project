@@ -140,6 +140,41 @@
         path: "{{ repo_dir }}/infra/uni-vm/app/deploy.sh"
         mode: "0755"
 
+    # ── App HTTPS (#139) ────────────────────────────────────────────────
+    # Self-signed cert so the 443 listener works out of the box (the VM is
+    # behind the campus NAT, no public DNS name -> no Let's Encrypt). Put a
+    # real cert/key at the same paths to replace it, then `up -d nginx`.
+    # Readable by the image's nginx user (uid 101) only.
+    - name: App TLS dir
+      ansible.builtin.file:
+        path: /etc/auto-chess/tls
+        state: directory
+        owner: root
+        group: root
+        mode: "0755"
+
+    - name: App TLS key + certificate (once)
+      ansible.builtin.command: >
+        openssl req -x509 -newkey rsa:4096 -sha256 -nodes -days 825
+        -subj "/CN={{ ansible_facts.hostname }}"
+        -addext "subjectAltName=DNS:{{ ansible_facts.hostname }},DNS:localhost,IP:127.0.0.1{{ (',IP:' ~ ansible_facts.default_ipv4.address) if ansible_facts.default_ipv4 is defined and ansible_facts.default_ipv4.address is defined else '' }}"
+        -keyout /etc/auto-chess/tls/server.key
+        -out /etc/auto-chess/tls/server.crt
+      args:
+        creates: /etc/auto-chess/tls/server.crt
+
+    - name: App TLS key readable by the nginx user only
+      ansible.builtin.file:
+        path: /etc/auto-chess/tls/server.key
+        owner: "101"
+        group: "101"
+        mode: "0600"
+
+    - name: App TLS certificate is public
+      ansible.builtin.file:
+        path: /etc/auto-chess/tls/server.crt
+        mode: "0644"
+
     # ── Vault (#223) ────────────────────────────────────────────────────
     # Self-signed TLS for Vault's listener (only compose services talk to
     # it, they pin this cert as their CA). The key stays readable only by

@@ -135,3 +135,36 @@ $C down -v         # DELETES database, Vault data, dashboards (needs re-bootstra
 | No internet on VM | `sudo systemctl start psu-autologin.service`; `journalctl -u psu-autologin -n 30` |
 | Grafana empty | `$C logs alloy`, `$C logs prometheus`; targets page (section 6) |
 | Disk filling | `docker system df`; `docker image prune -f` |
+
+## 11. Mobile app (release APK, #194)
+
+**Jenkins builds it**: every build of `main` (after the image is published)
+runs *Mobile · build APK* and archives `apk/auto-chess-<commit>.apk`
+(version `0.1.<build number>`, debug-signed release build: installable with
+`adb` or "unknown sources", no Play Store key). The backend address is baked
+in at build time from the job parameter `APK_API_BASE_URL` (default
+`http://172.30.58.10`, the university VM; `WS_BASE_URL` is derived) -- change
+it with *Build with Parameters* if the VM's address changes. Turn the stage
+off with `ENABLE_APK_BUILD`.
+
+```bash
+# download from the Jenkins build page (Artifacts), then on the machine with the emulator:
+adb install -r auto-chess-<commit>.apk
+```
+
+The emulator must be on a network that reaches the VM (PSU Wi-Fi/VPN):
+`curl http://<vm-ip>/health` from the same machine first. Cleartext http and
+the INTERNET permission are enabled in `mobile/android/app/src/main/AndroidManifest.xml`
+(release builds don't get INTERNET from Flutter). Once the VM serves a real
+HTTPS certificate, change `APK_API_BASE_URL` to `https://...`.
+
+Local build (needs the Android SDK):
+
+```bash
+cd mobile
+flutter build apk --release --dart-define=API_BASE_URL=http://<vm-ip> --dart-define=WS_BASE_URL=ws://<vm-ip>
+# -> build/app/outputs/flutter-apk/app-release.apk
+```
+
+Not verified end to end yet: first `main` build with the stage (Gradle
+download, ~10 min, cached in `/var/lib/jenkins/ci-cache/gradle` afterwards).

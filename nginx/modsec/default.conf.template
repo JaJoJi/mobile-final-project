@@ -6,8 +6,15 @@
 #
 # ModSecurity is enabled globally by the image (modsecurity.conf +
 # setup.conf.template here); nothing per-location is needed.
-# Rendered with envsubst at start: only ${PORT} is an env var below --
-# nginx variables like $host are left alone.
+# Rendered with envsubst at start: ${PORT}, ${SSL_PORT}, ${SSL_*} and
+# ${HTTPS_REDIRECT} are env vars below -- nginx variables like $host are
+# left alone.
+
+# HTTPS_REDIRECT=on: plain-HTTP requests to the app get 301 -> https.
+map "$scheme:${HTTPS_REDIRECT}" $force_https {
+    "http:on" 1;
+    default   0;
+}
 
 upstream backend {
     least_conn;
@@ -20,7 +27,19 @@ upstream backend {
 server {
     # Unprivileged image: nginx listens on 8080 inside, compose maps 80->8080.
     listen ${PORT} default_server;
+    # HTTPS (#139): same server block, TLS on SSL_PORT (8443 inside, 443 on the host).
+    listen ${SSL_PORT} ssl default_server;
     server_name _;
+
+    ssl_certificate     ${SSL_CERT_FILE};
+    ssl_certificate_key ${SSL_CERT_KEY_FILE};
+    ssl_dhparam         /etc/ssl/certs/dhparam-${SSL_DH_BITS}.pem;
+    ssl_protocols       ${SSL_PROTOCOLS};
+    ssl_ciphers         ${SSL_CIPHERS};
+    ssl_session_cache   shared:SSL:5m;
+    ssl_session_timeout 1d;
+    ssl_session_tickets off;
+    add_header Strict-Transport-Security "max-age=15552000" always;
 
     # ─── CORS for browser clients (Flutter web, etc.) ───
     add_header 'Access-Control-Allow-Origin'  '*'                                   always;
@@ -48,6 +67,7 @@ server {
     }
 
     location / {
+        if ($force_https) { return 301 https://$host$request_uri; }
         proxy_pass http://backend;
         proxy_http_version 1.1;
         proxy_set_header Host              $host;

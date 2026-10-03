@@ -3,11 +3,13 @@ import 'package:flutter/material.dart';
 import '../../../core/theme/app_motion.dart';
 import '../../../core/theme/app_spacing.dart';
 import '../../../core/theme/game_theme.dart';
+import '../../../core/utils/unit_star_level.dart';
 import '../../../core/widgets/game_art_frame.dart';
+import '../../../core/widgets/health_bar.dart';
 import '../../../core/widgets/unit_avatar.dart';
-import '../../../core/widgets/unit_detail_sheet.dart';
 import '../../../shared/models/match_state.dart';
 import '../../../shared/models/unit.dart';
+import '../../../shared/models/unit_catalog.dart';
 import '../match_controller.dart';
 import 'board_slot.dart';
 import 'stone_board_tile.dart';
@@ -272,7 +274,7 @@ class _BoardArena extends StatelessWidget {
                             onTap: () => onSelect(RosterArea.board, slot),
                             onLongPress: unit == null
                                 ? null
-                                : () => showUnitDetailSheet(
+                                : () => _showUnitDetailSheet(
                                       context,
                                       unitId: unit.unitId,
                                       star: unit.star,
@@ -377,7 +379,7 @@ class _BenchBar extends StatelessWidget {
                           onTap: () => onSelect(RosterArea.bench, slot),
                           onLongPress: unit == null
                               ? null
-                              : () => showUnitDetailSheet(
+                              : () => _showUnitDetailSheet(
                                     context,
                                     unitId: unit.unitId,
                                     star: unit.star,
@@ -594,7 +596,7 @@ class _OpponentScout extends StatelessWidget {
                                       star: entry.star,
                                       side: UnitSide.enemy,
                                       expand: true,
-                                      onLongPress: () => showUnitDetailSheet(
+                                      onLongPress: () => _showUnitDetailSheet(
                                         context,
                                         unitId: entry.unitId,
                                         star: entry.star,
@@ -627,5 +629,132 @@ class _EmptyOpponentSlot extends StatelessWidget {
   Widget build(BuildContext context) => Semantics(
         label: 'ช่องคู่แข่ง ${slot + 1} ว่าง',
         child: const SizedBox.expand(),
+      );
+}
+
+void _showUnitDetailSheet(
+  BuildContext context, {
+  required UnitId unitId,
+  required int star,
+  int? hp,
+  int? maxHp,
+}) {
+  showModalBottomSheet<void>(
+    context: context,
+    showDragHandle: true,
+    builder: (context) => _UnitDetailSheet(
+      unitId: unitId,
+      star: star,
+      hp: hp,
+      maxHp: maxHp,
+    ),
+  );
+}
+
+class _UnitDetailSheet extends StatelessWidget {
+  const _UnitDetailSheet({
+    required this.unitId,
+    required this.star,
+    this.hp,
+    this.maxHp,
+  });
+
+  final UnitId unitId;
+  final int star;
+  final int? hp;
+  final int? maxHp;
+
+  @override
+  Widget build(BuildContext context) {
+    final entry = unitCatalog[unitId]!;
+    final displayStar = displayStarLevel(star);
+    final ability = entry.abilities[star].description;
+    return SafeArea(
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(
+          AppSpacing.lg,
+          0,
+          AppSpacing.lg,
+          AppSpacing.lg,
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                UnitAvatar(
+                  unitId: unitId.toJson(),
+                  star: star,
+                  size: UnitAvatarSize.sm,
+                  variant: UnitAvatarVariant.bench,
+                ),
+                const SizedBox(width: AppSpacing.md),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        entry.name,
+                        style: Theme.of(context).textTheme.headlineSmall,
+                      ),
+                      Text('$displayStar ดาว · ${entry.role}'),
+                    ],
+                  ),
+                ),
+                _CountBadge(label: '${entry.cost} ทอง'),
+              ],
+            ),
+            if (hp != null && maxHp != null) ...[
+              const SizedBox(height: AppSpacing.md),
+              HealthBar(current: hp!, max: maxHp!, size: HealthBarSize.lg),
+            ],
+            const SizedBox(height: AppSpacing.md),
+            Row(
+              children: [
+                Expanded(child: _StatTile(label: 'HP', value: '${entry.hp}')),
+                const SizedBox(width: AppSpacing.sm),
+                Expanded(
+                  child: _StatTile(
+                    label: 'ATK',
+                    value: '${entry.attackAtFusionTier(star)}',
+                  ),
+                ),
+                const SizedBox(width: AppSpacing.sm),
+                Expanded(child: _StatTile(label: 'SPD', value: '${entry.spd}')),
+              ],
+            ),
+            const SizedBox(height: AppSpacing.md),
+            Text('ความสามารถ', style: Theme.of(context).textTheme.titleMedium),
+            const SizedBox(height: AppSpacing.xs),
+            Text(ability),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _StatTile extends StatelessWidget {
+  const _StatTile({required this.label, required this.value});
+
+  final String label;
+  final String value;
+
+  @override
+  Widget build(BuildContext context) => DecoratedBox(
+        decoration: BoxDecoration(
+          color: Theme.of(context).colorScheme.surfaceContainerHigh,
+          borderRadius: AppRadius.allSm,
+        ),
+        child: Padding(
+          padding: const EdgeInsets.all(AppSpacing.sm),
+          child: Column(
+            children: [
+              Text(label, style: Theme.of(context).textTheme.labelSmall),
+              Text(value, style: Theme.of(context).textTheme.titleMedium),
+            ],
+          ),
+        ),
       );
 }

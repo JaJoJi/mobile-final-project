@@ -26,6 +26,13 @@ x-nest: &nest
       condition: service_healthy
     vault-agent:
       condition: service_started
+    # Only present when the `pgbouncer` profile is on (see below).
+    pgbouncer:
+      condition: service_started
+      required: false
+    pgbouncer-replica:
+      condition: service_started
+      required: false
   # Wait for Vault Agent to render the secrets, load them into the process
   # environment only (never onto disk), then start the app.
   entrypoint:
@@ -119,6 +126,91 @@ services:
       timeout: 5s
       retries: 20
 
+  # pgBouncer (#139), OPT-IN via the `pgbouncer` compose profile: transaction
+  # pooling in front of Postgres, one for the primary (writes) and one for
+  # the replica (reads). Off by default because transaction pooling has not
+  # been proven against the app yet -- enable it, test, keep or roll back.
+  # The password is read from the Vault-rendered file at start.
+  pgbouncer:
+    image: edoburu/pgbouncer:v1.26.0-p0@sha256:b17551c776ef7e5769ef80b956d20f85e2fd25dd8912d31d58f782aad495b711
+    profiles: ["pgbouncer"]
+    restart: unless-stopped
+    depends_on:
+      postgres-primary:
+        condition: service_healthy
+      vault-agent:
+        condition: service_started
+    environment: &pgb-env
+      POSTGRES_USER: ${POSTGRES_USER:?}
+      POSTGRES_DB: ${POSTGRES_DB:?}
+      POOL_MODE: transaction
+      DEFAULT_POOL_SIZE: "20"
+      MAX_CLIENT_CONN: "1000"
+      AUTH_TYPE: scram-sha-256
+      LISTEN_PORT: "6432"
+    entrypoint:
+      - sh
+      - -c
+      - |
+        until [ -s /vault/secrets/pg_password ]; do sleep 3; done
+        export DATABASE_URL="postgres://$$POSTGRES_USER:$$(cat /vault/secrets/pg_password)@postgres-primary:5432/$$POSTGRES_DB"
+        exec /entrypoint.sh /usr/bin/pgbouncer /etc/pgbouncer/pgbouncer.ini
+    volumes:
+      - vault_secrets:/vault/secrets:ro
+    mem_limit: 128m
+
+  pgbouncer-replica:
+    image: edoburu/pgbouncer:v1.26.0-p0@sha256:b17551c776ef7e5769ef80b956d20f85e2fd25dd8912d31d58f782aad495b711
+    profiles: ["pgbouncer"]
+    restart: unless-stopped
+    depends_on:
+      postgres-replica:
+        condition: service_healthy
+      vault-agent:
+        condition: service_started
+    environment: *pgb-env
+    entrypoint:
+      - sh
+      - -c
+      - |
+        until [ -s /vault/secrets/pg_password ]; do sleep 3; done
+        export DATABASE_URL="postgres://$$POSTGRES_USER:$$(cat /vault/secrets/pg_password)@postgres-replica:5432/$$POSTGRES_DB"
+        exec /entrypoint.sh /usr/bin/pgbouncer /etc/pgbouncer/pgbouncer.ini
+    volumes:
+      - vault_secrets:/vault/secrets:ro
+    mem_limit: 128m
+
+  # Daily base backup of the primary (#139): pg_basebackup over the
+  # replication role into its own volume, last 7 kept. First run right at
+  # start (proves it works), then every day at 03:00 UTC. Restore: see
+  # runbook.md section 12.
+  pg-backup:
+    image: postgres:16-alpine@sha256:721873c34ceb9f8d8fc265984940dc982404c105f19ad51be9fdc5970a6080ea
+    restart: unless-stopped
+    depends_on:
+      postgres-primary:
+        condition: service_healthy
+    entrypoint:
+      - sh
+      - -c
+      - |
+        until [ -s /vault/secrets/repl_password ]; do sleep 3; done
+        export PGPASSWORD="$$(cat /vault/secrets/repl_password)"
+        while true; do
+          d=/backup/base-$$(date -u +%Y%m%d-%H%M)
+          if pg_basebackup -h postgres-primary -U replicator -D "$$d" -Ft -z -Xs --checkpoint=fast; then
+            echo "backup ok: $$d ($$(du -sh "$$d" | cut -f1))"
+            ls -1dt /backup/base-* | tail -n +8 | xargs -r rm -rf
+          else
+            echo "backup FAILED"; rm -rf "$$d"
+          fi
+          sleep $$(( (86400 + 3*3600 - $$(date -u +%s) % 86400) % 86400 + 60 ))
+        done
+    volumes:
+      - pg_backups:/backup
+      - vault_secrets:/vault/secrets:ro
+    mem_limit: 128m
+
   redis:
     image: redis:7-alpine@sha256:858f009f9709ce576febc734aa78b8f6d624b82571f9ddb6bda4377c833b3499
     restart: unless-stopped
@@ -158,7 +250,15 @@ services:
     depends_on: [nest-1, nest-2, nest-3]
     ports:
       - "80:8080"
+      - "443:8443"
     environment:
+      # HTTPS (#139): cert + key from /etc/auto-chess/tls (site.yml makes a
+      # self-signed one; drop a real cert there to replace it).
+      SSL_CERT_FILE: /tls/server.crt
+      SSL_CERT_KEY_FILE: /tls/server.key
+      # `on` = plain HTTP answers 301 -> https. Off by default: the
+      # self-signed cert is not trusted by the mobile app / emulator.
+      HTTPS_REDIRECT: ${HTTPS_REDIRECT:-off}
       MODSEC_RULE_ENGINE: ${MODSEC_RULE_ENGINE:-DetectionOnly}
       BLOCKING_PARANOIA: 1
       # Fixed, not `auto`: the VM is shared with nest x3, Postgres, monitoring.
@@ -169,6 +269,7 @@ services:
     volumes:
       - ../../../nginx/modsec/default.conf.template:/etc/nginx/templates/conf.d/default.conf.template:ro
       - ../../../nginx/modsec/setup.conf.template:/etc/nginx/templates/modsecurity.d/setup.conf.template:ro
+      - /etc/auto-chess/tls:/tls:ro
     # CRS workers can grow under load (#224): cap it so a runaway worker
     # gets the WAF restarted instead of starving the app.
     mem_limit: 512m
@@ -187,7 +288,7 @@ services:
   # One-shot: a fresh named volume is root-owned, but Vault runs as the
   # `vault` user (uid 100) and must write its Raft data there.
   vault-perms:
-    image: hashicorp/vault:2.1.1
+    image: hashicorp/vault:2.1.1@sha256:47f14a6acb98f48d798a07df7c83f23a6e636e1cf724c5f8ff165cb32667a1e2
     user: "0"
     entrypoint: ["chown", "-R", "100:1000", "/vault/data"]
     volumes:
@@ -195,7 +296,7 @@ services:
     restart: "no"
 
   vault:
-    image: hashicorp/vault:2.1.1
+    image: hashicorp/vault:2.1.1@sha256:47f14a6acb98f48d798a07df7c83f23a6e636e1cf724c5f8ff165cb32667a1e2
     restart: unless-stopped
     command: ["server"]
     depends_on:
@@ -222,7 +323,7 @@ services:
   # and renders the secrets into the tmpfs volume. Retries while Vault is
   # sealed, so a reboot recovers by itself once someone unseals.
   vault-agent:
-    image: hashicorp/vault:2.1.1
+    image: hashicorp/vault:2.1.1@sha256:47f14a6acb98f48d798a07df7c83f23a6e636e1cf724c5f8ff165cb32667a1e2
     restart: unless-stopped
     user: "0"
     entrypoint: ["vault", "agent", "-config=/vault/config/agent.hcl"]
@@ -230,6 +331,15 @@ services:
     environment:
       POSTGRES_USER: ${POSTGRES_USER:?}
       POSTGRES_DB: ${POSTGRES_DB:?}
+      # Default: nest talks to Postgres directly. pgBouncer is OPT-IN (#139):
+      # in app.env set COMPOSE_PROFILES=pgbouncer and
+      #   DB_PRIMARY_HOST=pgbouncer DB_PRIMARY_PORT=6432
+      #   DB_REPLICA_HOST=pgbouncer-replica DB_REPLICA_PORT=6432
+      # then `up -d` (runbook.md section 12). Unset them to go back.
+      DB_PRIMARY_HOST: ${DB_PRIMARY_HOST:-postgres-primary}
+      DB_PRIMARY_PORT: ${DB_PRIMARY_PORT:-5432}
+      DB_REPLICA_HOST: ${DB_REPLICA_HOST:-postgres-replica}
+      DB_REPLICA_PORT: ${DB_REPLICA_PORT:-5432}
     volumes:
       - ../vault/agent.hcl:/vault/config/agent.hcl:ro
       - /etc/auto-chess/vault-tls/vault.crt:/vault/tls/vault.crt:ro
@@ -241,7 +351,7 @@ services:
   # Beyla: eBPF auto-instrumentation -> RED metrics of nest + nginx with no
   # code change. Needs host PID namespace + privileges for eBPF.
   beyla:
-    image: grafana/beyla:3.37.0
+    image: grafana/beyla:3.37.0@sha256:bbb325e07ad0f242cf6281b4a94ca026ec9504b2cf9a12d7db582e281727520f
     restart: unless-stopped
     privileged: true
     pid: host
@@ -255,7 +365,7 @@ services:
   # Alloy: the single collection agent -- container logs -> Loki, host
   # metrics -> Prometheus. Replaces Promtail.
   alloy:
-    image: grafana/alloy:v1.10.0
+    image: grafana/alloy:v1.10.0@sha256:1bc130e909116a4bf950eb5187a346007d3b796f96832b529acb14a64e41230f
     restart: unless-stopped
     user: "0"
     command:
@@ -275,7 +385,7 @@ services:
     mem_limit: 512m
 
   prometheus:
-    image: prom/prometheus:v3.15.0
+    image: prom/prometheus:v3.15.0@sha256:efd719c99d83b060d9daefdcf00360461adf279f45ef5391f8d111892118753e
     restart: unless-stopped
     command:
       - --config.file=/etc/prometheus/prometheus.yml
@@ -288,7 +398,7 @@ services:
     mem_limit: 384m
 
   loki:
-    image: grafana/loki:3.5.0
+    image: grafana/loki:3.5.0@sha256:4c431d2e6b9b38718694b31c5d56be7c80dc69c513215fde1aeb5b02cd4e2665
     restart: unless-stopped
     command: ["-config.file=/etc/loki/loki.yaml"]
     volumes:
@@ -299,7 +409,7 @@ services:
   # 2.7.2, not newer: the VM's virtual CPU has no SSE4.2 (x86-64-v1) and
   # Tempo >= 2.8 needs v2 ("only be run on AMD64 processors with v2").
   tempo:
-    image: grafana/tempo:2.7.2
+    image: grafana/tempo:2.7.2@sha256:4b0277a9b572a4b1fa43b01468e58911ec214dd69d033f2cd476596d14de9fe3
     restart: unless-stopped
     user: "0"
     command: ["-config.file=/etc/tempo/tempo.yaml"]
@@ -312,7 +422,7 @@ services:
   # Datasources (Prometheus, Loki, Tempo) and the overview dashboard are
   # provisioned from files -- nothing to click together.
   grafana:
-    image: grafana/grafana:12.0.0
+    image: grafana/grafana:12.0.0@sha256:263cbefd5d9b179893c47c415daab4da5c1f3d6770154741eca4f45c81119884
     restart: unless-stopped
     depends_on: [prometheus, loki, tempo, vault-agent]
     entrypoint:
@@ -337,6 +447,7 @@ services:
 volumes:
   pg_primary_data:
   pg_replica_data:
+  pg_backups:
   vault_data:
   # In-memory only: rendered secrets never touch the VM disk.
   vault_secrets:
