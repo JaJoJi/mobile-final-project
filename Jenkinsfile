@@ -328,7 +328,7 @@ pipeline {
       when {
         allOf {
           anyOf { branch 'dev'; branch 'main'; changeRequest target: 'dev'; changeRequest target: 'main' }
-          expression { params.ENABLE_INTEGRATION_TESTS != false || params.ENABLE_SECURITY_SCAN != false }
+          expression { params.ENABLE_INTEGRATION_TESTS != false || params.ENABLE_SECURITY_SCAN != false || params.ENABLE_LOAD_TEST == true }
         }
       }
       environment { IMAGE = "${env.IMAGE_NAME}:${env.IMAGE_TAG}"; K6_IMAGE = "${IMAGES.k6}" }
