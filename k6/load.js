@@ -33,7 +33,7 @@
 //
 // Env: TARGETS (comma list, default http://localhost) - MATCHES (50) -
 //      ROUNDS (4) - THINK_MS (16000) - ARRIVAL_SPREAD_S (60) -
-//      MM_TIMEOUT_MS (90000) - EVENT_TIMEOUT_MS (20000)
+//      MM_TIMEOUT_MS (90000) - EVENT_TIMEOUT_MS (20000) - LINGER_MS (3000)
 import http from 'k6/http';
 import { WebSocket } from 'k6/experimental/websockets';
 import { Trend, Counter, Rate } from 'k6/metrics';
@@ -44,6 +44,7 @@ const MATCHES = parseInt(__ENV.MATCHES || '50', 10);
 const ROUNDS = parseInt(__ENV.ROUNDS || '4', 10);
 const THINK_MS = parseInt(__ENV.THINK_MS || '16000', 10);
 const ARRIVAL_SPREAD_S = parseInt(__ENV.ARRIVAL_SPREAD_S || '60', 10);
+const LINGER_MS = parseInt(__ENV.LINGER_MS || '3000', 10);
 const MM_TIMEOUT_MS = parseInt(__ENV.MM_TIMEOUT_MS || '90000', 10);
 const EVENT_TIMEOUT_MS = parseInt(__ENV.EVENT_TIMEOUT_MS || '20000', 10);
 
@@ -105,6 +106,7 @@ function play(base) {
   const token = register(base);
 
   let done = false;
+  let closed = false;
   let matchId = null;
   let round = 1;
   let roundsPlayed = 0;
@@ -124,7 +126,14 @@ function play(base) {
     if (timer) clearTimeout(timer);
     playerFailed.add(err ? 1 : 0);
     if (err) console.error(`VU${__VU} failed: ${err}`); else playersCompleted.add(1);
-    try { ws.close(); } catch (e) { /* already closed */ }
+    // Linger after a successful last round: leaving at once is a disconnect
+    // that can flip the match to `finished` while the OTHER player's last
+    // combat_done is still being resolved (seen on the VM as
+    // match.phase_advance_failed on the final round).
+    setTimeout(() => {
+      try { ws.close(); } catch (e) { /* already closed */ }
+      closed = true;
+    }, err ? 0 : LINGER_MS);
   };
 
   const arm = (what, ms) => {
@@ -207,6 +216,6 @@ function play(base) {
 
   // keep the iteration alive until the player is done (event-loop driven)
   return new Promise((resolve) => {
-    const t = setInterval(() => { if (done) { clearInterval(t); resolve(); } }, 200);
+    const t = setInterval(() => { if (closed) { clearInterval(t); resolve(); } }, 200);
   });
 }
