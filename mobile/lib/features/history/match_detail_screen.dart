@@ -244,7 +244,7 @@ class _MatchResultCard extends StatelessWidget {
                   : winnerName == null
                       ? Icons.handshake_outlined
                       : didLose
-                          ? Icons.close_rounded
+                          ? Icons.heart_broken_rounded
                           : Icons.emoji_events_rounded,
               color: resultColor,
             ),

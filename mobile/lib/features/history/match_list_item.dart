@@ -19,7 +19,10 @@ class MatchListItem extends StatelessWidget {
     final game = theme.extension<GameTheme>()!;
     final (color, icon) = switch (entry.outcome) {
       MatchOutcome.win => (game.success, Icons.emoji_events_outlined),
-      MatchOutcome.loss => (theme.colorScheme.error, Icons.close_rounded),
+      MatchOutcome.loss => (
+          theme.colorScheme.error,
+          Icons.heart_broken_rounded,
+        ),
       MatchOutcome.tie => (
           theme.colorScheme.onSurfaceVariant,
           Icons.remove_rounded,

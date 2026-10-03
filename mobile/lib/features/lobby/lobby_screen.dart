@@ -578,7 +578,7 @@ class _RecentMatchRow extends StatelessWidget {
       MatchOutcome.loss => (
           'แพ้',
           Theme.of(context).colorScheme.error,
-          Icons.close_rounded,
+          Icons.heart_broken_rounded,
         ),
       MatchOutcome.tie => (
           'เสมอ',
