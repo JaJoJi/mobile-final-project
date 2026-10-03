@@ -18,7 +18,7 @@
 // (both bots send ready within a few ms of each other, so that skew is
 // about the action latency): the numbers are a conservative upper bound.
 //
-// Needs k6 >= 1.0 (k6/websockets). Run:
+// Needs k6 1.3 (k6/experimental/websockets; plain k6/websockets only exists in newer releases). Run:
 //   # one stack on :80 (nginx) or :3000 (one nest)
 //   docker run --rm -i --network host -e TARGETS=http://localhost grafana/k6 run - < k6/load.js
 //   # several instances, round-robin (exercises the Redis pub/sub path)
@@ -27,7 +27,7 @@
 // Env: TARGETS (comma list, default http://localhost) - MATCHES (50) -
 //      ROUNDS (3) - EVENT_TIMEOUT_MS (20000)
 import http from 'k6/http';
-import { WebSocket } from 'k6/websockets';
+import { WebSocket } from 'k6/experimental/websockets';
 import { Trend, Counter, Rate } from 'k6/metrics';
 import { check } from 'k6';
 
