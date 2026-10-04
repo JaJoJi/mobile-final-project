@@ -11,10 +11,11 @@ jobs:
 
     steps:
       - name: Check source branch
+        if: github.head_ref != 'dev'
         run: |
-          if [ "${{ github.head_ref }}" != "dev" ]; then
-            echo "Only PRs from dev can merge into main."
-            exit 1
-          fi
-
-          echo "Valid branch flow: dev -> main"
+          echo "Only PRs from dev can merge into main."
+          exit 1
+    
+      - name: Confirm valid flow
+        if: github.head_ref == 'dev'
+        run: echo "Valid branch flow: dev -> main"
