@@ -1,0 +1,21 @@
+name: Branch Guard
+
+on:
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  branch-guard:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check source branch
+        if: github.head_ref != 'dev'
+        run: |
+          echo "Only PRs from dev can merge into main."
+          exit 1
+    
+      - name: Confirm valid flow
+        if: github.head_ref == 'dev'
+        run: echo "Valid branch flow: dev -> main"

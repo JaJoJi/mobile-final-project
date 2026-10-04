@@ -20,3 +20,6 @@ regexes = [
   # red in a throwaway demo branch. Not a credential for anything.
   '''k3Gh29sLpQ7vXz81MnB4cD5eF6gH7iJ0uV2wX3yZ''',
 ]
+paths = [
+  '''infra/jenkins/plugins\.txt'''
+]
