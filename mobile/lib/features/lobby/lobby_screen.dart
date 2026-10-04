@@ -602,8 +602,9 @@ class _RecentMatchRow extends StatelessWidget {
                 width: AppSpacing.huge,
                 height: AppSpacing.huge,
                 decoration: BoxDecoration(
-                  color: color.withValues(alpha: 0.12),
+                  color: color.withValues(alpha: 0.14),
                   borderRadius: AppRadius.allMd,
+                  border: Border.all(color: color.withValues(alpha: 0.7)),
                 ),
                 child: Icon(icon, color: color),
               ),
