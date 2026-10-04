@@ -17,4 +17,4 @@ jobs:
             exit 1
           fi
 
-          echo "Branch flow is valid: dev -> main"
+          echo "Valid branch flow: dev -> main"
