@@ -48,7 +48,6 @@ class _JoinRoomScreenState extends ConsumerState<JoinRoomScreen> {
         WsConnectionState.connected;
     return PlayerHubShell(
       title: 'เข้าร่วมห้อง',
-      subtitle: 'พบเพื่อนในสนามส่วนตัว',
       badge: '1 VS 1',
       lighter: true,
       headerLeading: IconButton(

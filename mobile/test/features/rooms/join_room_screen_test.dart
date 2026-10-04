@@ -90,6 +90,8 @@ void main() {
       ),
     );
     await tester.pumpAndSettle();
+
+    expect(find.text('พบเพื่อนในสนามส่วนตัว'), findsNothing);
   }
 
   testWidgets('normalizes a pasted code and enters the returned match',

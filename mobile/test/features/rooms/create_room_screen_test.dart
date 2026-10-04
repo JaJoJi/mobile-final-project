@@ -99,7 +99,26 @@ void main() {
     expect(api.created, isTrue);
     expect(find.text('ABC234'), findsOneWidget);
     expect(find.text('Alice'), findsOneWidget);
+    expect(find.text('เจ้าของห้อง'), findsOneWidget);
+    expect(find.text('คุณ · เจ้าของห้อง'), findsNothing);
     expect(find.text('กำลังรอผู้ท้าชิง'), findsOneWidget);
+    expect(find.text('ออโต้เชส / ประลองกับเพื่อน'), findsNothing);
+  });
+
+  testWidgets('animates the hourglass while waiting for a challenger', (
+    tester,
+  ) async {
+    await tester.pumpWidget(app());
+    await tester.pumpAndSettle();
+
+    final rotation = tester.widget<RotationTransition>(
+      find.byKey(const ValueKey('waiting-hourglass-rotation')),
+    );
+    expect(rotation.turns.value, 0);
+
+    await tester.pump(const Duration(milliseconds: 600));
+    await tester.pump(const Duration(seconds: 1));
+    expect(rotation.turns.value, greaterThan(0));
   });
 
   testWidgets('shows the guest from the room response', (tester) async {
@@ -128,7 +147,8 @@ void main() {
 
     expect(find.byIcon(Icons.more_vert_rounded), findsNothing);
     await tester.tap(find.byTooltip('ออกจากห้อง'));
-    await tester.pumpAndSettle();
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 400));
 
     expect(find.text('ออกจากห้องนี้?'), findsOneWidget);
     expect(find.text('อยู่ในห้องต่อ'), findsOneWidget);

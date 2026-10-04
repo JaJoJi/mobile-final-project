@@ -21,7 +21,7 @@ abstract final class PlayerHubFixtures {
   static const _host = RoomPlayer(
     username: 'JaJoJi',
     crestLabel: 'JJ',
-    roleLabel: 'คุณ · เจ้าของห้อง',
+    roleLabel: 'เจ้าของห้อง',
   );
 
   static const _guest = RoomPlayer(

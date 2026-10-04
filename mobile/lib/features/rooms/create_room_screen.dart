@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -225,7 +227,6 @@ class _CreateRoomScreenState extends ConsumerState<CreateRoomScreen> {
         WsConnectionState.connected;
     return PlayerHubShell(
       title: 'ห้องส่วนตัว',
-      subtitle: 'ออโต้เชส / ประลองกับเพื่อน',
       badge: '1 VS 1',
       lighter: true,
       headerLeading: IconButton(
@@ -653,10 +654,17 @@ class _RoomStatus extends StatelessWidget {
                 color: Color(0x1FF2C14E),
                 borderRadius: AppRadius.allMd,
               ),
-              child: const Icon(
-                Icons.hourglass_top_rounded,
-                color: Color(0xFFFFD35A),
-              ),
+              child: switch (room.status) {
+                RoomFixtureStatus.waiting => const _WaitingHourglass(),
+                RoomFixtureStatus.joined => const Icon(
+                    Icons.check_circle_outline_rounded,
+                    color: Color(0xFF67D9A4),
+                  ),
+                RoomFixtureStatus.reconnecting => const Icon(
+                    Icons.sync_rounded,
+                    color: Color(0xFF8AD6FF),
+                  ),
+              },
             ),
             const SizedBox(width: AppSpacing.md),
             Flexible(
@@ -679,4 +687,51 @@ class _RoomStatus extends StatelessWidget {
       ),
     );
   }
+}
+
+class _WaitingHourglass extends StatefulWidget {
+  const _WaitingHourglass();
+
+  @override
+  State<_WaitingHourglass> createState() => _WaitingHourglassState();
+}
+
+class _WaitingHourglassState extends State<_WaitingHourglass>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _controller =
+      AnimationController.unbounded(vsync: this);
+  Timer? _pauseTimer;
+
+  @override
+  void initState() {
+    super.initState();
+    _pauseTimer = Timer(const Duration(milliseconds: 600), _flip);
+  }
+
+  Future<void> _flip() async {
+    await _controller.animateTo(
+      _controller.value + 0.5,
+      duration: const Duration(milliseconds: 650),
+      curve: Curves.easeInOutCubic,
+    );
+    if (!mounted) return;
+    _pauseTimer = Timer(const Duration(milliseconds: 900), _flip);
+  }
+
+  @override
+  void dispose() {
+    _pauseTimer?.cancel();
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => RotationTransition(
+        key: const ValueKey('waiting-hourglass-rotation'),
+        turns: _controller,
+        child: const Icon(
+          Icons.hourglass_top_rounded,
+          color: Color(0xFFFFD35A),
+        ),
+      );
 }

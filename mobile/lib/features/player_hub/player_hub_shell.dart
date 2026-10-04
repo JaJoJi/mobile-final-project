@@ -8,9 +8,9 @@ class PlayerHubShell extends StatelessWidget {
   const PlayerHubShell({
     super.key,
     required this.title,
-    required this.subtitle,
     required this.body,
     required this.navigation,
+    this.subtitle,
     this.badge,
     this.headerAction,
     this.headerLeading,
@@ -18,7 +18,7 @@ class PlayerHubShell extends StatelessWidget {
   });
 
   final String title;
-  final String subtitle;
+  final String? subtitle;
   final String? badge;
   final Widget? headerAction;
   final Widget? headerLeading;
@@ -63,7 +63,7 @@ class _PlayerHubHeader extends StatelessWidget {
   });
 
   final String title;
-  final String subtitle;
+  final String? subtitle;
   final String? badge;
   final Widget? action;
   final Widget? leading;
@@ -95,14 +95,17 @@ class _PlayerHubHeader extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(title, style: Theme.of(context).textTheme.titleLarge),
-                    const SizedBox(height: AppSpacing.xxs),
-                    Text(
-                      subtitle,
-                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                            color:
-                                Theme.of(context).colorScheme.onSurfaceVariant,
-                          ),
-                    ),
+                    if (subtitle != null && subtitle!.isNotEmpty) ...[
+                      const SizedBox(height: AppSpacing.xxs),
+                      Text(
+                        subtitle!,
+                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                              color: Theme.of(context)
+                                  .colorScheme
+                                  .onSurfaceVariant,
+                            ),
+                      ),
+                    ],
                   ],
                 ),
               ),

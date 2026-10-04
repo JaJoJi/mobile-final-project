@@ -95,7 +95,7 @@ class RoomViewState {
       roomCode: json['code'] as String,
       host: player(
         ownerId,
-        ownerId == currentUserId ? 'คุณ · เจ้าของห้อง' : 'เจ้าของห้อง',
+        'เจ้าของห้อง',
       ),
       guest: guestId == null
           ? null
