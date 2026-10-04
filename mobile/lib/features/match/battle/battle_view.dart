@@ -121,9 +121,30 @@ class _BattleViewState extends ConsumerState<BattleView>
   Map<UnitKey, UnitVisualState>? _stageStates;
   MatchState? _stageMatch;
   GameTheme? _stageTheme;
+  bool? _stageFinished;
   final GlobalKey _myBoardKey = GlobalKey();
   final GlobalKey _opponentBoardKey = GlobalKey();
   bool _vfxPrecached = false;
+
+  @override
+  void didUpdateWidget(BattleView oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.skipSubmitted && !oldWidget.skipSubmitted) {
+      _acked = true;
+      _ackTimer?.cancel();
+      _playhead.stop();
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted && widget.skipSubmitted) _freezeFinalBoard();
+      });
+    }
+  }
+
+  void _freezeFinalBoard() {
+    _acked = true;
+    _ackTimer?.cancel();
+    _playhead.stop();
+    _controller.finish();
+  }
 
   @override
   void didChangeDependencies() {
@@ -274,7 +295,11 @@ class _BattleViewState extends ConsumerState<BattleView>
     );
     // The controller only drives repaints now — position comes from the
     // clock in [_pushPlayhead], so a throttled tab self-corrects.
-    _scheduleRemainingPlayback(remaining);
+    if (widget.skipSubmitted) {
+      _freezeFinalBoard();
+    } else {
+      _scheduleRemainingPlayback(remaining);
+    }
     setState(() {}); // refresh the playhead listener binding below
   }
 
@@ -441,15 +466,18 @@ class _BattleViewState extends ConsumerState<BattleView>
     if (_cachedStage == null ||
         !identical(_stageStates, unitStates) ||
         !identical(_stageMatch, widget.match) ||
-        !identical(_stageTheme, game)) {
+        !identical(_stageTheme, game) ||
+        _stageFinished != widget.skipSubmitted) {
       _stageStates = unitStates;
       _stageMatch = widget.match;
       _stageTheme = game;
+      _stageFinished = widget.skipSubmitted;
       _cachedStage = RepaintBoundary(
         child: _BattleStage(
           match: widget.match,
           game: game,
           unitStates: unitStates,
+          showDefeated: widget.skipSubmitted,
           myBoardKey: _myBoardKey,
           opponentBoardKey: _opponentBoardKey,
         ),
@@ -464,56 +492,61 @@ class _BattleViewState extends ConsumerState<BattleView>
             child: Stack(
               children: [
                 _cachedStage!,
-                CombatEffectsOverlay(
-                  batch: view.batch,
-                  playheadProgress: view.playheadProgress,
-                  myBoardKey: _myBoardKey,
-                  opponentBoardKey: _opponentBoardKey,
-                  mySide: widget.match.yourSide,
-                ),
-                Positioned(
-                  top: AppSpacing.xs,
-                  right: AppSpacing.xs,
-                  child: _PlaybackSpeedButton(
-                    speed: _playbackSpeed,
-                    onPressed:
-                        view.batch == null || _acked || widget.skipSubmitted
-                            ? null
-                            : _cyclePlaybackSpeed,
+                if (!widget.skipSubmitted)
+                  CombatEffectsOverlay(
+                    batch: view.batch,
+                    playheadProgress: view.playheadProgress,
+                    myBoardKey: _myBoardKey,
+                    opponentBoardKey: _opponentBoardKey,
+                    mySide: widget.match.yourSide,
                   ),
-                ),
+                if (!widget.skipSubmitted)
+                  Positioned(
+                    top: AppSpacing.xs,
+                    right: AppSpacing.xs,
+                    child: _PlaybackSpeedButton(
+                      speed: _playbackSpeed,
+                      onPressed:
+                          view.batch == null || _acked || widget.skipSubmitted
+                              ? null
+                              : _cyclePlaybackSpeed,
+                    ),
+                  ),
               ],
             ),
           ),
-          const SizedBox(height: AppSpacing.sm),
-          _BatchSummary(view: view, staleDetected: _staleDetected),
-          const SizedBox(height: AppSpacing.xs),
-          ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 320),
-            child: GameAssetButton(
-              key: const ValueKey('skip-combat-button'),
-              onPressed: widget.skipSubmitted ? null : widget.onSkip,
-              disabledReason: widget.skipSubmitted ? 'ส่งผลการทดสอบแล้ว' : null,
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Icon(
-                    widget.skipSubmitted
-                        ? Icons.hourglass_top
-                        : Icons.fast_forward,
-                  ),
-                  const SizedBox(width: AppSpacing.sm),
-                  Flexible(
-                    child: Text(
-                      widget.skipSubmitted ? 'รอคู่แข่ง…' : 'ข้ามการต่อสู้',
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
+          if (!widget.skipSubmitted) ...[
+            const SizedBox(height: AppSpacing.sm),
+            _BatchSummary(view: view, staleDetected: _staleDetected),
+            const SizedBox(height: AppSpacing.xs),
+            ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 320),
+              child: GameAssetButton(
+                key: const ValueKey('skip-combat-button'),
+                onPressed: widget.skipSubmitted ? null : widget.onSkip,
+                disabledReason:
+                    widget.skipSubmitted ? 'ส่งผลการทดสอบแล้ว' : null,
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(
+                      widget.skipSubmitted
+                          ? Icons.hourglass_top
+                          : Icons.fast_forward,
                     ),
-                  ),
-                ],
+                    const SizedBox(width: AppSpacing.sm),
+                    Flexible(
+                      child: Text(
+                        widget.skipSubmitted ? 'รอคู่แข่ง…' : 'ข้ามการต่อสู้',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                  ],
+                ),
               ),
             ),
-          ),
+          ],
         ],
       ),
     );
@@ -624,6 +657,7 @@ class _BattleStage extends StatelessWidget {
     required this.match,
     required this.game,
     required this.unitStates,
+    required this.showDefeated,
     required this.myBoardKey,
     required this.opponentBoardKey,
   });
@@ -631,6 +665,7 @@ class _BattleStage extends StatelessWidget {
   final MatchState match;
   final GameTheme game;
   final Map<UnitKey, UnitVisualState> unitStates;
+  final bool showDefeated;
   final GlobalKey myBoardKey;
   final GlobalKey opponentBoardKey;
 
@@ -657,6 +692,7 @@ class _BattleStage extends StatelessWidget {
       side: match.yourSide,
       mySide: match.yourSide,
       unitStates: unitStates,
+      showDefeated: showDefeated,
       showLabel: orientation == Orientation.landscape,
     );
     final opponent = _BoardPreview(
@@ -670,6 +706,7 @@ class _BattleStage extends StatelessWidget {
       side: enemySide,
       mySide: match.yourSide,
       unitStates: unitStates,
+      showDefeated: showDefeated,
       reverseRows: true,
       showLabel: orientation == Orientation.landscape,
     );
@@ -716,6 +753,7 @@ class _BoardPreview extends StatelessWidget {
     this.opponentUnits,
     this.reverseRows = false,
     this.showLabel = true,
+    this.showDefeated = false,
   });
 
   final Key boardKey;
@@ -730,6 +768,7 @@ class _BoardPreview extends StatelessWidget {
   final List<OpponentUnit?>? opponentUnits;
   final bool reverseRows;
   final bool showLabel;
+  final bool showDefeated;
 
   @override
   Widget build(BuildContext context) {
@@ -802,6 +841,7 @@ class _BoardPreview extends StatelessWidget {
                                   : UnitSide.enemy)
                               : null,
                           unitState: uv,
+                          showDefeated: showDefeated,
                           tileWidth: tileWidth,
                           tileHeight: tileHeight,
                         );
@@ -830,6 +870,7 @@ class BattleTile extends StatefulWidget {
     this.unitState,
     this.tileWidth = 80,
     this.tileHeight = 80,
+    this.showDefeated = false,
   });
 
   final int slot;
@@ -837,6 +878,7 @@ class BattleTile extends StatefulWidget {
   final UnitVisualState? unitState;
   final double tileWidth;
   final double tileHeight;
+  final bool showDefeated;
 
   @override
   State<BattleTile> createState() => _BattleTileState();
@@ -1034,7 +1076,9 @@ class _BattleTileState extends State<BattleTile> with TickerProviderStateMixin {
               // While this unit is mid-attack its sprite is drawn by
               // CombatEffectsOverlay travelling to the target, so the tile
               // leaves its square empty rather than showing it twice.
-              child: uv == null || !isAlive || uv.isMeleeAttacking
+              child: uv == null ||
+                      (!isAlive && !widget.showDefeated) ||
+                      (uv.isMeleeAttacking && !widget.showDefeated)
                   ? null
                   : UnitAvatar(
                       unitId: uv.unitId.toJson(),

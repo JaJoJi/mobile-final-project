@@ -266,11 +266,13 @@ void main() {
     });
     await tester.pumpAndSettle(const Duration(seconds: 2));
 
-    // The screen should now show "Match found!" then navigate.
+    // Navigate without leaving a match-found snackbar over the game.
+    expect(find.text('พบคู่แข่งแล้ว!'), findsNothing);
+    expect(find.byType(SnackBar), findsNothing);
     expect(
       find.text('match:abc-123'),
       findsOneWidget,
-      reason: 'should have navigated to /match/abc-123 after the toast delay',
+      reason: 'should have navigated to /match/abc-123',
     );
 
     // The notifier should have transitioned to `matched` (the nav is the

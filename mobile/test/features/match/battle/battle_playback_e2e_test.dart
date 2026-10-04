@@ -275,10 +275,10 @@ void main() {
       if (find.byKey(const ValueKey('lunge-traveler')).evaluate().isNotEmpty) {
         travellerSeen++;
       }
-      final text = tester
-          .widget<Text>(find.byKey(const ValueKey('battle-batch-summary')))
-          .data!;
-      summaries.add(text);
+      final summary = find.byKey(const ValueKey('battle-batch-summary'));
+      if (summary.evaluate().isNotEmpty) {
+        summaries.add(tester.widget<Text>(summary).data!);
+      }
     }
 
     // 1. Playback must progress past 0%.
@@ -460,7 +460,8 @@ void main() {
     expect(ackSent(), isFalse);
     await tester.pump(const Duration(seconds: 2));
     expect(ackSent(), isTrue);
-    expect(find.text('รอคู่แข่ง…'), findsOneWidget);
+    expect(speedButton, findsNothing);
+    expect(find.byKey(const ValueKey('battle-player-board')), findsOneWidget);
 
     await tester.pumpWidget(const SizedBox.shrink());
     await tester.pump(const Duration(seconds: 1));

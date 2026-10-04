@@ -122,17 +122,25 @@ class _MatchScreenState extends ConsumerState<MatchScreen> {
                     message: view.errorMessage!,
                     onDismiss: controller.clearError,
                   ),
-                if (view.damage != null && view.match != null)
+                if (view.damage != null &&
+                    view.match != null &&
+                    view.end == null &&
+                    view.combatDoneSubmitted)
                   RoundResultOverlay(
                     damage: view.damage!,
                     mySide: view.match!.yourSide.name,
-                    onDismiss: controller.clearRoundResult,
+                    phase: view.phase,
+                    readySubmitted: view.roundReadySubmitted,
+                    onNextRound: controller.readyForNextRound,
+                    onSurrender: controller.surrender,
                   ),
                 if (view.end != null && view.match != null)
                   MatchEndOverlay(
                     event: view.end!,
                     didWin: _didWin(view),
                     mySide: view.match!.yourSide,
+                    playerName: view.match!.roster.username ?? 'ผู้เล่นของคุณ',
+                    opponentName: view.match!.opponent.username ?? 'คู่แข่ง',
                     finalTeam: view.match!.roster.board,
                     rounds: view.match!.round,
                     duration: DateTime.now().difference(_openedAt),
@@ -230,10 +238,18 @@ class _MatchContent extends StatelessWidget {
   Widget build(BuildContext context) {
     final phase = view.phase!;
     final match = view.match!;
-    final shopPlace = phase.phase == GamePhase.shopPlace;
+    final shopPlace = phase.phase == GamePhase.shopPlace && view.end == null;
     return Column(
       children: [
-        _MatchHud(phase: phase, match: match, deadline: deadline),
+        if (view.end == null)
+          _MatchHud(
+            phase: phase,
+            match: match,
+            deadline: deadline,
+            summary: view.combatDoneSubmitted ||
+                view.end != null ||
+                phase.phase == GamePhase.resolved,
+          ),
         Expanded(
           child: AnimatedSwitcher(
             duration: AppMotion.long2,
@@ -273,12 +289,20 @@ class _MatchContent extends StatelessWidget {
                       );
                     },
                   )
-                : BattleView(
-                    match: match,
-                    matchId: match.matchId,
-                    skipSubmitted: view.combatDoneSubmitted,
-                    onSkip: controller.skipCombat,
-                  ),
+                : phase.phase == GamePhase.battle ||
+                        phase.phase == GamePhase.resolved ||
+                        view.end != null
+                    ? BattleView(
+                        key: ValueKey('battle-${phase.round}'),
+                        match: match,
+                        matchId: match.matchId,
+                        skipSubmitted:
+                            view.combatDoneSubmitted || view.end != null,
+                        onSkip: controller.skipCombat,
+                      )
+                    : const SizedBox.expand(
+                        key: ValueKey('round-resolved'),
+                      ),
           ),
         ),
         if (shopPlace)
@@ -367,11 +391,13 @@ class _MatchHud extends StatelessWidget {
     required this.phase,
     required this.match,
     required this.deadline,
+    required this.summary,
   });
 
   final MatchPhaseEvent phase;
   final MatchState match;
   final DateTime deadline;
+  final bool summary;
 
   String _playerName(MatchSide side, String? stateName) {
     final current = stateName?.trim();
@@ -462,23 +488,39 @@ class _MatchHud extends StatelessWidget {
                           color: game.ally.withValues(alpha: 0.64),
                         ),
                       ),
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Text(
-                            'รอบ ${phase.round}',
-                            maxLines: 1,
-                            style: theme.textTheme.labelSmall,
-                          ),
-                          PhaseTimerRing(
-                            deadline: deadline,
-                            onExpire: () {},
-                            size: AppSpacing.xxl,
-                            stroke: AppSpacing.xs,
-                            compact: true,
-                          ),
-                        ],
-                      ),
+                      child: summary
+                          ? Center(
+                              child: Padding(
+                                padding: const EdgeInsets.all(AppSpacing.sm),
+                                child: FittedBox(
+                                  fit: BoxFit.scaleDown,
+                                  child: Text(
+                                    'รอบ ${phase.round}',
+                                    key: const ValueKey('hud-summary-round'),
+                                    style: theme.textTheme.titleLarge?.copyWith(
+                                      fontWeight: FontWeight.w800,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            )
+                          : Column(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Text(
+                                  'รอบ ${phase.round}',
+                                  maxLines: 1,
+                                  style: theme.textTheme.labelSmall,
+                                ),
+                                PhaseTimerRing(
+                                  deadline: deadline,
+                                  onExpire: () {},
+                                  size: AppSpacing.xxl,
+                                  stroke: AppSpacing.xs,
+                                  compact: true,
+                                ),
+                              ],
+                            ),
                     ),
                   ),
                 ],

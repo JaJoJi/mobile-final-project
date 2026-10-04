@@ -5,7 +5,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../core/theme/app_spacing.dart';
-import '../../core/widgets/app_toast.dart';
 import '../../core/widgets/fantasy_page.dart';
 import '../../core/widgets/game_art_frame.dart';
 import '../../core/widgets/state_views.dart';
@@ -105,13 +104,6 @@ class _LobbyScreenState extends ConsumerState<LobbyScreen> {
     if (_navigating) return;
     _navigating = true;
     ref.read(matchmakingStateProvider.notifier).markMatched();
-    if (mounted) {
-      AppToast.show(
-        context,
-        'พบคู่แข่งแล้ว!',
-        variant: AppToastVariant.success,
-      );
-    }
     await Future<void>.delayed(LobbyScreen._navDelay);
     if (mounted) context.go('/match/${phase.matchId}');
   }
