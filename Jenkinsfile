@@ -141,6 +141,28 @@ pipeline {
   }
 
   stages {
+    // Branch-flow guard — first and cheapest: only `dev` may target `main`
+    // (feature/* → dev → main). PR builds only (CHANGE_ID unset on plain
+    // branch builds, so those never block). A violation fails the whole
+    // build, which flips the existing
+    // `continuous-integration/jenkins/pr-merge` commit status red — no
+    // separate GitHub check needed.
+    stage('Preflight · branch guard') {
+      steps {
+        script {
+          if (env.CHANGE_ID) {
+            if (env.CHANGE_TARGET == 'main' && env.CHANGE_BRANCH != 'dev') {
+              error(
+                "Branch flow violation: PRs into 'main' must come from 'dev' " +
+                "(got '${env.CHANGE_BRANCH}' -> '${env.CHANGE_TARGET}'). " +
+                "Merge into 'dev' first."
+              )
+            }
+          }
+        }
+      }
+    }
+
     // ── 0. Disk guard — fail fast with a clear message ─────────────────
     // A full disk otherwise shows up as random "No space left on device"
     // deep inside npm / pub / docker save.
