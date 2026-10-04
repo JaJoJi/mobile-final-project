@@ -63,6 +63,28 @@ class _ProfileContent extends StatelessWidget {
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
     final initials = _initialsFor(username);
+    final ratingContent = Semantics(
+      label: 'เรตติ้ง ${_formatRating(rating)}',
+      excludeSemantics: true,
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const Icon(
+            Icons.military_tech_rounded,
+            size: 17,
+            color: Color(0xFFFFD35A),
+          ),
+          const SizedBox(width: AppSpacing.xs),
+          Text(
+            _formatRating(rating),
+            style: Theme.of(context).textTheme.labelLarge?.copyWith(
+                  color: const Color(0xFFFFD35A),
+                  fontWeight: FontWeight.w900,
+                ),
+          ),
+        ],
+      ),
+    );
 
     return Row(
       children: [
@@ -93,41 +115,21 @@ class _ProfileContent extends StatelessWidget {
                 overflow: TextOverflow.ellipsis,
               ),
               const SizedBox(height: AppSpacing.xs),
-              Container(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: AppSpacing.sm,
-                  vertical: AppSpacing.xs,
-                ),
-                decoration: BoxDecoration(
-                  gradient: const LinearGradient(
-                    colors: [Color(0x26FFD35A), Color(0xE617243A)],
+              if (compact)
+                ratingContent
+              else
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: AppSpacing.sm,
+                    vertical: AppSpacing.xs,
                   ),
-                  borderRadius: AppRadius.allFull,
-                  border: Border.all(color: const Color(0x80FFD35A)),
-                ),
-                child: Semantics(
-                  label: 'เรตติ้ง ${_formatRating(rating)}',
-                  excludeSemantics: true,
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      const Icon(
-                        Icons.military_tech_rounded,
-                        size: 17,
-                        color: Color(0xFFFFD35A),
-                      ),
-                      const SizedBox(width: AppSpacing.xs),
-                      Text(
-                        _formatRating(rating),
-                        style: Theme.of(context).textTheme.labelLarge?.copyWith(
-                              color: const Color(0xFFFFD35A),
-                              fontWeight: FontWeight.w900,
-                            ),
-                      ),
-                    ],
+                  decoration: BoxDecoration(
+                    color: const Color(0xE617243A),
+                    borderRadius: AppRadius.allFull,
+                    border: Border.all(color: const Color(0x80FFD35A)),
                   ),
+                  child: ratingContent,
                 ),
-              ),
             ],
           ),
         ),

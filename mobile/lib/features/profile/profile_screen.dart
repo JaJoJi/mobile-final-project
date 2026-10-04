@@ -232,16 +232,20 @@ class _ProfileHero extends StatelessWidget {
             Row(
               children: [
                 Expanded(
+                  flex: 6,
                   child: _HeroMetric(
                     icon: Icons.military_tech_rounded,
-                    label: rating == null
-                        ? 'เรตติ้ง —'
+                    label: rating == null ? '—' : _formatNumber(rating),
+                    semanticsLabel: rating == null
+                        ? 'เรตติ้งยังไม่มีข้อมูล'
                         : 'เรตติ้ง ${_formatNumber(rating)}',
                     color: const Color(0xFFFFD35A),
+                    contentGap: AppSpacing.sm,
                   ),
                 ),
                 const SizedBox(width: AppSpacing.xs),
                 Expanded(
+                  flex: 7,
                   child: _HeroMetric(
                     key: const ValueKey('profile-rank-action'),
                     icon: Icons.emoji_events_rounded,
@@ -252,6 +256,7 @@ class _ProfileHero extends StatelessWidget {
                 ),
                 const SizedBox(width: AppSpacing.xs),
                 const Expanded(
+                  flex: 9,
                   child: LogoutButton(showLabel: true),
                 ),
               ],
@@ -280,12 +285,16 @@ class _HeroMetric extends StatelessWidget {
     required this.icon,
     required this.label,
     required this.color,
+    this.semanticsLabel,
+    this.contentGap = AppSpacing.xs,
     this.onTap,
   });
 
   final IconData icon;
   final String label;
   final Color color;
+  final String? semanticsLabel;
+  final double contentGap;
   final VoidCallback? onTap;
 
   @override
@@ -294,38 +303,49 @@ class _HeroMetric extends StatelessWidget {
         child: InkWell(
           onTap: onTap,
           borderRadius: AppRadius.allFull,
-          child: Container(
-            constraints: const BoxConstraints(minHeight: 48),
-            padding: const EdgeInsets.symmetric(
-              horizontal: AppSpacing.sm,
-              vertical: AppSpacing.xs,
-            ),
-            decoration: BoxDecoration(
-              color: const Color(0xB3071726),
-              borderRadius: AppRadius.allFull,
-              border: Border.all(color: color.withValues(alpha: 0.45)),
-            ),
-            child: Row(
-              children: [
-                Icon(icon, size: 17, color: color),
-                const SizedBox(width: AppSpacing.xs),
-                Expanded(
-                  child: Text(
-                    label,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    textAlign: TextAlign.center,
-                    style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                          color: color,
-                          fontWeight: FontWeight.w800,
-                        ),
+          child: Semantics(
+            label: semanticsLabel,
+            excludeSemantics: semanticsLabel != null,
+            button: onTap != null,
+            child: Container(
+              constraints: const BoxConstraints(minHeight: 52),
+              padding: const EdgeInsets.symmetric(
+                horizontal: AppSpacing.xs,
+                vertical: AppSpacing.xs,
+              ),
+              decoration: BoxDecoration(
+                color: const Color(0xE6153044),
+                borderRadius: AppRadius.allLg,
+                border: Border.all(color: const Color(0x4052738C)),
+              ),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Container(
+                    width: 28,
+                    height: 28,
+                    alignment: Alignment.center,
+                    decoration: BoxDecoration(
+                      color: color.withValues(alpha: 0.14),
+                      shape: BoxShape.circle,
+                    ),
+                    child: Icon(icon, size: 17, color: color),
                   ),
-                ),
-                if (onTap != null) ...[
-                  const SizedBox(width: AppSpacing.xs),
-                  Icon(Icons.chevron_right_rounded, size: 17, color: color),
+                  SizedBox(width: contentGap),
+                  Flexible(
+                    child: Text(
+                      label,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      textAlign: TextAlign.center,
+                      style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                            color: const Color(0xFFF4F7FF),
+                            fontWeight: FontWeight.w900,
+                          ),
+                    ),
+                  ),
                 ],
-              ],
+              ),
             ),
           ),
         ),
@@ -343,10 +363,8 @@ class _Content extends ConsumerWidget {
 
     return _ProfileDetails(
       statistics: stats,
-      themeMode: settings.themeMode,
       soundEnabled: settings.soundEnabled,
       autoReconnect: settings.wsAutoReconnect,
-      onThemeChanged: (mode) => settingsNotifier.setThemeMode(mode),
       onSoundChanged: settingsNotifier.setSoundEnabled,
       onReconnectChanged: settingsNotifier.setWsAutoReconnect,
       onRetryStats: () => ref.invalidate(_myStatsProvider),
@@ -357,20 +375,16 @@ class _Content extends ConsumerWidget {
 class _ProfileDetails extends StatelessWidget {
   const _ProfileDetails({
     required this.statistics,
-    required this.themeMode,
     required this.soundEnabled,
     required this.autoReconnect,
-    required this.onThemeChanged,
     required this.onSoundChanged,
     required this.onReconnectChanged,
     required this.onRetryStats,
   });
 
   final AsyncValue<Map<String, dynamic>> statistics;
-  final ThemeMode themeMode;
   final bool soundEnabled;
   final bool autoReconnect;
-  final ValueChanged<ThemeMode> onThemeChanged;
   final ValueChanged<bool> onSoundChanged;
   final ValueChanged<bool> onReconnectChanged;
   final VoidCallback onRetryStats;
@@ -427,33 +441,6 @@ class _ProfileDetails extends StatelessWidget {
                   ],
                 ),
                 const Divider(color: Color(0x406FA5C4)),
-                SettingsTile(
-                  leading: Icons.brightness_6_outlined,
-                  title: 'ธีม',
-                  stackTrailing: true,
-                  trailing: MediaQuery.withClampedTextScaling(
-                    maxScaleFactor: 1.3,
-                    child: SegmentedButton<ThemeMode>(
-                      showSelectedIcon: false,
-                      segments: const [
-                        ButtonSegment(
-                          value: ThemeMode.system,
-                          label: Text('ระบบ'),
-                        ),
-                        ButtonSegment(
-                          value: ThemeMode.light,
-                          label: Text('สว่าง'),
-                        ),
-                        ButtonSegment(
-                          value: ThemeMode.dark,
-                          label: Text('มืด'),
-                        ),
-                      ],
-                      selected: {themeMode},
-                      onSelectionChanged: (s) => onThemeChanged(s.first),
-                    ),
-                  ),
-                ),
                 SettingsTile(
                   leading: Icons.wifi_tethering,
                   title: 'เชื่อมต่อใหม่อัตโนมัติ',

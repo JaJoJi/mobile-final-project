@@ -33,19 +33,46 @@ class LogoutButton extends ConsumerWidget {
     if (showLabel) {
       return Tooltip(
         message: 'ออกจากระบบ',
-        child: OutlinedButton.icon(
-          style: OutlinedButton.styleFrom(
-            foregroundColor: const Color(0xFFFF9A9A),
-            minimumSize: const Size(0, 48),
-            padding: const EdgeInsets.symmetric(horizontal: 6),
-            textStyle: Theme.of(context).textTheme.labelSmall?.copyWith(
-                  fontWeight: FontWeight.w800,
-                ),
-            side: const BorderSide(color: Color(0x99FF7A7A)),
+        child: Container(
+          constraints: const BoxConstraints(minHeight: 52),
+          decoration: BoxDecoration(
+            color: const Color(0xE6153044),
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: const Color(0x4052738C)),
           ),
-          onPressed: () => _confirmAndLogout(context, ref),
-          icon: const Icon(Icons.logout_rounded, size: 18),
-          label: const Text('ออกจากระบบ'),
+          child: TextButton.icon(
+            style: TextButton.styleFrom(
+              foregroundColor: const Color(0xFFF4F7FF),
+              minimumSize: const Size(0, 52),
+              padding: const EdgeInsets.symmetric(horizontal: 4),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(16),
+              ),
+              textStyle: Theme.of(context).textTheme.titleSmall?.copyWith(
+                    fontWeight: FontWeight.w900,
+                  ),
+            ),
+            onPressed: () => _confirmAndLogout(context, ref),
+            icon: Container(
+              width: 28,
+              height: 28,
+              alignment: Alignment.center,
+              decoration: const BoxDecoration(
+                color: Color(0x24FF8F9B),
+                shape: BoxShape.circle,
+              ),
+              child: const Icon(
+                Icons.logout_rounded,
+                size: 17,
+                color: Color(0xFFFF8F9B),
+              ),
+            ),
+            label: const Text(
+              'ออกจากระบบ',
+              maxLines: 1,
+              softWrap: false,
+            ),
+          ),
         ),
       );
     }
@@ -53,8 +80,7 @@ class LogoutButton extends ConsumerWidget {
       tooltip: 'ออกจากระบบ',
       style: decorated
           ? IconButton.styleFrom(
-              backgroundColor: const Color(0x66101F31),
-              side: const BorderSide(color: Color(0x406FA5C4)),
+              backgroundColor: const Color(0x4D102538),
             )
           : null,
       icon: const Icon(Icons.logout),

@@ -268,22 +268,15 @@ void main() {
     expect(find.byTooltip('แก้ไขชื่อผู้ใช้'), findsOneWidget);
   });
 
-  testWidgets('theme segmented button drives settingsProvider', (tester) async {
-    late ProviderContainer container;
+  testWidgets('profile only shows settings supported by the player hub', (
+    tester,
+  ) async {
     await tester.pumpWidget(await app(adapter: okMe));
     await tester.pumpAndSettle();
 
-    container = ProviderScope.containerOf(
-      tester.element(find.byType(ProfileScreen)),
-    );
-    expect(container.read(settingsProvider).themeMode, ThemeMode.system);
-
-    await tester.ensureVisible(find.text('มืด'));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('มืด'));
-    await tester.pumpAndSettle();
-
-    expect(container.read(settingsProvider).themeMode, ThemeMode.dark);
+    expect(find.text('ธีม'), findsNothing);
+    expect(find.text('เชื่อมต่อใหม่อัตโนมัติ'), findsOneWidget);
+    expect(find.text('เสียงเอฟเฟกต์'), findsOneWidget);
   });
 
   testWidgets('sound switch drives settingsProvider', (tester) async {
