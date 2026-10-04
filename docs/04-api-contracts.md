@@ -328,7 +328,21 @@ the match is still in `shop_place`; cancellation is no longer possible once
 both players are ready and the phase has flipped to `battle`.
 
 #### `game:match:combat_done`
-Client tells the server it's finished playing the `game:combat:events` batch locally and is ready for `game:match:damage`. Server waits for BOTH clients' acks (or 60 s timeout) before proceeding.
+Client tells the server it has finished or skipped its local playback. The authoritative `game:match:damage` preview is sent immediately after simulation, but each client reveals it only after sending this acknowledgement. Server waits for BOTH clients' acknowledgements (or the replay-length timeout), applies the previewed damage, then holds the match in `resolved`. Until that transition, the client already at its summary sees a disabled “waiting for opponent” next-round button.
+
+```ts
+{ matchId: string; round: number; clientActionId: string }
+```
+
+#### `game:match:round_ready`
+The player accepts the round summary. Two acknowledgements advance immediately. The first acknowledgement starts a durable 3-second grace timer; when it expires, both players advance even if the other player did not press the button.
+
+```ts
+{ matchId: string; round: number; clientActionId: string }
+```
+
+#### `game:match:surrender`
+Immediately ends the active match as a forfeit after client-side confirmation.
 
 ```ts
 { matchId: string; round: number; clientActionId: string }

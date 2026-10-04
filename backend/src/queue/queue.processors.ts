@@ -35,11 +35,18 @@ export class CombatDoneTimeoutProcessor extends WorkerHost {
   }
 
   async process(job: Job<RoundJob>): Promise<void> {
+    if (job.name === JOB_NAMES.ROUND_READY_TIMEOUT) {
+      const advanced = await this.runtime.advanceResolvedRound(
+        job.data.matchId,
+        job.data.round,
+      );
+      this.logger.log(
+        `round ready timeout match=${job.data.matchId} round=${job.data.round} advanced=${advanced}`,
+      );
+      return;
+    }
     if (job.name !== JOB_NAMES.COMBAT_DONE_TIMEOUT) return;
-    const advanced = await this.runtime.applyDamageAndAdvance(
-      job.data.matchId,
-      job.data.round,
-    );
+    const advanced = await this.runtime.applyDamageAndAdvance(job.data.matchId, job.data.round);
     this.logger.log(
       `combat timeout match=${job.data.matchId} round=${job.data.round} advanced=${advanced}`,
     );

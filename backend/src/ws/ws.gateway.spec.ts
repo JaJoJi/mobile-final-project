@@ -79,6 +79,8 @@ describe('WsGateway P0-BE-10 handlers', () => {
     ['onMatchPlace', 'match:place', { round: 1, unitInstanceId: 'unit-1', target: 'board', slot: 0, clientActionId: 'action-5' }],
     ['onMatchReady', 'match:ready', { round: 1, clientActionId: 'action-6' }],
     ['onMatchCombatDone', 'match:combat_done', { matchId: 'match-1', round: 1, clientActionId: 'action-7' }],
+    ['onMatchRoundReady', 'match:round_ready', { matchId: 'match-1', round: 1, clientActionId: 'action-8' }],
+    ['onMatchSurrender', 'match:surrender', { matchId: 'match-1', round: 1, clientActionId: 'action-9' }],
   ])('routes %s to runtime action %s', async (method, action, dto) => {
     const h = harness();
     await (h.gateway as any)[method](dto, h.socket);

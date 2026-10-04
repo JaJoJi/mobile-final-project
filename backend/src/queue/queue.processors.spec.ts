@@ -63,6 +63,13 @@ describe('CombatDoneTimeoutProcessor (#307)', () => {
       processor.process(roundJob(JOB_NAMES.COMBAT_DONE_TIMEOUT)),
     ).resolves.toBeUndefined();
   });
+
+  it('advances a resolved round when the ready grace expires', async () => {
+    const runtime = { advanceResolvedRound: jest.fn(async () => true) };
+    const processor = new CombatDoneTimeoutProcessor(runtime as any);
+    await processor.process(roundJob(JOB_NAMES.ROUND_READY_TIMEOUT));
+    expect(runtime.advanceResolvedRound).toHaveBeenCalledWith('match-1', 2);
+  });
 });
 
 describe('DisconnectDetectProcessor (#307)', () => {
