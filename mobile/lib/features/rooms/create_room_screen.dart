@@ -331,12 +331,6 @@ class _InviteBar extends StatelessWidget {
               decoration: const BoxDecoration(
                 color: Color(0x1FF2C14E),
                 borderRadius: AppRadius.allMd,
-                boxShadow: [
-                  BoxShadow(
-                    color: Color(0x55F2C14E),
-                    blurRadius: AppSpacing.md,
-                  ),
-                ],
               ),
               child: const Icon(
                 Icons.vpn_key_rounded,

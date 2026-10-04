@@ -188,7 +188,7 @@ class _JoinForm extends StatelessWidget {
                       color: Color(0xFFFFD35A),
                     ),
                     SizedBox(width: AppSpacing.xs),
-                    Text('การดวลส่วนตัว · 1 VS 1'),
+                    Text('การดวลส่วนตัว'),
                   ],
                 ),
               ),
@@ -242,45 +242,13 @@ class _JoinForm extends StatelessWidget {
               },
             ),
             const SizedBox(height: AppSpacing.sm),
-            Container(
-              padding: const EdgeInsets.symmetric(
-                horizontal: AppSpacing.md,
-                vertical: AppSpacing.sm,
-              ),
-              decoration: BoxDecoration(
-                color: online
-                    ? const Color(0x1F62DDB2)
-                    : Theme.of(context)
-                        .colorScheme
-                        .errorContainer
-                        .withValues(alpha: .32),
-                borderRadius: AppRadius.allSm,
-              ),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Icon(
-                    online ? Icons.bolt_rounded : Icons.wifi_off_rounded,
-                    size: AppSpacing.lg,
-                    color: online
-                        ? const Color(0xFF62DDB2)
-                        : Theme.of(context).colorScheme.error,
+            Text(
+              'ถึงเวลาพิสูจน์ฝีมือ!',
+              textAlign: TextAlign.center,
+              style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                    color: const Color(0xFFFFE49A),
+                    fontWeight: FontWeight.w900,
                   ),
-                  const SizedBox(width: AppSpacing.xs),
-                  Text(
-                    online
-                        ? 'พร้อมเชื่อมต่อเข้าสู่สนาม'
-                        : 'กำลังเชื่อมต่อเซิร์ฟเวอร์ใหม่…',
-                    textAlign: TextAlign.center,
-                    style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                          color: online
-                              ? const Color(0xFF9BEBCF)
-                              : Theme.of(context).colorScheme.error,
-                          fontWeight: FontWeight.w700,
-                        ),
-                  ),
-                ],
-              ),
             ),
             const SizedBox(height: AppSpacing.md),
             FilledButton.icon(
@@ -306,10 +274,10 @@ class _JoinForm extends StatelessWidget {
               ],
             ),
             const SizedBox(height: AppSpacing.sm),
-            TextButton.icon(
+            OutlinedButton.icon(
               onPressed: onCreateRoom,
-              icon: const Icon(Icons.add_box_outlined),
-              label: const Text('สร้างห้องใหม่'),
+              icon: const Icon(Icons.group_add_outlined),
+              label: const Text('สร้างห้อง'),
             ),
           ],
         ),

@@ -114,14 +114,23 @@ class _PlayerHubHeader extends StatelessWidget {
                 const SizedBox(width: AppSpacing.sm),
                 Container(
                   padding: const EdgeInsets.symmetric(
-                    horizontal: AppSpacing.sm,
+                    horizontal: AppSpacing.md,
                     vertical: AppSpacing.xs,
                   ),
-                  decoration: BoxDecoration(
-                    border: Border.all(color: const Color(0x80F2C14E)),
-                    borderRadius: AppRadius.allSm,
+                  decoration: const BoxDecoration(
+                    gradient: LinearGradient(
+                      colors: [Color(0xFF1C4A63), Color(0xFF514426)],
+                    ),
+                    borderRadius: AppRadius.allFull,
                   ),
-                  child: Text(badge!),
+                  child: Text(
+                    badge!,
+                    style: Theme.of(context).textTheme.labelLarge?.copyWith(
+                          color: const Color(0xFFFFF1C4),
+                          fontWeight: FontWeight.w900,
+                          letterSpacing: .6,
+                        ),
+                  ),
                 ),
               ],
             ],
