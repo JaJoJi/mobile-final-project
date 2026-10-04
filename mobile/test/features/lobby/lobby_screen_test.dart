@@ -5,6 +5,7 @@ import 'package:auto_chess_mobile/features/history/history_providers.dart';
 import 'package:auto_chess_mobile/features/lobby/find_match_button.dart';
 import 'package:auto_chess_mobile/features/lobby/lobby_screen.dart';
 import 'package:auto_chess_mobile/features/lobby/logout_button.dart';
+import 'package:auto_chess_mobile/features/lobby/matchmaking_state.dart';
 import 'package:auto_chess_mobile/features/lobby/player_hub_navigation.dart';
 import 'package:auto_chess_mobile/features/lobby/profile_card.dart';
 import 'package:auto_chess_mobile/features/player_hub/player_hub_fixture_provider.dart';
@@ -62,6 +63,10 @@ void main() {
       initialLocation: '/lobby',
       routes: [
         GoRoute(path: '/lobby', builder: (_, __) => const LobbyScreen()),
+        GoRoute(
+          path: '/away',
+          builder: (_, __) => const Scaffold(body: Text('away')),
+        ),
         GoRoute(
           path: '/match/:id',
           builder: (_, GoRouterState state) => Scaffold(
@@ -181,6 +186,40 @@ void main() {
     await tester.pump();
     expect(find.text('จับคู่ด่วน'), findsOneWidget);
     expect(find.text('กำลังเข้าคิว…'), findsNothing);
+  });
+
+  testWidgets('queue state and elapsed time survive leaving the lobby', (
+    tester,
+  ) async {
+    final router = await pumpLobby(tester);
+    final container = ProviderScope.containerOf(
+      tester.element(find.byType(LobbyScreen)),
+    );
+
+    await tester.tap(find.text('จับคู่ด่วน'));
+    await tester.pump();
+    await tester.pump(const Duration(seconds: 2));
+    expect(find.text('00:02'), findsOneWidget);
+
+    router.go('/away');
+    await tester.pumpAndSettle();
+    expect(
+      container.read(matchmakingStateProvider),
+      MatchmakingState.searching,
+    );
+    expect(
+      transport.sent.map((event) => event.event),
+      isNot(contains(GameActions.matchmakingLeave)),
+    );
+
+    router.go('/lobby');
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 100));
+    expect(find.text('00:02'), findsOneWidget);
+    expect(
+      container.read(matchmakingStateProvider),
+      MatchmakingState.searching,
+    );
   });
 
   testWidgets('Quick match stays disabled while WebSocket is disconnected',

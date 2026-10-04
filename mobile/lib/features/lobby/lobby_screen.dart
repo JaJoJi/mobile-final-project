@@ -705,18 +705,22 @@ class _SectionHeader extends StatelessWidget {
       );
 }
 
-class _MatchmakingTimerBadge extends StatefulWidget {
+class _MatchmakingTimerBadge extends ConsumerStatefulWidget {
   const _MatchmakingTimerBadge({required this.state});
 
   final MatchmakingState state;
 
   @override
-  State<_MatchmakingTimerBadge> createState() => _MatchmakingTimerBadgeState();
+  ConsumerState<_MatchmakingTimerBadge> createState() =>
+      _MatchmakingTimerBadgeState();
 }
 
-class _MatchmakingTimerBadgeState extends State<_MatchmakingTimerBadge> {
+class _MatchmakingTimerBadgeState
+    extends ConsumerState<_MatchmakingTimerBadge> {
   Timer? _ticker;
   Duration _elapsed = Duration.zero;
+  Duration _baseElapsed = Duration.zero;
+  DateTime? _origin;
 
   bool get _active => widget.state != MatchmakingState.idle;
 
@@ -739,16 +743,35 @@ class _MatchmakingTimerBadgeState extends State<_MatchmakingTimerBadge> {
 
   void _start() {
     _ticker?.cancel();
-    _elapsed = Duration.zero;
+    final notifier = ref.read(matchmakingStateProvider.notifier);
+    _origin = notifier.searchStartedAt;
+    final wallElapsed = _elapsedSinceOrigin();
+    _baseElapsed = notifier.searchElapsed > wallElapsed
+        ? notifier.searchElapsed
+        : wallElapsed;
+    _elapsed = _baseElapsed;
     _ticker = Timer.periodic(const Duration(seconds: 1), (timer) {
       if (!mounted) return;
-      setState(() => _elapsed = Duration(seconds: timer.tick));
+      final tickElapsed = _baseElapsed + Duration(seconds: timer.tick);
+      final wallElapsed = _elapsedSinceOrigin();
+      final elapsed = wallElapsed > tickElapsed ? wallElapsed : tickElapsed;
+      ref.read(matchmakingStateProvider.notifier).rememberElapsed(elapsed);
+      setState(() => _elapsed = elapsed);
     });
+  }
+
+  Duration _elapsedSinceOrigin() {
+    final origin = _origin;
+    if (origin == null) return Duration.zero;
+    final elapsed = DateTime.now().difference(origin);
+    return elapsed.isNegative ? Duration.zero : elapsed;
   }
 
   void _stop() {
     _ticker?.cancel();
     _ticker = null;
+    _origin = null;
+    _baseElapsed = Duration.zero;
     _elapsed = Duration.zero;
   }
 

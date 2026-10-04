@@ -32,6 +32,8 @@ class MatchmakingStateNotifier extends StateNotifier<MatchmakingState> {
       if (connection != WsConnectionState.connected &&
           (state == MatchmakingState.joining ||
               state == MatchmakingState.searching)) {
+        _searchStartedAt = null;
+        _searchElapsed = Duration.zero;
         state = MatchmakingState.idle;
       }
     });
@@ -39,6 +41,19 @@ class MatchmakingStateNotifier extends StateNotifier<MatchmakingState> {
 
   final WsClient _client;
   late final StreamSubscription<WsConnectionState> _connectionSubscription;
+  DateTime? _searchStartedAt;
+  Duration _searchElapsed = Duration.zero;
+
+  /// Wall-clock origin kept outside the lobby widget so navigating between
+  /// Player Hub pages cannot restart the visible queue timer.
+  DateTime? get searchStartedAt => _searchStartedAt;
+  Duration get searchElapsed => _searchElapsed;
+
+  void rememberElapsed(Duration elapsed) {
+    if (state != MatchmakingState.idle && elapsed > _searchElapsed) {
+      _searchElapsed = elapsed;
+    }
+  }
 
   /// Idle → searching + emit `game:matchmaking:join`.
   ///
@@ -50,6 +65,8 @@ class MatchmakingStateNotifier extends StateNotifier<MatchmakingState> {
     // UI honest instead of showing "Searching" for a request that never left
     // the device.
     if (!_client.isConnected) return;
+    _searchStartedAt = DateTime.now();
+    _searchElapsed = Duration.zero;
     state = MatchmakingState.joining;
     try {
       await _client.emitWithAck(GameActions.matchmakingJoin);
@@ -58,6 +75,8 @@ class MatchmakingStateNotifier extends StateNotifier<MatchmakingState> {
       }
     } on Object {
       if (mounted && state == MatchmakingState.joining) {
+        _searchStartedAt = null;
+        _searchElapsed = Duration.zero;
         state = MatchmakingState.idle;
       }
     }
@@ -69,6 +88,8 @@ class MatchmakingStateNotifier extends StateNotifier<MatchmakingState> {
   void cancelSearch() {
     if (state != MatchmakingState.searching) return;
     _client.emit(GameActions.matchmakingLeave, const {});
+    _searchStartedAt = null;
+    _searchElapsed = Duration.zero;
     state = MatchmakingState.idle;
   }
 
@@ -92,6 +113,8 @@ class MatchmakingStateNotifier extends StateNotifier<MatchmakingState> {
   /// the lobby can never cancel an active queue request by accident.
   void resetAfterMatch() {
     if (state == MatchmakingState.matched) {
+      _searchStartedAt = null;
+      _searchElapsed = Duration.zero;
       state = MatchmakingState.idle;
     }
   }
