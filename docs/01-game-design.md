@@ -1,6 +1,6 @@
 # Auto Chess — Game Design
 
-> 2-player auto-chess on a 6-cell board. Last player standing wins.
+> 2-player auto-chess on a 6-cell board. Last player standing wins.a
 > University project; 3 people; 1-month MVP.
 
 ## 1. Core Loop
