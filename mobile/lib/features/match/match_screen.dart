@@ -13,7 +13,6 @@ import '../../core/theme/game_theme.dart';
 import '../../core/widgets/app_button.dart';
 import '../../core/widgets/app_scaffold.dart';
 import '../../core/widgets/game_art_frame.dart';
-import '../../core/widgets/game_asset_button.dart';
 import '../../core/widgets/health_bar.dart';
 import '../../core/widgets/phase_timer_ring.dart';
 import '../../core/widgets/state_views.dart';
@@ -368,8 +367,11 @@ class _PlanningHost extends StatelessWidget {
             )
           : LayoutBuilder(
               builder: (context, constraints) {
+                // Five portrait cards derive their height from the available
+                // width. Sizing this panel from viewport height left a large
+                // empty band below the cards on tall phones.
                 final shopHeight =
-                    (constraints.maxHeight * 0.24).clamp(112.0, 160.0);
+                    (constraints.maxWidth * 0.34).clamp(128.0, 144.0);
                 return Column(
                   children: [
                     Expanded(child: board),
@@ -659,49 +661,96 @@ class _ActionBar extends StatelessWidget {
         ),
         clipBehavior: Clip.antiAlias,
         child: Padding(
-          padding: const EdgeInsets.all(AppSpacing.xs),
+          padding: const EdgeInsets.symmetric(
+            horizontal: AppSpacing.sm,
+            vertical: AppSpacing.xs,
+          ),
           child: SizedBox(
-            height: AppSpacing.huge + AppSpacing.sm,
+            height: AppSpacing.huge - AppSpacing.xs,
             child: Row(
               children: [
-                _AnimatedGoldBadge(gold: gold),
+                SizedBox(
+                  key: const ValueKey('gold-badge'),
+                  height: double.infinity,
+                  child: _AnimatedGoldBadge(gold: gold),
+                ),
                 const SizedBox(width: AppSpacing.sm),
-                SizedBox.square(
-                  dimension: AppSpacing.huge + AppSpacing.sm,
-                  child: GameAssetButton(
-                    onPressed: enabled && !refreshUsed ? onRefresh : null,
-                    disabledReason: refreshUsed
-                        ? 'ใช้รีเฟรชรอบนี้แล้ว'
-                        : !enabled
-                            ? 'จัดทีมได้เฉพาะช่วงวางแผน'
-                            : null,
-                    stretchFrame: false,
-                    padding: const EdgeInsets.all(AppSpacing.sm),
-                    child: Icon(refreshUsed ? Icons.done : Icons.refresh),
+                Tooltip(
+                  message: refreshUsed
+                      ? 'ใช้รีเฟรชรอบนี้แล้ว'
+                      : !enabled
+                          ? 'จัดทีมได้เฉพาะช่วงวางแผน'
+                          : 'รีเฟรชร้านค้า',
+                  child: SizedBox.square(
+                    dimension: AppSpacing.huge - AppSpacing.xs,
+                    child: _ActionFrame(
+                      frameKey: const ValueKey('refresh-action-frame'),
+                      accent: game.ally,
+                      child: OutlinedButton(
+                        key: const ValueKey('refresh-button'),
+                        onPressed: enabled && !refreshUsed ? onRefresh : null,
+                        style: OutlinedButton.styleFrom(
+                          padding: EdgeInsets.zero,
+                          minimumSize: Size.zero,
+                          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                          foregroundColor: scheme.onSurface,
+                          backgroundColor:
+                              scheme.surface.withValues(alpha: 0.88),
+                          side: BorderSide.none,
+                          shape: const RoundedRectangleBorder(
+                            borderRadius: AppRadius.allSm,
+                          ),
+                        ),
+                        child: Icon(
+                          refreshUsed
+                              ? Icons.done_rounded
+                              : Icons.refresh_rounded,
+                        ),
+                      ),
+                    ),
                   ),
                 ),
                 const SizedBox(width: AppSpacing.sm),
                 Expanded(
-                  child: GameAssetButton(
-                    key: const ValueKey('ready-button'),
-                    onPressed: enabled && readyCount < 2 ? onReady : null,
-                    frameAsset: GameUiAssets.readyButtonFrame,
-                    minHeight: AppSpacing.huge + AppSpacing.sm,
-                    selected: ready,
-                    accentColor: game.success,
-                    disabledReason:
-                        readyCount >= 2 ? 'กำลังเริ่มการต่อสู้' : null,
-                    child: FittedBox(
-                      fit: BoxFit.scaleDown,
-                      child: Text(
-                        ready
-                            ? 'ยกเลิกพร้อม ($readyCount/2)'
-                            : 'พร้อม ($readyCount/2)',
-                        maxLines: 1,
-                        style: Theme.of(context)
-                            .textTheme
-                            .titleMedium
-                            ?.copyWith(color: const Color(0xFF392500)),
+                  child: SizedBox(
+                    height: double.infinity,
+                    child: _ActionFrame(
+                      frameKey: const ValueKey('ready-action-frame'),
+                      accent: ready ? game.success : game.gold,
+                      child: FilledButton(
+                        key: const ValueKey('ready-button'),
+                        onPressed: enabled && readyCount < 2 ? onReady : null,
+                        style: FilledButton.styleFrom(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: AppSpacing.md,
+                          ),
+                          minimumSize: Size.zero,
+                          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                          backgroundColor: ready ? game.success : game.gold,
+                          foregroundColor: const Color(0xFF211A08),
+                          disabledBackgroundColor:
+                              scheme.surfaceContainerHighest,
+                          disabledForegroundColor: scheme.onSurfaceVariant,
+                          shape: const RoundedRectangleBorder(
+                            borderRadius: AppRadius.allSm,
+                          ),
+                        ),
+                        child: FittedBox(
+                          fit: BoxFit.scaleDown,
+                          child: Text(
+                            ready
+                                ? 'ยกเลิกพร้อม ($readyCount/2)'
+                                : 'พร้อม ($readyCount/2)',
+                            maxLines: 1,
+                            style: Theme.of(context)
+                                .textTheme
+                                .titleMedium
+                                ?.copyWith(
+                                  color: const Color(0xFF211A08),
+                                  fontWeight: FontWeight.w800,
+                                ),
+                          ),
+                        ),
                       ),
                     ),
                   ),
@@ -713,6 +762,47 @@ class _ActionBar extends StatelessWidget {
       ),
     );
   }
+}
+
+class _ActionFrame extends StatelessWidget {
+  const _ActionFrame({
+    required this.accent,
+    required this.child,
+    this.frameKey,
+  });
+
+  final Color accent;
+  final Widget child;
+  final Key? frameKey;
+
+  @override
+  Widget build(BuildContext context) => DecoratedBox(
+        key: frameKey,
+        decoration: BoxDecoration(
+          borderRadius: AppRadius.allMd,
+          gradient: LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: [
+              accent.withValues(alpha: 0.72),
+              Colors.white.withValues(alpha: 0.9),
+              accent.withValues(alpha: 0.24),
+              accent.withValues(alpha: 0.82),
+            ],
+            stops: const [0, 0.28, 0.58, 1],
+          ),
+          boxShadow: [
+            BoxShadow(
+              color: accent.withValues(alpha: 0.22),
+              blurRadius: AppSpacing.sm,
+            ),
+          ],
+        ),
+        child: Padding(
+          padding: const EdgeInsets.all(AppSpacing.xxs),
+          child: ClipRRect(borderRadius: AppRadius.allSm, child: child),
+        ),
+      );
 }
 
 class _AnimatedGoldBadge extends StatefulWidget {
@@ -755,6 +845,7 @@ class _AnimatedGoldBadgeState extends State<_AnimatedGoldBadge>
   @override
   Widget build(BuildContext context) {
     final game = Theme.of(context).extension<GameTheme>()!;
+    final scheme = Theme.of(context).colorScheme;
     final reduceMotion = MediaQuery.disableAnimationsOf(context);
     return AnimatedBuilder(
       animation: _flash,
@@ -762,22 +853,25 @@ class _AnimatedGoldBadgeState extends State<_AnimatedGoldBadge>
         final pulse = math.sin(_flash.value * math.pi);
         return Transform.scale(
           scale: 1 + (pulse * 0.07),
-          child: DecoratedBox(
-            decoration: BoxDecoration(
-              color: Theme.of(context).colorScheme.surfaceContainerHighest,
-              borderRadius: AppRadius.allMd,
-              border: Border.all(color: game.gold),
-              boxShadow: _flash.isAnimating
-                  ? [
-                      BoxShadow(
-                        color: game.gold.withValues(alpha: pulse * 0.75),
-                        blurRadius: 14,
-                        spreadRadius: 2,
-                      ),
-                    ]
-                  : null,
+          child: _ActionFrame(
+            frameKey: const ValueKey('gold-action-frame'),
+            accent: game.gold,
+            child: DecoratedBox(
+              key: const ValueKey('gold-surface'),
+              decoration: BoxDecoration(
+                color: scheme.surface.withValues(alpha: 0.88),
+                boxShadow: _flash.isAnimating
+                    ? [
+                        BoxShadow(
+                          color: game.gold.withValues(alpha: pulse * 0.75),
+                          blurRadius: 14,
+                          spreadRadius: 2,
+                        ),
+                      ]
+                    : null,
+              ),
+              child: child,
             ),
-            child: child,
           ),
         );
       },

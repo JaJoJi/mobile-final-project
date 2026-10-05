@@ -99,7 +99,7 @@ class _ShopCardState extends State<ShopCard> with TickerProviderStateMixin {
           // slot sitting at the old portrait ratio among landscape cards
           // (or vice versa) reads as a card of the wrong size, not a sold
           // slot.
-          aspectRatio: widget.landscape ? 64 / 35 : 64 / 80,
+          aspectRatio: widget.landscape ? 64 / 35 : 64 / 84,
           child: GameArtFrame(
             frameAsset: GameUiAssets.shopCardFrame,
             kind: GameArtFrameKind.card,

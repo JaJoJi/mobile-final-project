@@ -105,12 +105,7 @@ class _ShopTabState extends State<ShopTab> {
                       color: Theme.of(context).colorScheme.primary,
                     ),
                     const SizedBox(width: AppSpacing.sm),
-                    // The landscape shop column is now only as wide as a
-                    // card (`ShopTab.maxCardWidth`) instead of a flex
-                    // share, which used to always be wide enough for this
-                    // label at full size — `Flexible` lets it shrink to
-                    // fit instead of overflowing the header row.
-                    Flexible(
+                    Expanded(
                       child: Text(
                         'ร้านค้า',
                         maxLines: 1,
@@ -119,22 +114,14 @@ class _ShopTabState extends State<ShopTab> {
                       ),
                     ),
                     if (constraints.maxWidth >= 300)
-                      Expanded(
-                        child: Align(
-                          alignment: Alignment.centerRight,
-                          child: Text(
-                            widget.refreshUsed
-                                ? 'รีเฟรชแล้ว'
-                                : 'แตะการ์ดเพื่อซื้อ',
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            textAlign: TextAlign.right,
-                            style: Theme.of(context).textTheme.labelSmall,
-                          ),
-                        ),
-                      )
-                    else
-                      const Spacer(),
+                      Text(
+                        widget.refreshUsed ? 'รีเฟรชแล้ว' : 'แตะการ์ดเพื่อซื้อ',
+                        key: const ValueKey('shop-helper-text'),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        textAlign: TextAlign.right,
+                        style: Theme.of(context).textTheme.labelSmall,
+                      ),
                   ],
                 ),
               ),
@@ -166,26 +153,31 @@ class _ShopTabState extends State<ShopTab> {
       child: LayoutBuilder(
         builder: (context, constraints) {
           const gap = AppSpacing.xs;
-          final cardWidth = (constraints.maxWidth - (gap * 4)) / 5;
-          return Row(
-            key: const ValueKey('shop-card-row'),
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              ...List.generate(5, (index) {
-                final offer = index < offers.length ? offers[index] : null;
-                return Padding(
-                  padding: EdgeInsets.only(right: index == 4 ? 0 : gap),
-                  child: ShopCard(
-                    key: ValueKey('shop-$index'),
-                    offer: offer,
-                    gold: widget.roster.gold,
-                    enabled: widget.enabled,
-                    width: cardWidth,
-                    onBuy: () => widget.onBuy(index),
-                  ),
-                );
-              }),
-            ],
+          const sideInset = AppSpacing.xs;
+          final cardWidth =
+              (constraints.maxWidth - (sideInset * 2) - (gap * 4)) / 5;
+          return Padding(
+            padding: const EdgeInsets.symmetric(horizontal: sideInset),
+            child: Row(
+              key: const ValueKey('shop-card-row'),
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                ...List.generate(5, (index) {
+                  final offer = index < offers.length ? offers[index] : null;
+                  return Padding(
+                    padding: EdgeInsets.only(right: index == 4 ? 0 : gap),
+                    child: ShopCard(
+                      key: ValueKey('shop-$index'),
+                      offer: offer,
+                      gold: widget.roster.gold,
+                      enabled: widget.enabled,
+                      width: cardWidth,
+                      onBuy: () => widget.onBuy(index),
+                    ),
+                  );
+                }),
+              ],
+            ),
           );
         },
       ),

@@ -49,6 +49,14 @@ void main() {
     );
     expect(find.byKey(const ValueKey('bench-horizontal-list')), findsOneWidget);
     expect(
+      tester.getSize(find.byKey(const ValueKey('reserve-panel'))).height,
+      78,
+    );
+    expect(
+      tester.getSize(find.byKey(const ValueKey('bench-0'))).width,
+      64,
+    );
+    expect(
       tester
           .widget<ListView>(
             find.byKey(const ValueKey('bench-horizontal-list')),
@@ -96,15 +104,31 @@ void main() {
     expect(find.text('พร้อม (0/2)'), findsOneWidget);
     expect(find.text('5'), findsOneWidget);
     expect(find.text('ร้านค้า'), findsOneWidget);
-    expect(find.text('Fighter'), findsWidgets);
-    expect(find.text('Healer'), findsOneWidget);
+    expect(find.text('Fighter'), findsNothing);
+    expect(find.text('Healer'), findsNothing);
+    expect(find.byKey(const ValueKey('shop-unit-type-fighter')), findsNothing);
+    expect(find.byKey(const ValueKey('shop-unit-type-healer')), findsNothing);
     expect(find.byKey(const ValueKey('player-hp-value')), findsOneWidget);
     expect(find.byKey(const ValueKey('opponent-hp-value')), findsOneWidget);
     expect(find.byKey(const ValueKey('hud-timer-medallion')), findsOneWidget);
     expect(find.byKey(const ValueKey('action-bar-frame')), findsOneWidget);
     expect(
-      tester.getSize(find.byKey(const ValueKey('ready-button'))).height,
-      greaterThanOrEqualTo(48),
+      tester.getSize(find.byKey(const ValueKey('ready-action-frame'))).height,
+      AppSpacing.huge - AppSpacing.xs,
+    );
+    expect(
+      tester.getSize(find.byKey(const ValueKey('shop-panel'))).height,
+      lessThanOrEqualTo(144),
+    );
+    final actionHeight =
+        tester.getSize(find.byKey(const ValueKey('ready-action-frame'))).height;
+    expect(
+      tester.getSize(find.byKey(const ValueKey('refresh-action-frame'))).height,
+      actionHeight,
+    );
+    expect(
+      tester.getSize(find.byKey(const ValueKey('gold-action-frame'))).height,
+      actionHeight,
     );
     final frameAssets = tester
         .widgetList<GameArtFrame>(find.byType(GameArtFrame))
@@ -117,7 +141,14 @@ void main() {
     expect(frameAssets, isNot(contains(GameUiAssets.actionBarFrame)));
     expect(frameAssets, isNot(contains(GameUiAssets.hudPlayerFrame)));
     expect(frameAssets, isNot(contains(GameUiAssets.hudEnemyFrame)));
-    expect(buttonAssets, contains(GameUiAssets.readyButtonFrame));
+    expect(buttonAssets, isNot(contains(GameUiAssets.readyButtonFrame)));
+    expect(
+      find.descendant(
+        of: find.byKey(const ValueKey('ready-button')),
+        matching: find.byType(GameAssetButton),
+      ),
+      findsNothing,
+    );
     expect(
       tester.getCenter(find.text('player1')).dx,
       lessThan(tester.getCenter(find.text('player2')).dx),
@@ -135,12 +166,8 @@ void main() {
     await tester.pump();
     expect(find.text('ยกเลิกพร้อม (1/2)'), findsOneWidget);
     expect(
-      tester
-          .widget<GameAssetButton>(
-            find.byKey(const ValueKey('ready-button')),
-          )
-          .selected,
-      isTrue,
+      tester.widget<FilledButton>(find.byKey(const ValueKey('ready-button'))),
+      isA<FilledButton>(),
     );
     expect(
       tester

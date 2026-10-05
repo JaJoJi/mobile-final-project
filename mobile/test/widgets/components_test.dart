@@ -93,7 +93,8 @@ void main() {
   });
 
   group('UnitAvatar', () {
-    testWidgets('shop variant shows name, price and star', (tester) async {
+    testWidgets('shop variant shows only its price below the hero art',
+        (tester) async {
       await pumpThemed(
         tester,
         const UnitAvatar(
@@ -104,10 +105,22 @@ void main() {
           price: 2,
         ),
       );
-      expect(find.text('Ranger'), findsOneWidget);
+      expect(find.text('Ranger'), findsNothing);
+      expect(find.byKey(const ValueKey('shop-unit-type-ranger')), findsNothing);
       expect(find.byIcon(Icons.monetization_on), findsOneWidget);
       expect(find.text('2'), findsOneWidget);
-      expect(find.byIcon(Icons.star), findsNWidgets(3));
+      expect(find.byIcon(Icons.star), findsNothing);
+      final heroArt = find.byWidgetPredicate(
+        (widget) =>
+            widget is Image &&
+            widget.image is AssetImage &&
+            (widget.image as AssetImage).assetName ==
+                'assets/images/units/ranger_3.png',
+      );
+      expect(
+        tester.getCenter(find.text('2')).dy,
+        greaterThan(tester.getCenter(heroArt).dy),
+      );
     });
 
     testWidgets('unknown unitId throws', (tester) async {
@@ -138,7 +151,7 @@ void main() {
       expect(allUnitArtPaths.toSet(), hasLength(12));
     });
 
-    testWidgets('bench avatar overlays stars without a type glyph',
+    testWidgets('bench avatar places its stars below the hero like the board',
         (tester) async {
       await pumpThemed(
         tester,
@@ -158,6 +171,18 @@ void main() {
       expect(
         tester.getCenter(find.byKey(const ValueKey('unit-star-indicator'))).dx,
         closeTo(tester.getCenter(find.byType(UnitAvatar)).dx, 0.1),
+      );
+      expect(
+        tester.getCenter(find.byKey(const ValueKey('unit-star-indicator'))).dy,
+        greaterThan(tester.getCenter(find.byType(Image)).dy),
+      );
+      expect(
+        tester
+            .getBottomRight(
+              find.byKey(const ValueKey('unit-star-indicator')),
+            )
+            .dy,
+        greaterThan(tester.getBottomRight(find.byType(UnitAvatar)).dy),
       );
     });
 

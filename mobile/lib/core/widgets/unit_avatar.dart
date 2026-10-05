@@ -144,13 +144,13 @@ class UnitAvatar extends StatelessWidget {
       };
 
   /// Shop card shape (width:height). Portrait's shop strip keeps the
-  /// original 64:80 (art on top, name+price merged into one row below).
+  /// portrait 64:84 (art above its compact price row).
   /// The landscape shop column's card is wider still — 64:35 — because
   /// there art sits *beside* the name/price instead of above it (see
   /// `avatarContent` below), so it needs even less height per width.
   double get _aspect {
     if (variant != UnitAvatarVariant.shop) return 1.0;
-    return landscapeShop ? 64 / 35 : 64 / 80;
+    return landscapeShop ? 64 / 35 : 64 / 84;
   }
 
   @override
@@ -203,85 +203,39 @@ class UnitAvatar extends StatelessWidget {
           ),
         );
 
-    // Landscape shop column only (`ShopTab.vertical`) — real width to
-    // spare beside a narrow board, so art sits beside name+price instead
-    // of above it. Art is nudged off dead-centre toward the text side;
-    // centred outright left it looking like it belonged to neither half.
+    // Shop cards keep the hero as the only visual identifier. The price sits
+    // directly below it, avoiding a cramped role/name footer at narrow sizes.
     Widget landscapeShopContent() => Padding(
-          padding: const EdgeInsets.fromLTRB(
-            AppSpacing.xs,
-            AppSpacing.xxs,
-            AppSpacing.xs,
-            AppSpacing.xxs,
-          ),
-          child: Stack(
+          padding: const EdgeInsets.all(AppSpacing.xs),
+          child: Column(
             children: [
-              Row(
-                children: [
-                  Expanded(
-                    child: Align(
-                      alignment: const Alignment(0.3, 0),
-                      child: _UnitArt(
-                        kind: kind,
-                        fusionTier: star,
-                        tint: tint,
-                        size: _width * 0.76,
-                      ),
-                    ),
+              Expanded(
+                child: Center(
+                  child: _UnitArt(
+                    kind: kind,
+                    fusionTier: star,
+                    tint: tint,
+                    size: _width * 0.7,
                   ),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        FittedBox(
-                          fit: BoxFit.scaleDown,
-                          alignment: Alignment.centerLeft,
-                          child: Text(
-                            kind.label,
-                            maxLines: 1,
-                            style: t.textTheme.titleMedium,
-                          ),
-                        ),
-                        if (price != null) ...[
-                          const SizedBox(height: AppSpacing.xxs),
-                          priceRow(alignment: Alignment.centerLeft),
-                        ],
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-              Align(
-                alignment: Alignment.topLeft,
-                child: _StarBadge(
-                  star: displayStar,
-                  color: game.starColor(star),
                 ),
               ),
+              if (price != null) priceRow(alignment: Alignment.bottomCenter),
             ],
           ),
         );
 
-    // Mobile-portrait shop strip (5 cards side by side) — the original
-    // card, unchanged: art on top, name+price merged into one row below.
+    // Mobile-portrait shop strip (5 cards side by side): artwork stays the
+    // focus; the price is centred immediately beneath the illustration.
     Widget portraitShopContent() => Padding(
           padding: const EdgeInsets.fromLTRB(
-            AppSpacing.xs,
-            AppSpacing.xs,
-            AppSpacing.xs,
+            AppSpacing.md,
+            AppSpacing.sm,
+            AppSpacing.md,
             AppSpacing.sm,
           ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              Align(
-                alignment: Alignment.centerLeft,
-                child: _StarBadge(
-                  star: displayStar,
-                  color: game.starColor(star),
-                ),
-              ),
               Expanded(
                 child: Center(
                   child: _UnitArt(
@@ -292,28 +246,13 @@ class UnitAvatar extends StatelessWidget {
                   ),
                 ),
               ),
-              SizedBox(
-                height: AppSpacing.xl,
-                child: Row(
-                  children: [
-                    Expanded(
-                      child: FittedBox(
-                        fit: BoxFit.scaleDown,
-                        alignment: Alignment.centerLeft,
-                        child: Text(
-                          kind.label,
-                          maxLines: 1,
-                          style: t.textTheme.titleMedium,
-                        ),
-                      ),
-                    ),
-                    if (price != null) ...[
-                      const SizedBox(width: AppSpacing.xxs),
-                      priceRow(alignment: Alignment.center),
-                    ],
-                  ],
+              if (price != null)
+                SizedBox(
+                  height: AppSpacing.xl,
+                  child: Center(
+                    child: priceRow(alignment: Alignment.center),
+                  ),
                 ),
-              ),
             ],
           ),
         );
@@ -337,10 +276,10 @@ class UnitAvatar extends StatelessWidget {
                   // Extra top-only inset gives real headroom without
                   // shrinking the piece from its resting position at the
                   // bottom of the tile, the way it should stand.
-                  padding: const EdgeInsets.fromLTRB(
-                    AppSpacing.xxs,
-                    AppSpacing.sm,
-                    AppSpacing.xxs,
+                  padding: EdgeInsets.fromLTRB(
+                    isReservePiece ? 0 : AppSpacing.xxs,
+                    isReservePiece ? AppSpacing.xs : AppSpacing.sm,
+                    isReservePiece ? 0 : AppSpacing.xxs,
                     AppSpacing.xxs,
                   ),
                   child: isBoardPiece && expand
@@ -369,12 +308,26 @@ class UnitAvatar extends StatelessWidget {
                             );
                           },
                         )
-                      : _UnitArt(
-                          kind: kind,
-                          fusionTier: star,
-                          tint: tint,
-                          size: _width,
-                        ),
+                      : isReservePiece
+                          ? Transform.translate(
+                              offset: const Offset(0, -AppSpacing.xxs),
+                              child: Transform.scale(
+                                scale: 1.08,
+                                alignment: Alignment.bottomCenter,
+                                child: _UnitArt(
+                                  kind: kind,
+                                  fusionTier: star,
+                                  tint: tint,
+                                  size: _width,
+                                ),
+                              ),
+                            )
+                          : _UnitArt(
+                              kind: kind,
+                              fusionTier: star,
+                              tint: tint,
+                              size: _width,
+                            ),
                 ),
                 if (isBoardPiece)
                   Positioned.fill(
@@ -417,7 +370,7 @@ class UnitAvatar extends StatelessWidget {
                   Positioned(
                     left: 0,
                     right: 0,
-                    top: AppSpacing.xxs,
+                    bottom: -AppSpacing.xxs,
                     child: Center(
                       child: FittedBox(
                         fit: BoxFit.scaleDown,
@@ -425,6 +378,7 @@ class UnitAvatar extends StatelessWidget {
                           key: const ValueKey('unit-star-indicator'),
                           star: displayStar,
                           color: game.starColor(star),
+                          size: 10,
                           framed: true,
                         ),
                       ),
