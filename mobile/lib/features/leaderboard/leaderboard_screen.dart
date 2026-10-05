@@ -293,6 +293,13 @@ class _RankingSectionHeader extends StatelessWidget {
       );
 }
 
+(Color, IconData) _rankAppearance(int rank) => switch (rank) {
+      1 => (const Color(0xFFFFD35A), Icons.emoji_events_rounded),
+      2 => (const Color(0xFFC9D7E5), Icons.workspace_premium_rounded),
+      3 => (const Color(0xFFD99A62), Icons.military_tech_rounded),
+      _ => (const Color(0xFF8FA8BE), Icons.shield_outlined),
+    };
+
 class _RankingRow extends StatelessWidget {
   const _RankingRow({
     required this.entry,
@@ -306,12 +313,7 @@ class _RankingRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final (medalColor, medalIcon) = switch (displayRank) {
-      1 => (const Color(0xFFFFD35A), Icons.emoji_events_rounded),
-      2 => (const Color(0xFFC9D7E5), Icons.workspace_premium_rounded),
-      3 => (const Color(0xFFD99A62), Icons.military_tech_rounded),
-      _ => (const Color(0xFF8FA8BE), Icons.shield_outlined),
-    };
+    final (medalColor, medalIcon) = _rankAppearance(displayRank);
 
     return Container(
       key: isCurrentPlayer ? const ValueKey('leaderboard-self-row') : null,
@@ -434,24 +436,10 @@ class _CurrentRankCard extends StatelessWidget {
         ),
         child: Row(
           children: [
-            Container(
-              width: AppSpacing.huge,
-              height: AppSpacing.huge,
-              alignment: Alignment.center,
-              decoration: const BoxDecoration(
-                color: Color(0x3359B7E8),
-                shape: BoxShape.circle,
-                border: Border.fromBorderSide(
-                  BorderSide(color: Color(0x9959B7E8)),
-                ),
-              ),
-              child: Text(
-                '${entry.rank}',
-                style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                      color: const Color(0xFF9DDCFF),
-                      fontWeight: FontWeight.w900,
-                    ),
-              ),
+            _RankMedal(
+              rank: entry.rank,
+              color: _rankAppearance(entry.rank).$1,
+              icon: _rankAppearance(entry.rank).$2,
             ),
             const SizedBox(width: AppSpacing.md),
             Expanded(
@@ -478,7 +466,7 @@ class _CurrentRankCard extends StatelessWidget {
             ),
             _RatingBadge(
               rating: entry.rating,
-              accent: const Color(0xFF9DDCFF),
+              accent: _rankAppearance(entry.rank).$1,
             ),
           ],
         ),

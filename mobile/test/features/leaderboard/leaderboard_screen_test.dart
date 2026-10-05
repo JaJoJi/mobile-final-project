@@ -93,6 +93,39 @@ void main() {
     expect(find.text('โหลดเพิ่มเติม'), findsOneWidget);
   });
 
+  for (final (rank, icon, color) in [
+    (1, Icons.emoji_events_rounded, const Color(0xFFFFD35A)),
+    (2, Icons.workspace_premium_rounded, const Color(0xFFC9D7E5)),
+    (3, Icons.military_tech_rounded, const Color(0xFFD99A62)),
+    (28, Icons.shield_outlined, const Color(0xFF8FA8BE)),
+  ]) {
+    testWidgets('current rank $rank uses the leaderboard medal style',
+        (tester) async {
+      final data = LeaderboardViewData(
+        entries: PlayerHubFixtures.leaderboard.entries,
+        currentPlayer:
+            LeaderboardEntry(rank: rank, username: 'JaJoJi', rating: 1240),
+      );
+      await tester.pumpWidget(app(source: (_) async => data));
+      await tester.pumpAndSettle();
+      final card = find.byKey(const ValueKey('leaderboard-current-rank-card'));
+      final medal = find.descendant(
+        of: card,
+        matching: find.byWidgetPredicate(
+          (widget) =>
+              widget is Icon && widget.icon == icon && widget.size == 27,
+        ),
+      );
+      expect(medal, findsOneWidget);
+      expect(tester.widget<Icon>(medal).color, color.withValues(alpha: .22));
+      final label = tester.widget<Text>(
+        find.descendant(of: card, matching: find.text('$rank')),
+      );
+      expect(label.style?.color, color);
+      expect(tester.takeException(), isNull);
+    });
+  }
+
   testWidgets('shows a loading state while the source is pending',
       (tester) async {
     final pending = Completer<LeaderboardViewData>();
