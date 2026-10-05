@@ -38,12 +38,6 @@ class _JoinRoomScreenState extends ConsumerState<JoinRoomScreen> {
 
   @override
   Widget build(BuildContext context) {
-    ref.listen(wsEventProvider('game:room:state'), (previous, next) {
-      final event = next.valueOrNull;
-      if (event?['status'] == 'matched' && event?['matchId'] is String) {
-        context.go('/match/${event!['matchId']}');
-      }
-    });
     final online = ref.watch(wsConnectionStateProvider).valueOrNull ==
         WsConnectionState.connected;
     return PlayerHubShell(
@@ -110,12 +104,8 @@ class _JoinRoomScreenState extends ConsumerState<JoinRoomScreen> {
       _error = null;
     });
     try {
-      final room = await ref.read(apiClientProvider).joinRoom(code);
-      if (mounted && room['matchId'] is String) {
-        context.go('/match/${room['matchId']}');
-      } else if (mounted) {
-        setState(() => _error = 'กำลังเตรียมการแข่งขัน ลองอีกครั้ง');
-      }
+      await ref.read(apiClientProvider).joinRoom(code);
+      if (mounted) context.go(CreateRoomScreen.path);
     } on DioException catch (error) {
       final body = error.response?.data;
       final code = body is Map ? body['code'] : null;

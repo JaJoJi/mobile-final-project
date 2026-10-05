@@ -89,8 +89,8 @@ const seedRoom = async (
   await mock.set(userRoomKey(opts.owner), opts.roomId, 'EX', ROOM_TTL_SECONDS);
 };
 
-describe('RoomService.joinRoom (#258 + #259 handoff)', () => {
-  it('joins then hands off: matched view, matchId, room cleaned, both notified', async () => {
+describe('RoomService.joinRoom (#258)', () => {
+  it('joins the lobby and waits for the owner to start', async () => {
     const { mock, pairing, published, service } = makeService();
     await seedRoom(mock, { roomId: 'r1', code: 'ABC234', owner: 'owner-1' });
 
@@ -101,16 +101,15 @@ describe('RoomService.joinRoom (#258 + #259 handoff)', () => {
       code: 'ABC234',
       ownerId: 'owner-1',
       guestId: 'guest-1',
-      status: 'matched',
-      matchId: 'match-1',
+      status: 'full',
+      matchId: null,
     });
-    expect(pairing.calls).toEqual([['owner-1', 'guest-1']]);
-    // Live room state cleaned — only a short tombstone remains for retries.
-    expect(await mock.hget(roomKey('r1'), 'status')).toBe('matched');
-    expect(await mock.hget(roomKey('r1'), 'matchId')).toBe('match-1');
-    expect(await mock.get(roomCodeKey('ABC234'))).toBeNull();
-    expect(await mock.get(userRoomKey('owner-1'))).toBeNull();
-    expect(await mock.get(userRoomKey('guest-1'))).toBeNull();
+    expect(pairing.calls).toEqual([]);
+    expect(await mock.hget(roomKey('r1'), 'status')).toBe('full');
+    expect(await mock.hget(roomKey('r1'), 'matchId')).toBeNull();
+    expect(await mock.get(roomCodeKey('ABC234'))).toBe('r1');
+    expect(await mock.get(userRoomKey('owner-1'))).toBe('r1');
+    expect(await mock.get(userRoomKey('guest-1'))).toBe('r1');
     expect(published).toEqual([
       {
         roomId: 'r1',
@@ -196,7 +195,7 @@ describe('RoomService.joinRoom (#258 + #259 handoff)', () => {
     });
   });
 
-  it('concurrent joins: exactly one winner and one match, loser clean', async () => {
+  it('concurrent joins: exactly one guest wins the slot, loser stays clean', async () => {
     const { mock, pairing, service } = makeService();
     await seedRoom(mock, { roomId: 'r1', code: 'ABC234', owner: 'owner-1' });
 
@@ -213,14 +212,13 @@ describe('RoomService.joinRoom (#258 + #259 handoff)', () => {
     });
 
     const winner = (fulfilled[0] as PromiseFulfilledResult<any>).value;
-    expect(winner.status).toBe('matched');
+    expect(winner.status).toBe('full');
     const winnerId = winner.guestId as string;
     const loserId = winnerId === 'guest-B' ? 'guest-C' : 'guest-B';
-    // Exactly one match for the room, shared by the single winner.
-    expect(pairing.calls).toHaveLength(1);
-    expect(winner.matchId).toBe('match-1');
+    expect(pairing.calls).toHaveLength(0);
+    expect(winner.matchId).toBeNull();
     expect(await mock.get(userRoomKey(loserId))).toBeNull();
-    expect(await mock.hget(roomKey('r1'), 'matchId')).toBe('match-1');
+    expect(await mock.hget(roomKey('r1'), 'matchId')).toBeNull();
   });
 });
 
@@ -264,7 +262,7 @@ describe('RoomService.leaveRoom (#258)', () => {
     await mock.set(userRoomKey('guest-1'), 'r1', 'EX', ROOM_TTL_SECONDS);
     await service.leaveRoom('guest-1');
     const room = await service.joinRoom('guest-2', 'ABC234');
-    expect(room).toMatchObject({ guestId: 'guest-2', status: 'matched', matchId: 'match-1' });
+    expect(room).toMatchObject({ guestId: 'guest-2', status: 'full', matchId: null });
   });
 
   it('owner leave destroys everything and notifies the guest with closed', async () => {

@@ -17,8 +17,9 @@
 | `GET /leaderboard` | ✅ implemented | JWT-guarded; `RANK()` by rating, `?limit=&offset=`, always includes `me` |
 | `POST /rooms` | ✅ implemented | JWT-guarded; creates a 2-player private room, returns code |
 | `GET /rooms/mine` | ✅ implemented | JWT-guarded; caller's current room or 404 |
-| `POST /rooms/join` | ✅ implemented | JWT-guarded; join by code, auto-handoff to a match when full (verified: 23 suites / 206 tests) |
+| `POST /rooms/join` | ✅ implemented | JWT-guarded; join by code and remain in the shared room lobby |
 | `POST /rooms/leave` | ✅ implemented | JWT-guarded; guest leaves or owner destroys |
+| `POST /rooms/start` | ✅ implemented | JWT-guarded; owner starts a full room and hands both players to one match |
 | WS gateway (`/socket.io`, namespace `/game`) | ✅ implemented | all 9 incoming events validated and routed |
 
 ## 1. REST Endpoints

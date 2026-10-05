@@ -15,11 +15,14 @@ class _RoomApi extends ApiClient {
   bool created = false;
   bool missing = false;
   String? guestId;
+  int startCalls = 0;
 
   Map<String, dynamic> get room => {
         'roomId': 'room-1',
         'code': 'ABC234',
         'ownerId': 'owner-1',
+        'ownerUsername': 'Alice',
+        'guestUsername': guestId == null ? null : 'Bob',
         'guestId': guestId,
         'status': guestId == null ? 'waiting' : 'full',
         'expiresAt': '2026-10-01T00:00:00Z',
@@ -49,13 +52,21 @@ class _RoomApi extends ApiClient {
 
   @override
   Future<Map<String, dynamic>> getMe() async => {'username': 'Alice'};
+
+  @override
+  Future<Map<String, dynamic>> startRoom() async {
+    startCalls++;
+    return {};
+  }
 }
 
 class _Auth extends AuthRepository {
-  _Auth(super.api);
+  _Auth(super.api, {this.userId = 'owner-1'});
+
+  final String userId;
 
   @override
-  Future<String?> getUserId() async => 'owner-1';
+  Future<String?> getUserId() async => userId;
 }
 
 void main() {
@@ -78,10 +89,12 @@ void main() {
 
   tearDown(() => ws.dispose());
 
-  Widget app() => ProviderScope(
+  Widget app({String userId = 'owner-1'}) => ProviderScope(
         overrides: [
           apiClientProvider.overrideWithValue(api),
-          authRepositoryProvider.overrideWithValue(_Auth(api)),
+          authRepositoryProvider.overrideWithValue(
+            _Auth(api, userId: userId),
+          ),
           wsClientProvider.overrideWithValue(ws),
         ],
         child: MaterialApp(
@@ -126,7 +139,41 @@ void main() {
     await tester.pumpWidget(app());
     await tester.pumpAndSettle();
 
-    expect(find.text('ผู้เล่น guest-2'), findsOneWidget);
+    expect(find.text('Bob'), findsOneWidget);
+    expect(find.text('เริ่มเกม'), findsOneWidget);
+    await tester.tap(find.byKey(const ValueKey('start-room-match-button')));
+    await tester.pump();
+    expect(api.startCalls, 1);
+  });
+
+  testWidgets('start stays disabled until a guest joins', (tester) async {
+    await tester.pumpWidget(app());
+    await tester.pumpAndSettle();
+
+    final button = tester.widget<FilledButton>(
+      find.byKey(const ValueKey('start-room-match-button')),
+    );
+    expect(button.onPressed, isNull);
+    expect(find.text('รอผู้ท้าชิง'), findsWidgets);
+  });
+
+  testWidgets('guest enters the same lobby on the right and waits for host',
+      (tester) async {
+    api.guestId = 'guest-2';
+    await tester.pumpWidget(app(userId: 'guest-2'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Bob'), findsOneWidget);
+    expect(find.text('Alice'), findsOneWidget);
+    expect(
+      tester.getCenter(find.text('Alice')).dx,
+      lessThan(tester.getCenter(find.text('Bob')).dx),
+    );
+    expect(find.text('รอเจ้าของห้องเริ่มเกม'), findsOneWidget);
+    final button = tester.widget<FilledButton>(
+      find.byKey(const ValueKey('start-room-match-button')),
+    );
+    expect(button.onPressed, isNull);
   });
 
   testWidgets('keeps the arena readable at 360 pixels', (tester) async {

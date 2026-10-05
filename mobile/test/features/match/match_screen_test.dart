@@ -12,7 +12,9 @@ import 'package:auto_chess_mobile/features/match/board/stone_board_tile.dart';
 import 'package:auto_chess_mobile/features/match/match_screen.dart';
 import 'package:auto_chess_mobile/shared/models/game_events.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:go_router/go_router.dart';
 
 import '../../core/ws/fake_ws_transport.dart';
 import '../_util.dart';
@@ -1133,6 +1135,64 @@ void main() {
       expect(tester.takeException(), isNull);
     }
     expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('play again returns home and immediately joins matchmaking',
+      (tester) async {
+    final transport = FakeWsTransport();
+    final client = WsClient(
+      url: 'ws://localhost',
+      getAccessToken: () async => 'token',
+      transport: transport,
+    );
+    addTearDown(client.dispose);
+    final connected = client.connect();
+    transport.serverConnect();
+    await connected;
+    _seed(transport, withUnits: true);
+
+    final router = GoRouter(
+      initialLocation: '/match/m1',
+      routes: [
+        GoRoute(
+          path: '/match/:id',
+          builder: (_, state) => MatchScreen(
+            matchId: state.pathParameters['id']!,
+          ),
+        ),
+        GoRoute(
+          path: '/lobby',
+          builder: (_, __) => const Scaffold(body: Text('lobby-home')),
+        ),
+      ],
+    );
+    addTearDown(router.dispose);
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [wsClientProvider.overrideWithValue(client)],
+        child: MaterialApp.router(routerConfig: router),
+      ),
+    );
+    await tester.pump();
+    transport.emitFromServer(GameEvents.matchEnd, {
+      'matchId': 'm1',
+      'winnerId': 'p1',
+      'reason': 'hp_zero',
+      'final': {
+        'p1': {'hp': 72, 'gold': 4},
+        'p2': {'hp': 0, 'gold': 2},
+      },
+    });
+    await tester.pump();
+
+    await tester.tap(find.byKey(const ValueKey('play-again-button')));
+    await tester.pumpAndSettle();
+
+    expect(find.text('lobby-home'), findsOneWidget);
+    expect(
+      transport.sent.map((message) => message.event),
+      contains(GameActions.matchmakingJoin),
+    );
   });
 
   testWidgets('landscape keeps board and shop visible without overflow',

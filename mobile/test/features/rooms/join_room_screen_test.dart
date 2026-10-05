@@ -33,7 +33,14 @@ class _JoinApi extends ApiClient {
         ),
       );
     }
-    return {'matchId': 'match-1', 'status': 'matched'};
+    return {
+      'roomId': 'room-1',
+      'code': code,
+      'ownerId': 'owner-1',
+      'guestId': 'guest-1',
+      'status': 'full',
+      'matchId': null,
+    };
   }
 }
 
@@ -94,7 +101,7 @@ void main() {
     expect(find.text('พบเพื่อนในสนามส่วนตัว'), findsNothing);
   }
 
-  testWidgets('normalizes a pasted code and enters the returned match',
+  testWidgets('normalizes a pasted code and enters the shared room lobby',
       (tester) async {
     await pumpJoin(tester);
     await tester.enterText(find.byType(TextField), ' abc234 ');
@@ -105,7 +112,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(api.submittedCode, 'ABC234');
-    expect(find.text('match:match-1'), findsOneWidget);
+    expect(find.text('create'), findsOneWidget);
   });
 
   testWidgets('shows a distinct error when the room is missing',
@@ -136,7 +143,14 @@ void main() {
       tester.widget<FilledButton>(find.byType(FilledButton)).onPressed,
       isNull,
     );
-    api.pending!.complete({'matchId': 'match-1', 'status': 'matched'});
+    api.pending!.complete({
+      'roomId': 'room-1',
+      'code': 'ABC234',
+      'ownerId': 'owner-1',
+      'guestId': 'guest-1',
+      'status': 'full',
+      'matchId': null,
+    });
     await tester.pumpAndSettle();
   });
 }

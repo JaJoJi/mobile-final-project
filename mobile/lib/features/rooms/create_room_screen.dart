@@ -13,6 +13,7 @@ import '../../core/widgets/fantasy_page.dart';
 import '../../core/ws/ws_client.dart';
 import '../../core/ws/ws_providers.dart';
 import '../lobby/player_hub_navigation.dart';
+import '../match/match_entry_transition.dart';
 import '../player_hub/player_hub_models.dart';
 import '../player_hub/player_hub_shell.dart';
 
@@ -31,6 +32,8 @@ class _CreateRoomScreenState extends ConsumerState<CreateRoomScreen> {
   bool _loading = true;
   bool _opening = false;
   bool _leaving = false;
+  bool _starting = false;
+  String? _transitioningMatchId;
   String? _error;
 
   @override
@@ -72,10 +75,12 @@ class _CreateRoomScreenState extends ConsumerState<CreateRoomScreen> {
           pending['roomId'] == room.roomId &&
           pending['status'] == 'matched' &&
           pending['matchId'] is String) {
-        context.go('/match/${pending['matchId']}');
+        unawaited(_beginMatchTransition(pending['matchId'] as String));
         return;
       }
-      if (room.matchId != null) context.go('/match/${room.matchId}');
+      if (room.matchId != null) {
+        unawaited(_beginMatchTransition(room.matchId!));
+      }
     } catch (error) {
       if (mounted) {
         if (!createIfMissing &&
@@ -110,6 +115,46 @@ class _CreateRoomScreenState extends ConsumerState<CreateRoomScreen> {
     } finally {
       if (mounted) setState(() => _leaving = false);
     }
+  }
+
+  Future<void> _startRoom() async {
+    final room = _room;
+    if (_starting || room == null || !room.isHost || room.guest == null) return;
+    setState(() {
+      _starting = true;
+      _error = null;
+    });
+    try {
+      final result = await ref.read(apiClientProvider).startRoom();
+      final matchId = result['matchId'];
+      if (matchId is String && matchId.isNotEmpty) {
+        await _beginMatchTransition(matchId);
+      }
+    } on DioException catch (error) {
+      final body = error.response?.data;
+      final code = body is Map ? body['code'] : null;
+      if (mounted) {
+        setState(() {
+          _error = switch (code) {
+            'room.not_full' => 'ต้องมีผู้เล่นสองคนก่อนเริ่มเกม',
+            'room.owner_only' => 'เฉพาะเจ้าของห้องเท่านั้นที่เริ่มเกมได้',
+            'room.match_starting' => 'กำลังเริ่มเกม กรุณารอสักครู่',
+            _ => 'เริ่มเกมไม่สำเร็จ ลองอีกครั้ง',
+          };
+        });
+      }
+    } catch (_) {
+      if (mounted) setState(() => _error = 'เริ่มเกมไม่สำเร็จ ลองอีกครั้ง');
+    } finally {
+      if (mounted && _transitioningMatchId == null) {
+        setState(() => _starting = false);
+      }
+    }
+  }
+
+  Future<void> _beginMatchTransition(String matchId) async {
+    if (!mounted || _transitioningMatchId != null) return;
+    setState(() => _transitioningMatchId = matchId);
   }
 
   Future<void> _confirmLeave() async {
@@ -206,7 +251,7 @@ class _CreateRoomScreenState extends ConsumerState<CreateRoomScreen> {
       }
       if (json['roomId'] != _room?.roomId) return;
       if (json['status'] == 'matched' && json['matchId'] is String) {
-        context.go('/match/${json['matchId']}');
+        unawaited(_beginMatchTransition(json['matchId'] as String));
       } else if (json['status'] == 'closed') {
         context.go('/lobby');
       } else {
@@ -215,7 +260,9 @@ class _CreateRoomScreenState extends ConsumerState<CreateRoomScreen> {
     });
     ref.listen(matchPhaseProvider, (previous, next) {
       final phase = next.valueOrNull;
-      if (_room != null && phase != null) context.go('/match/${phase.matchId}');
+      if (_room != null && phase != null) {
+        unawaited(_beginMatchTransition(phase.matchId));
+      }
     });
     ref.listen(wsConnectionStateProvider, (previous, next) {
       if (next.valueOrNull == WsConnectionState.connected &&
@@ -225,43 +272,64 @@ class _CreateRoomScreenState extends ConsumerState<CreateRoomScreen> {
     });
     final online = ref.watch(wsConnectionStateProvider).valueOrNull ==
         WsConnectionState.connected;
-    return PlayerHubShell(
-      title: 'ห้องส่วนตัว',
-      badge: '1 VS 1',
-      lighter: true,
-      headerLeading: IconButton(
-        tooltip: 'ออกจากห้อง',
-        onPressed: _room == null ? () => context.go('/lobby') : _confirmLeave,
-        icon: const Icon(Icons.arrow_back_rounded),
-      ),
-      navigation: const PlayerHubNavigation(selected: PlayerHubTab.home),
-      body: _loading && _room == null
-          ? const Center(child: CircularProgressIndicator())
-          : _room == null
-              ? Center(
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Text(_error ?? 'ยังไม่มีห้อง'),
-                      TextButton(
-                        onPressed: () => _openRoom(),
-                        child: const Text('ลองอีกครั้ง'),
+    final room = _room;
+    return Stack(
+      children: [
+        PlayerHubShell(
+          title: 'ห้องส่วนตัว',
+          badge: '1 VS 1',
+          lighter: true,
+          headerLeading: IconButton(
+            tooltip: 'ออกจากห้อง',
+            onPressed:
+                room == null ? () => context.go('/lobby') : _confirmLeave,
+            icon: const Icon(Icons.arrow_back_rounded),
+          ),
+          navigation: const PlayerHubNavigation(selected: PlayerHubTab.home),
+          body: _loading && room == null
+              ? const Center(child: CircularProgressIndicator())
+              : room == null
+                  ? Center(
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(_error ?? 'ยังไม่มีห้อง'),
+                          TextButton(
+                            onPressed: () => _openRoom(),
+                            child: const Text('ลองอีกครั้ง'),
+                          ),
+                        ],
                       ),
-                    ],
-                  ),
-                )
-              : Column(
-                  children: [
-                    if (_error != null) Text(_error!),
-                    if (!online)
-                      const Text('ขาดการเชื่อมต่อ กำลังเชื่อมต่อใหม่…'),
-                    Expanded(
-                      child: RoomArenaContent(
-                        room: _room!,
-                      ),
+                    )
+                  : Column(
+                      children: [
+                        if (_error != null) Text(_error!),
+                        if (!online)
+                          const Text('ขาดการเชื่อมต่อ กำลังเชื่อมต่อใหม่…'),
+                        Expanded(
+                          child: RoomArenaContent(
+                            room: room,
+                            starting: _starting,
+                            onStart: _startRoom,
+                          ),
+                        ),
+                      ],
                     ),
-                  ],
-                ),
+        ),
+        if (_transitioningMatchId != null && room != null)
+          MatchEntryTransition(
+            matchId: _transitioningMatchId!,
+            onReady: () {
+              final matchId = _transitioningMatchId;
+              if (mounted && matchId != null) {
+                context.go('/match/${Uri.encodeComponent(matchId)}');
+              }
+            },
+            title: 'การดวลกำลังเริ่ม!',
+            leftName: room.host.username,
+            rightName: room.guest?.username ?? 'ผู้ท้าชิง',
+          ),
+      ],
     );
   }
 }
@@ -271,9 +339,13 @@ class RoomArenaContent extends StatelessWidget {
   const RoomArenaContent({
     super.key,
     required this.room,
+    this.starting = false,
+    this.onStart,
   });
 
   final RoomViewState room;
+  final bool starting;
+  final VoidCallback? onStart;
 
   @override
   Widget build(BuildContext context) {
@@ -303,7 +375,11 @@ class RoomArenaContent extends StatelessWidget {
                     const SizedBox(height: AppSpacing.lg),
                     _BattleStage(room: room, compact: compact),
                     const SizedBox(height: AppSpacing.lg),
-                    _RoomStatus(room: room),
+                    _RoomStatus(
+                      room: room,
+                      starting: starting,
+                      onStart: onStart,
+                    ),
                   ],
                 ),
               ),
@@ -611,8 +687,14 @@ class _PlayerSide extends StatelessWidget {
 }
 
 class _RoomStatus extends StatelessWidget {
-  const _RoomStatus({required this.room});
+  const _RoomStatus({
+    required this.room,
+    required this.starting,
+    required this.onStart,
+  });
   final RoomViewState room;
+  final bool starting;
+  final VoidCallback? onStart;
 
   @override
   Widget build(BuildContext context) {
@@ -623,7 +705,9 @@ class _RoomStatus extends StatelessWidget {
     };
     final description = switch (room.status) {
       RoomFixtureStatus.waiting => 'ส่งรหัสห้องให้เพื่อนเพื่อเริ่มการแข่งขัน',
-      RoomFixtureStatus.joined => 'กำลังเตรียมการแข่งขัน',
+      RoomFixtureStatus.joined => room.isHost
+          ? 'ผู้เล่นครบแล้ว กดเริ่มเกมเมื่อพร้อม'
+          : 'ผู้เล่นครบแล้ว รอเจ้าของห้องเริ่มเกม',
       RoomFixtureStatus.reconnecting => 'รอสถานะล่าสุดจากเซิร์ฟเวอร์',
     };
     return Container(
@@ -642,48 +726,81 @@ class _RoomStatus extends StatelessWidget {
           ),
         ],
       ),
-      child: Semantics(
-        liveRegion: true,
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Container(
-              width: AppSpacing.huge,
-              height: AppSpacing.huge,
-              decoration: const BoxDecoration(
-                color: Color(0x1FF2C14E),
-                borderRadius: AppRadius.allMd,
-              ),
-              child: switch (room.status) {
-                RoomFixtureStatus.waiting => const _WaitingHourglass(),
-                RoomFixtureStatus.joined => const Icon(
-                    Icons.check_circle_outline_rounded,
-                    color: Color(0xFF67D9A4),
+      child: Column(
+        children: [
+          Semantics(
+            liveRegion: true,
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Container(
+                  width: AppSpacing.huge,
+                  height: AppSpacing.huge,
+                  decoration: const BoxDecoration(
+                    color: Color(0x1FF2C14E),
+                    borderRadius: AppRadius.allMd,
                   ),
-                RoomFixtureStatus.reconnecting => const Icon(
-                    Icons.sync_rounded,
-                    color: Color(0xFF8AD6FF),
+                  child: switch (room.status) {
+                    RoomFixtureStatus.waiting => const _WaitingHourglass(),
+                    RoomFixtureStatus.joined => const Icon(
+                        Icons.check_circle_outline_rounded,
+                        color: Color(0xFF67D9A4),
+                      ),
+                    RoomFixtureStatus.reconnecting => const Icon(
+                        Icons.sync_rounded,
+                        color: Color(0xFF8AD6FF),
+                      ),
+                  },
+                ),
+                const SizedBox(width: AppSpacing.md),
+                Flexible(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        title,
+                        textAlign: TextAlign.start,
+                        style:
+                            Theme.of(context).textTheme.titleMedium?.copyWith(
+                                  color: const Color(0xFFFFE5A4),
+                                ),
+                      ),
+                      Text(description, textAlign: TextAlign.start),
+                    ],
                   ),
-              },
+                ),
+              ],
             ),
-            const SizedBox(width: AppSpacing.md),
-            Flexible(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    title,
-                    textAlign: TextAlign.start,
-                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                          color: const Color(0xFFFFE5A4),
-                        ),
-                  ),
-                  Text(description, textAlign: TextAlign.start),
-                ],
+          ),
+          const SizedBox(height: AppSpacing.md),
+          SizedBox(
+            width: double.infinity,
+            child: FilledButton.icon(
+              key: const ValueKey('start-room-match-button'),
+              onPressed: room.isHost &&
+                      room.status == RoomFixtureStatus.joined &&
+                      !starting
+                  ? onStart
+                  : null,
+              icon: Icon(
+                starting
+                    ? Icons.hourglass_top_rounded
+                    : room.isHost
+                        ? Icons.sports_martial_arts_rounded
+                        : Icons.shield_outlined,
+              ),
+              label: Text(
+                starting
+                    ? 'กำลังเปิดสนาม…'
+                    : room.isHost
+                        ? room.guest == null
+                            ? 'รอผู้ท้าชิง'
+                            : 'เริ่มเกม'
+                        : 'รอเจ้าของห้องเริ่มเกม',
               ),
             ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }

@@ -71,8 +71,10 @@ GoRouter buildRouter() {
       ),
       GoRoute(
         path: '/match/:id',
-        builder: (_, state) =>
-            MatchScreen(matchId: state.pathParameters['id']!),
+        pageBuilder: (_, state) => NoTransitionPage<void>(
+          key: state.pageKey,
+          child: MatchScreen(matchId: state.pathParameters['id']!),
+        ),
       ),
       GoRoute(
         path: HistoryListScreen.path,

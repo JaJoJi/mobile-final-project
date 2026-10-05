@@ -77,18 +77,19 @@ class _AutoChessAppState extends ConsumerState<AutoChessApp> {
   Widget build(BuildContext context) {
     final settings = ref.watch(settingsProvider);
     ref.read(gameAudioProvider).enabled = settings.soundEnabled;
-    return MatchmakingNavigationCoordinator(
-      router: _router,
-      child: MaterialApp.router(
-        title: 'ออโต้เชส',
-        debugShowCheckedModeBanner: false,
-        theme: buildTheme(Brightness.light),
-        darkTheme: buildTheme(Brightness.dark),
-        themeMode: settings.themeMode,
-        scrollBehavior: const MaterialScrollBehavior().copyWith(
-          scrollbars: false,
-        ),
-        routerConfig: _router,
+    return MaterialApp.router(
+      title: 'ออโต้เชส',
+      debugShowCheckedModeBanner: false,
+      theme: buildTheme(Brightness.light),
+      darkTheme: buildTheme(Brightness.dark),
+      themeMode: settings.themeMode,
+      scrollBehavior: const MaterialScrollBehavior().copyWith(
+        scrollbars: false,
+      ),
+      routerConfig: _router,
+      builder: (context, child) => MatchmakingNavigationCoordinator(
+        router: _router,
+        child: child ?? const SizedBox.shrink(),
       ),
     );
   }

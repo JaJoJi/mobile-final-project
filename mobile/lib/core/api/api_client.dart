@@ -153,6 +153,11 @@ class ApiClient {
     return Map<String, dynamic>.from(res.data!);
   }
 
+  Future<Map<String, dynamic>> startRoom() async {
+    final res = await _dio.post<Map<String, dynamic>>('/rooms/start');
+    return Map<String, dynamic>.from(res.data!);
+  }
+
   // ─── match history ────────────────────────────────────────────────
 
   /// `GET /match/history` — the caller's last matches (server caps the count).

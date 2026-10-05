@@ -1,11 +1,10 @@
-import 'dart:async';
-
 import 'package:flutter/widgets.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../core/ws/ws_providers.dart';
 import '../../shared/models/game_events.dart';
+import '../match/match_entry_transition.dart';
 import 'matchmaking_state.dart';
 
 /// Keeps quick-match navigation alive above every authenticated screen.
@@ -19,12 +18,10 @@ class MatchmakingNavigationCoordinator extends ConsumerStatefulWidget {
     super.key,
     required this.router,
     required this.child,
-    this.navigationDelay = const Duration(milliseconds: 500),
   });
 
   final GoRouter router;
   final Widget child;
-  final Duration navigationDelay;
 
   @override
   ConsumerState<MatchmakingNavigationCoordinator> createState() =>
@@ -34,6 +31,7 @@ class MatchmakingNavigationCoordinator extends ConsumerStatefulWidget {
 class _MatchmakingNavigationCoordinatorState
     extends ConsumerState<MatchmakingNavigationCoordinator> {
   bool _navigating = false;
+  MatchPhaseEvent? _matchedPhase;
 
   @override
   Widget build(BuildContext context) {
@@ -48,18 +46,47 @@ class _MatchmakingNavigationCoordinatorState
       }
 
       ref.read(matchmakingStateProvider.notifier).markMatched();
-      _navigating = true;
-      unawaited(_openMatch(phase.matchId));
+      setState(() {
+        _navigating = true;
+        _matchedPhase = phase;
+      });
     });
 
-    return widget.child;
+    final phase = _matchedPhase;
+    return Stack(
+      textDirection: TextDirection.ltr,
+      children: [
+        widget.child,
+        if (phase != null)
+          MatchEntryTransition(
+            matchId: phase.matchId,
+            leftName: _playerName(phase, 0, 'ผู้เล่น 1'),
+            rightName: _playerName(phase, 1, 'ผู้เล่น 2'),
+            onReady: () => _openMatch(phase.matchId),
+          ),
+      ],
+    );
+  }
+
+  String _playerName(MatchPhaseEvent phase, int index, String fallback) {
+    if (index >= phase.players.length) return fallback;
+    final name = phase.players[index].username?.trim();
+    return name == null || name.isEmpty ? fallback : name;
   }
 
   Future<void> _openMatch(String matchId) async {
-    await Future<void>.delayed(widget.navigationDelay);
     if (!mounted) return;
 
     widget.router.go('/match/${Uri.encodeComponent(matchId)}');
-    _navigating = false;
+    // Keep the encounter above the outgoing page until routing has rebuilt
+    // and the destination has painted. Completion can fire inside a frame.
+    await WidgetsBinding.instance.endOfFrame;
+    if (!mounted) return;
+    await WidgetsBinding.instance.endOfFrame;
+    if (!mounted) return;
+    setState(() {
+      _matchedPhase = null;
+      _navigating = false;
+    });
   }
 }

@@ -68,6 +68,7 @@ class RoomViewState {
     required this.host,
     required this.guest,
     required this.status,
+    required this.isHost,
     this.roomId,
     this.matchId,
   });
@@ -79,17 +80,21 @@ class RoomViewState {
   }) {
     final ownerId = json['ownerId'] as String;
     final guestId = json['guestId'] as String?;
-    RoomPlayer player(String id, String role) => RoomPlayer(
-          username: id == currentUserId
+    RoomPlayer player(String id, String role) {
+      final serverName =
+          json[id == ownerId ? 'ownerUsername' : 'guestUsername'] as String?;
+      final name = serverName?.trim().isNotEmpty == true
+          ? serverName!.trim()
+          : id == currentUserId
               ? currentUsername
-              : 'ผู้เล่น ${id.substring(0, id.length < 8 ? id.length : 8)}',
-          crestLabel: id == currentUserId
-              ? (currentUsername.isEmpty
-                  ? '?'
-                  : currentUsername.substring(0, 1).toUpperCase())
-              : '?',
-          roleLabel: role,
-        );
+              : 'ผู้เล่น';
+      return RoomPlayer(
+        username: name,
+        crestLabel: name.isEmpty ? '?' : name.substring(0, 1).toUpperCase(),
+        roleLabel: role,
+      );
+    }
+
     return RoomViewState(
       roomId: json['roomId'] as String?,
       roomCode: json['code'] as String,
@@ -106,6 +111,7 @@ class RoomViewState {
       status: guestId == null
           ? RoomFixtureStatus.waiting
           : RoomFixtureStatus.joined,
+      isHost: ownerId == currentUserId,
       matchId: json['matchId'] as String?,
     );
   }
@@ -114,6 +120,7 @@ class RoomViewState {
   final RoomPlayer host;
   final RoomPlayer? guest;
   final RoomFixtureStatus status;
+  final bool isHost;
   final String? roomId;
   final String? matchId;
 }

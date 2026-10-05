@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
@@ -25,6 +26,7 @@ import 'battle/battle_view.dart';
 import 'board/board_slot.dart';
 import 'board/board_tab.dart';
 import 'match_controller.dart';
+import 'match_loading_view.dart';
 import 'result/result_overlay.dart';
 import 'shop/shop_tab.dart';
 
@@ -109,7 +111,7 @@ class _MatchScreenState extends ConsumerState<MatchScreen> {
             child: Stack(
               children: [
                 if (view.loading)
-                  const _MatchSkeleton()
+                  const MatchLoadingView()
                 else
                   _MatchContent(
                     view: view,
@@ -144,7 +146,7 @@ class _MatchScreenState extends ConsumerState<MatchScreen> {
                     finalTeam: view.match!.roster.board,
                     rounds: view.match!.round,
                     duration: DateTime.now().difference(_openedAt),
-                    onPlayAgain: _returnToLobby,
+                    onPlayAgain: _playAgain,
                     onBackToLobby: _returnToLobby,
                   ),
                 if (connection == ConnectionStatus.disconnected)
@@ -179,6 +181,14 @@ class _MatchScreenState extends ConsumerState<MatchScreen> {
     ScaffoldMessenger.maybeOf(context)?.clearSnackBars();
     ref.read(matchmakingStateProvider.notifier).resetAfterMatch();
     context.go('/lobby');
+  }
+
+  void _playAgain() {
+    ScaffoldMessenger.maybeOf(context)?.clearSnackBars();
+    final matchmaking = ref.read(matchmakingStateProvider.notifier);
+    matchmaking.resetAfterMatch();
+    context.go('/lobby');
+    unawaited(matchmaking.beginSearch());
   }
 }
 
@@ -1055,30 +1065,6 @@ class _DisconnectedOverlay extends StatelessWidget {
               ),
             ),
           ),
-        ),
-      );
-}
-
-class _MatchSkeleton extends StatelessWidget {
-  const _MatchSkeleton();
-
-  @override
-  Widget build(BuildContext context) => Padding(
-        padding: const EdgeInsets.all(AppSpacing.lg),
-        child: Column(
-          children: [
-            const SkeletonBox(height: 88),
-            const SizedBox(height: AppSpacing.lg),
-            Expanded(
-              child: GridView.count(
-                crossAxisCount: 3,
-                mainAxisSpacing: AppSpacing.sm,
-                crossAxisSpacing: AppSpacing.sm,
-                children: List.generate(9, (_) => const SkeletonBox()),
-              ),
-            ),
-            const Text('กำลังเข้าสู่แมตช์…'),
-          ],
         ),
       );
 }

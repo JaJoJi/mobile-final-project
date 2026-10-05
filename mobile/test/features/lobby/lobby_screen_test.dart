@@ -18,6 +18,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../core/ws/fake_ws_transport.dart';
 import '../_util.dart';
+import '../match/match_entry_fixture.dart';
 
 /// P0-FE-03 — lobby screen state transitions + auto-nav.
 ///
@@ -94,9 +95,12 @@ void main() {
             (ref) async => PlayerHubFixtures.leaderboard,
           ),
         ],
-        child: MatchmakingNavigationCoordinator(
-          router: router,
-          child: MaterialApp.router(routerConfig: router),
+        child: MaterialApp.router(
+          routerConfig: router,
+          builder: (context, child) => MatchmakingNavigationCoordinator(
+            router: router,
+            child: child ?? const SizedBox.shrink(),
+          ),
         ),
       ),
     );
@@ -230,6 +234,7 @@ void main() {
     tester,
   ) async {
     final router = await pumpLobby(tester);
+    await warmEntryArt(tester);
 
     await tester.tap(find.text('จับคู่ด่วน'));
     await tester.pump();
@@ -244,6 +249,7 @@ void main() {
       'timer': 40,
       'players': <Map<String, dynamic>>[],
     });
+    seedEntrySnapshot(transport, 'matched-while-away');
     await tester.pumpAndSettle(const Duration(seconds: 2));
 
     expect(find.text('match:matched-while-away'), findsOneWidget);
@@ -284,10 +290,12 @@ void main() {
   testWidgets('game:match:phase event while searching → state matched + nav',
       (tester) async {
     final router = await pumpLobby(tester);
+    await warmEntryArt(tester);
     await tester.tap(find.text('จับคู่ด่วน'));
     await tester.pump();
 
     // Server pairs us.
+    seedEntrySnapshot(transport, 'abc-123');
     transport.emitFromServer(GameEvents.matchPhase, {
       'matchId': 'abc-123',
       'phase': 'shop_place',
@@ -295,6 +303,19 @@ void main() {
       'timer': 40,
       'players': <Map<String, dynamic>>[],
     });
+    await tester.pump();
+    expect(
+      find.byKey(const ValueKey('match-found-transition')),
+      findsOneWidget,
+    );
+    expect(find.text('VS'), findsOneWidget);
+    expect(find.byKey(const ValueKey('left-fighter-icon')), findsOneWidget);
+    expect(find.byKey(const ValueKey('right-fighter-icon')), findsOneWidget);
+    final popup = tester.getRect(
+      find.byKey(const ValueKey('match-found-popup-card')),
+    );
+    expect(popup.width, lessThan(390));
+    expect(popup.height, lessThan(500));
     await tester.pumpAndSettle(const Duration(seconds: 2));
 
     // Navigate without leaving a match-found snackbar over the game.
