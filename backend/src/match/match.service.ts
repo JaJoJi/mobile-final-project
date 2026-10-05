@@ -247,7 +247,7 @@ export class MatchService {
       status: match.status,
       rounds: rounds.map((round) => ({
         roundNumber: round.roundNumber,
-        events: round.events,
+        events: round.events ?? [],
       })),
       createdAt: match.createdAt.toISOString(),
       finishedAt: match.finishedAt?.toISOString() ?? null,

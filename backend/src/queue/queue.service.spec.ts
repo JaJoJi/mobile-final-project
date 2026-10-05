@@ -38,6 +38,25 @@ const makeService = () => {
 };
 
 describe('QueueService job contracts (#306)', () => {
+  it('schedules one daily retention run with retries across module starts', async () => {
+    const { matchCleanup, service } = makeService();
+    await service.onModuleInit();
+    expect(matchCleanup.added).toEqual([{
+      name: JOB_NAMES.MATCH_RETENTION_RUN,
+      data: {},
+      opts: expect.objectContaining({
+        repeat: { every: 86_400_000 },
+        jobId: 'match-retention-daily',
+        attempts: 3,
+        removeOnComplete: true,
+      }),
+    }]);
+
+    matchCleanup.repeatable = [{ name: JOB_NAMES.MATCH_RETENTION_RUN, every: 86_400_000 }];
+    await service.onModuleInit();
+    expect(matchCleanup.added).toHaveLength(1);
+  });
+
   it('schedules one phase timer per match+round (dedup by jobId)', async () => {
     const { phaseTimer, service } = makeService();
     await service.schedulePhaseStart('m1', 2, 40000);

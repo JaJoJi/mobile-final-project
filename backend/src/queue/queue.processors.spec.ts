@@ -10,6 +10,7 @@ import {
   DisconnectDetectProcessor,
   PhaseTimerProcessor,
 } from './queue.processors';
+import { MatchCleanupWorker } from './workers/queue.workers';
 
 const roundJob = (name: string, matchId = 'match-1', round = 2) =>
   ({ name, data: { matchId, round } }) as any;
@@ -88,5 +89,17 @@ describe('DisconnectDetectProcessor (#307)', () => {
       data: { matchId: 'match-1', userId: 'player-1' },
     } as any);
     expect(runtime.handleDisconnect).toHaveBeenCalledWith('match-1', 'player-1');
+  });
+});
+
+describe('MatchCleanupWorker (#388)', () => {
+  it('runs retention for the scheduled job and lets BullMQ retry failures', async () => {
+    const retention = { run: jest.fn().mockRejectedValueOnce(new Error('database unavailable')) };
+    const worker = new MatchCleanupWorker(retention as any);
+    const job = { name: JOB_NAMES.MATCH_RETENTION_RUN, data: {} } as any;
+
+    await expect(worker.process(job)).rejects.toThrow('database unavailable');
+    await expect(worker.process(job)).resolves.toBeUndefined();
+    expect(retention.run).toHaveBeenCalledTimes(2);
   });
 });

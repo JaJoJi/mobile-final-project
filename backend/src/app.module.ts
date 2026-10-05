@@ -9,6 +9,7 @@ import { LoggerModule } from './common/logger/logger.module';
 import { ENTITIES } from './database/entities';
 import { buildPostgresConnectionFragment } from './database/postgres-replication';
 import { MatchModule } from './match/match.module';
+import { MonitoringModule } from './monitoring/monitoring.module';
 import { MatchmakingModule } from './matchmaking/matchmaking.module';
 import { QueueModule } from './queue/queue.module';
 import { RedisModule } from './redis/redis.module';
@@ -47,6 +48,7 @@ import { WsModule } from './ws/ws.module';
     UserModule,
     AuthModule,
     MatchModule,
+    MonitoringModule,
     RuntimeModule,
     MatchmakingModule,
     RoomModule,

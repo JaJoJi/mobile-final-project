@@ -29,6 +29,7 @@ export const JOB_NAMES = {
   MATCH_PAIR: 'match-pair:tick',
   // match-cleanup
   MATCH_CLEANUP: 'match-cleanup:run',
+  MATCH_RETENTION_RUN: 'match-retention:run',
 } as const;
 
 export type JobName = (typeof JOB_NAMES)[keyof typeof JOB_NAMES];

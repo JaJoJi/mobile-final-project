@@ -1,10 +1,10 @@
 import { InjectQueue } from '@nestjs/bullmq';
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { Queue } from 'bullmq';
 import { JOB_NAMES, QUEUE_NAMES } from './queue.constants';
 
 @Injectable()
-export class QueueService {
+export class QueueService implements OnModuleInit {
   private readonly logger = new Logger(QueueService.name);
 
   constructor(
@@ -14,6 +14,30 @@ export class QueueService {
     @InjectQueue(QUEUE_NAMES.MATCH_PAIR) private readonly matchPair: Queue,
     @InjectQueue(QUEUE_NAMES.MATCH_CLEANUP) private readonly matchCleanup: Queue,
   ) {}
+
+  async onModuleInit(): Promise<void> {
+    await this.ensureMatchRetentionRepeating();
+  }
+
+  private async ensureMatchRetentionRepeating(intervalMs = 24 * 60 * 60 * 1000) {
+    const existing = await this.matchCleanup.getRepeatableJobs();
+    const already = existing.some(
+      (job) => job.name === JOB_NAMES.MATCH_RETENTION_RUN && Number(job.every) === intervalMs,
+    );
+    if (already) return;
+    await this.matchCleanup.add(
+      JOB_NAMES.MATCH_RETENTION_RUN,
+      {},
+      {
+        repeat: { every: intervalMs },
+        jobId: 'match-retention-daily',
+        attempts: 3,
+        backoff: { type: 'exponential', delay: 60_000 },
+        removeOnComplete: true,
+        removeOnFail: 100,
+      },
+    );
+  }
 
   /**
    * One-shot delayed timer. Used by the Round Orchestrator to auto-advance

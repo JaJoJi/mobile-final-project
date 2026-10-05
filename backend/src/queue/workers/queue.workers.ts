@@ -1,6 +1,7 @@
 import { Processor, WorkerHost } from '@nestjs/bullmq';
 import { Logger } from '@nestjs/common';
 import { Job } from 'bullmq';
+import { MatchRetentionService } from '../../match/match-retention.service';
 import { JOB_NAMES, QUEUE_NAMES } from '../queue.constants';
 
 /**
@@ -20,7 +21,15 @@ import { JOB_NAMES, QUEUE_NAMES } from '../queue.constants';
 export class MatchCleanupWorker extends WorkerHost {
   private readonly logger = new Logger(MatchCleanupWorker.name);
 
+  constructor(private readonly retention: MatchRetentionService) {
+    super();
+  }
+
   async process(job: Job): Promise<void> {
+    if (job.name === JOB_NAMES.MATCH_RETENTION_RUN) {
+      await this.retention.run();
+      return;
+    }
     this.logger.log(
       `[match-cleanup] job=${job.name} id=${job.id} data=${JSON.stringify(job.data)}`,
     );
