@@ -278,6 +278,36 @@ void main() {
     expect(payload['matchId'], 'm1');
     expect(payload['round'], 1);
   });
+
+  test('round summary submits continue once and can surrender', () async {
+    transport.emitFromServer(GameEvents.matchPhase, {
+      'matchId': 'm1',
+      'phase': 'resolved',
+      'round': 1,
+      'timer': 0,
+      'players': [
+        {'id': 'p1-user', 'hp': 100, 'gold': 10, 'ready': false},
+        {'id': 'p2-user', 'hp': 95, 'gold': 10, 'ready': false},
+      ],
+    });
+    await Future<void>.delayed(Duration.zero);
+
+    controller.readyForNextRound();
+    controller.readyForNextRound();
+    expect(controller.state.roundReadySubmitted, isTrue);
+    expect(
+      transport.sent.where(
+        (event) => event.event == GameActions.matchRoundReady,
+      ),
+      hasLength(1),
+    );
+
+    controller.surrender();
+    expect(transport.sent.last.event, GameActions.matchSurrender);
+    final payload = transport.sent.last.data! as Map<String, dynamic>;
+    expect(payload['matchId'], 'm1');
+    expect(payload['round'], 1);
+  });
 }
 
 void _seedMatch(FakeWsTransport transport) {

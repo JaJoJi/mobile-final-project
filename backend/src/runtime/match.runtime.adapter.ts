@@ -23,6 +23,8 @@ const SHOP_PHASE_MS = SHOP_PHASE_SECONDS * 1000;
 const RUNTIME_TTL_SECONDS = 30 * 60;
 const ROUND_GOLD = 5;
 const TIE_DAMAGE = 5;
+const ROUND_READY_GRACE_MS = 3_000;
+const ROUND_READY_GRACE_SECONDS = ROUND_READY_GRACE_MS / 1000;
 
 type BattleWinner = 'p1' | 'p2' | null;
 
@@ -33,7 +35,9 @@ export type RuntimeActionType =
   | 'shop:fuse'
   | 'match:place'
   | 'match:ready'
-  | 'match:combat_done';
+  | 'match:combat_done'
+  | 'match:round_ready'
+  | 'match:surrender';
 
 export type RuntimeActionPayload = {
   round: number;
@@ -54,6 +58,7 @@ export interface RuntimeActionResult {
   duplicate?: boolean;
   readyCount?: number;
   ackCount?: number;
+  forfeited?: boolean;
 }
 
 @Injectable()
@@ -132,7 +137,9 @@ export class MatchRuntimeAdapter {
     action: RuntimeActionType,
     payload: RuntimeActionPayload,
   ): Promise<RuntimeActionResult> {
-    const matchId = action === 'match:combat_done'
+    const matchId = action === 'match:combat_done' ||
+        action === 'match:round_ready' ||
+        action === 'match:surrender'
       ? payload.matchId
       : (await this.matches.findActiveByUserId(userId))?.id;
     if (!matchId) {
@@ -194,6 +201,12 @@ export class MatchRuntimeAdapter {
         const ackCount = await this.handleCombatDone(userId, matchId, payload.round);
         return { ackCount };
       }
+      case 'match:round_ready':
+        return this.markRoundReady(userId, matchId, payload.round);
+      case 'match:surrender':
+        return {
+          forfeited: await this.surrender(userId, matchId, payload.round),
+        };
     }
   }
 
@@ -365,8 +378,9 @@ export class MatchRuntimeAdapter {
     // Publish the live opponent board only after both rosters are locked.
     // Planning-state messages expose only the previous round's scout snapshot.
     await this.publishState(runtime, 'p1', runtime.p1State);
-    await this.combat.runCombat(matchId, round);
-    return true;
+    const ran = await this.combat.runCombat(matchId, round);
+    if (ran) await this.publishDamagePreview(runtime, round);
+    return ran;
   }
 
   /** Records an idempotent client ack; the second distinct player advances. */
@@ -380,6 +394,59 @@ export class MatchRuntimeAdapter {
     );
     if (Number(count) >= 2) await this.applyDamageAndAdvance(matchId, round);
     return Number(count);
+  }
+
+  /**
+   * Marks the summary as acknowledged. Both players advance immediately;
+   * the first acknowledgement also starts a durable 3-second grace timer.
+   */
+  async markRoundReady(
+    userId: string,
+    matchId: string,
+    round: number,
+  ): Promise<RuntimeActionResult> {
+    const runtime = await this.requireActionPhase(matchId, round, 'resolved');
+    const side = this.sideFor(runtime, userId);
+    const field = side === 'p1' ? 'readyP1' : 'readyP2';
+    if (runtime[field]) {
+      return {
+        duplicate: true,
+        readyCount: Number(runtime.readyP1) + Number(runtime.readyP2),
+      };
+    }
+    await this.redis.client.hset(runtimeKey(matchId), field, '1');
+    const updated = await this.getRuntime(matchId);
+    const readyCount = Number(updated.readyP1) + Number(updated.readyP2);
+    if (readyCount >= 2) {
+      await this.advanceResolvedRound(matchId, round);
+    } else {
+      await this.queue.scheduleRoundReadyTimeout(
+        matchId,
+        round,
+        ROUND_READY_GRACE_MS,
+      );
+      await this.pubsub.publish(
+        matchId,
+        'game:match:phase',
+        this.phasePayload(updated, ROUND_READY_GRACE_SECONDS),
+      );
+    }
+    return { duplicate: false, readyCount };
+  }
+
+  /** Ends the active match immediately and awards the opponent the win. */
+  async surrender(userId: string, matchId: string, round: number): Promise<boolean> {
+    const runtime = await this.getRuntime(matchId);
+    if (runtime.round !== round || runtime.phase === 'finished') return false;
+    const side = this.sideFor(runtime, userId);
+    const flipped = await this.redis.eval<number>(
+      'phase_flip',
+      [runtimeKey(matchId)],
+      [runtime.phase, 'finished', process.env.HOSTNAME ?? 'nest-local', round],
+    );
+    if (Number(flipped) !== 1) return false;
+    const winnerId = side === 'p1' ? runtime.player2Id : runtime.player1Id;
+    return this.matches.finalize(matchId, winnerId, 'forfeit');
   }
 
   /**
@@ -422,7 +489,11 @@ export class MatchRuntimeAdapter {
 
     const events = await this.pubsub.getCombatResult(matchId);
     if (!events) return false;
-    const winner = this.battleWinner(events as unknown as Record<string, unknown>[]);
+    const resolution = this.resolveRound(
+      runtime,
+      round,
+      events as unknown as Record<string, unknown>[],
+    );
     const flipped = await this.redis.eval<number>(
       'phase_flip',
       [runtimeKey(matchId)],
@@ -430,44 +501,15 @@ export class MatchRuntimeAdapter {
     );
     if (Number(flipped) !== 1) return false;
 
-    const p1 = { ...runtime.p1State };
-    const p2 = { ...runtime.p2State };
-    const hpBefore = { p1: p1.hp, p2: p2.hp };
-    const damage = this.damageFor(winner, runtime.wipeIndexP1, runtime.wipeIndexP2);
+    const {
+      damage,
+      p1,
+      p2,
+      damagePayload,
+      winnerId,
+    } = resolution;
     runtime.wipeIndexP1 = damage.wipeIndexP1;
     runtime.wipeIndexP2 = damage.wipeIndexP2;
-    p1.hp = Math.max(0, p1.hp - damage.p1);
-    p2.hp = Math.max(0, p2.hp - damage.p2);
-
-    const damagePayload = {
-      matchId,
-      round,
-      damage: {
-        p1: {
-          wiped: winner === 'p2',
-          tie: winner === null,
-          hpBefore: hpBefore.p1,
-          hpAfter: p1.hp,
-          damageApplied: damage.p1,
-        },
-        p2: {
-          wiped: winner === 'p1',
-          tie: winner === null,
-          hpBefore: hpBefore.p2,
-          hpAfter: p2.hp,
-          damageApplied: damage.p2,
-        },
-      },
-      winner: winner ?? 'tie',
-    };
-
-    const winnerId = p1.hp <= 0 && p2.hp <= 0
-      ? null
-      : p1.hp <= 0
-        ? runtime.player2Id
-        : p2.hp <= 0
-          ? runtime.player1Id
-          : undefined;
 
     if (winnerId !== undefined) {
       await this.persistSnapshot(runtime, p1, p2);
@@ -490,10 +532,8 @@ export class MatchRuntimeAdapter {
     runtime.scoutRound = round;
     runtime.scoutP1Board = summarizeBoard(p1.board);
     runtime.scoutP2Board = summarizeBoard(p2.board);
-    const nextRound = round + 1;
     await this.persistSnapshot(runtime, p1, p2);
     await this.redis.client.hset(runtimeKey(matchId), {
-      round: String(nextRound),
       p1State: JSON.stringify(p1),
       p2State: JSON.stringify(p2),
       readyP1: '0',
@@ -505,25 +545,58 @@ export class MatchRuntimeAdapter {
       scoutP1Board: JSON.stringify(runtime.scoutP1Board),
       scoutP2Board: JSON.stringify(runtime.scoutP2Board),
     });
-    const nextFlipped = await this.redis.eval<number>(
-      'phase_flip',
-      [runtimeKey(matchId)],
-      ['resolved', 'shop_place', process.env.HOSTNAME ?? 'nest-local', nextRound],
-    );
-    if (Number(nextFlipped) !== 1) {
-      throw new Error(`match.phase_advance_failed: ${matchId} round ${round}`);
-    }
-
-    runtime.phase = 'shop_place';
-    runtime.round = nextRound;
+    runtime.phase = 'resolved';
     runtime.p1State = p1;
     runtime.p2State = p2;
     runtime.readyP1 = false;
     runtime.readyP2 = false;
     runtime.combatRound = null;
     await this.redis.client.expire(runtimeKey(matchId), RUNTIME_TTL_SECONDS);
-    await this.queue.schedulePhaseStart(matchId, nextRound, SHOP_PHASE_MS);
     await this.pubsub.publish(matchId, 'game:match:damage', damagePayload);
+    await this.pubsub.publish(
+      matchId,
+      'game:match:phase',
+      this.phasePayload(runtime, 0),
+    );
+    await this.publishState(runtime, 'p1', runtime.p1State);
+    this.logger.log(`resolved match=${matchId} round=${round}; awaiting players`);
+    return true;
+  }
+
+  /** CAS resolved → shop_place and start the next planning phase. */
+  async advanceResolvedRound(matchId: string, round: number): Promise<boolean> {
+    const runtime = await this.findRuntime(matchId);
+    if (!runtime || runtime.phase !== 'resolved' || runtime.round !== round) {
+      return false;
+    }
+    const nextRound = round + 1;
+    const nextFlipped = await this.redis.eval<number>(
+      'phase_flip',
+      [runtimeKey(matchId)],
+      [
+        'resolved',
+        'shop_place',
+        process.env.HOSTNAME ?? 'nest-local',
+        round,
+        nextRound,
+      ],
+    );
+    if (Number(nextFlipped) !== 1) {
+      return false;
+    }
+    await this.redis.client.hset(runtimeKey(matchId), {
+      readyP1: '0',
+      readyP2: '0',
+      combatRound: '',
+    });
+
+    runtime.phase = 'shop_place';
+    runtime.round = nextRound;
+    runtime.readyP1 = false;
+    runtime.readyP2 = false;
+    runtime.combatRound = null;
+    await this.redis.client.expire(runtimeKey(matchId), RUNTIME_TTL_SECONDS);
+    await this.queue.schedulePhaseStart(matchId, nextRound, SHOP_PHASE_MS);
     await this.pubsub.publish(
       matchId,
       'game:match:phase',
@@ -538,7 +611,7 @@ export class MatchRuntimeAdapter {
   private async requireActionPhase(
     matchId: string,
     round: number,
-    phase: 'shop_place' | 'battle',
+    phase: 'shop_place' | 'battle' | 'resolved',
   ): Promise<MatchRuntimeState> {
     const runtime = await this.getRuntime(matchId);
     if (runtime.round !== round) {
@@ -722,6 +795,77 @@ export class MatchRuntimeAdapter {
     }
     const next = Math.min(5, p1Index + 1);
     return { p1: next * 5, p2: 0, wipeIndexP1: next, wipeIndexP2: p2Index };
+  }
+
+  /**
+   * Publishes the authoritative round result as soon as simulation ends.
+   * Each client keeps playing locally and reveals this cached result only
+   * after that client finishes or skips its own playback.
+   */
+  private async publishDamagePreview(
+    runtime: MatchRuntimeState,
+    round: number,
+  ): Promise<boolean> {
+    const events = await this.pubsub.getCombatResult(runtime.matchId);
+    if (!events) return false;
+    const { damagePayload } = this.resolveRound(
+      runtime,
+      round,
+      events as unknown as Record<string, unknown>[],
+    );
+    await this.pubsub.publish(
+      runtime.matchId,
+      'game:match:damage',
+      damagePayload,
+    );
+    return true;
+  }
+
+  private resolveRound(
+    runtime: MatchRuntimeState,
+    round: number,
+    events: Record<string, unknown>[],
+  ) {
+    const winner = this.battleWinner(events);
+    const p1 = { ...runtime.p1State };
+    const p2 = { ...runtime.p2State };
+    const hpBefore = { p1: p1.hp, p2: p2.hp };
+    const damage = this.damageFor(
+      winner,
+      runtime.wipeIndexP1,
+      runtime.wipeIndexP2,
+    );
+    p1.hp = Math.max(0, p1.hp - damage.p1);
+    p2.hp = Math.max(0, p2.hp - damage.p2);
+    const damagePayload = {
+      matchId: runtime.matchId,
+      round,
+      damage: {
+        p1: {
+          wiped: winner === 'p2',
+          tie: winner === null,
+          hpBefore: hpBefore.p1,
+          hpAfter: p1.hp,
+          damageApplied: damage.p1,
+        },
+        p2: {
+          wiped: winner === 'p1',
+          tie: winner === null,
+          hpBefore: hpBefore.p2,
+          hpAfter: p2.hp,
+          damageApplied: damage.p2,
+        },
+      },
+      winner: winner ?? 'tie',
+    };
+    const winnerId = p1.hp <= 0 && p2.hp <= 0
+      ? null
+      : p1.hp <= 0
+        ? runtime.player2Id
+        : p2.hp <= 0
+          ? runtime.player1Id
+          : undefined;
+    return { winner, damage, p1, p2, damagePayload, winnerId };
   }
 
   private persistSnapshot(

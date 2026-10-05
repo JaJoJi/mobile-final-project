@@ -19,6 +19,8 @@ import { PubsubBridge } from '../runtime/pubsub.bridge';
 import { WsAuthGuard } from './guards/ws-auth.guard';
 import {
   MatchCombatDoneDto,
+  MatchRoundReadyDto,
+  MatchSurrenderDto,
   MatchPlaceDto,
   MatchReadyDto,
   MatchmakingJoinDto,
@@ -254,6 +256,22 @@ export class WsGateway implements OnGatewayConnection, OnGatewayDisconnect, OnGa
     @ConnectedSocket() client: Socket,
   ) {
     return this.runRuntimeAction(client, 'match:combat_done', dto);
+  }
+
+  @SubscribeMessage('game:match:round_ready')
+  onMatchRoundReady(
+    @MessageBody(WsValidationPipe) dto: MatchRoundReadyDto,
+    @ConnectedSocket() client: Socket,
+  ) {
+    return this.runRuntimeAction(client, 'match:round_ready', dto);
+  }
+
+  @SubscribeMessage('game:match:surrender')
+  onMatchSurrender(
+    @MessageBody(WsValidationPipe) dto: MatchSurrenderDto,
+    @ConnectedSocket() client: Socket,
+  ) {
+    return this.runRuntimeAction(client, 'match:surrender', dto);
   }
 
   /**

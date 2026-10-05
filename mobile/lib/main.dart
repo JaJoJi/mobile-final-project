@@ -8,6 +8,7 @@ import 'core/error_logger.dart';
 import 'core/router.dart';
 import 'core/theme/app_theme.dart';
 import 'core/ws/ws_providers.dart';
+import 'features/lobby/matchmaking_navigation_coordinator.dart';
 import 'features/profile/settings_provider.dart';
 
 /// App entry.
@@ -86,6 +87,10 @@ class _AutoChessAppState extends ConsumerState<AutoChessApp> {
         scrollbars: false,
       ),
       routerConfig: _router,
+      builder: (context, child) => MatchmakingNavigationCoordinator(
+        router: _router,
+        child: child ?? const SizedBox.shrink(),
+      ),
     );
   }
 

@@ -2,15 +2,14 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
-import '../../../core/theme/app_motion.dart';
 import '../../../core/theme/app_spacing.dart';
 import '../../../core/theme/game_theme.dart';
-import '../../../core/widgets/game_art_frame.dart';
-import '../../../core/widgets/game_asset_button.dart';
+import '../../../core/widgets/fantasy_page.dart';
 import '../../../core/widgets/health_bar.dart';
 import '../../../core/widgets/unit_avatar.dart';
 import '../../../shared/models/match_damage.dart';
 import '../../../shared/models/match_end.dart';
+import '../../../shared/models/match_phase.dart';
 import '../../../shared/models/match_state.dart';
 import '../../../shared/models/unit.dart';
 import '../board/stone_board_tile.dart';
@@ -20,46 +19,71 @@ class RoundResultOverlay extends StatefulWidget {
     super.key,
     required this.damage,
     required this.mySide,
-    required this.onDismiss,
+    required this.phase,
+    required this.readySubmitted,
+    required this.onNextRound,
+    required this.onSurrender,
   });
 
   final MatchDamageEvent damage;
   final String mySide;
-  final VoidCallback onDismiss;
+  final MatchPhaseEvent? phase;
+  final bool readySubmitted;
+  final VoidCallback onNextRound;
+  final VoidCallback onSurrender;
 
   @override
   State<RoundResultOverlay> createState() => _RoundResultOverlayState();
 }
 
 class _RoundResultOverlayState extends State<RoundResultOverlay> {
-  Timer? _dismissTimer;
+  Timer? _countdownTimer;
+  int _countdown = 0;
+  bool _minimized = false;
 
   @override
   void initState() {
     super.initState();
-    _scheduleDismiss();
+    _syncCountdown();
   }
 
   @override
   void didUpdateWidget(RoundResultOverlay oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (oldWidget.damage.round != widget.damage.round) _scheduleDismiss();
+    if (oldWidget.phase?.timer != widget.phase?.timer ||
+        oldWidget.damage.round != widget.damage.round) {
+      _syncCountdown();
+    }
   }
 
-  void _scheduleDismiss() {
-    _dismissTimer?.cancel();
-    _dismissTimer = Timer(AppMotion.roundResult, widget.onDismiss);
+  void _syncCountdown() {
+    _countdownTimer?.cancel();
+    _countdown = widget.phase?.phase == GamePhase.resolved
+        ? widget.phase?.timer ?? 0
+        : 0;
+    if (_countdown <= 0) return;
+    _countdownTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
+      if (!mounted) return;
+      if (_countdown <= 1) {
+        timer.cancel();
+        setState(() => _countdown = 0);
+      } else {
+        setState(() => _countdown--);
+      }
+    });
   }
 
   @override
   void dispose() {
-    _dismissTimer?.cancel();
+    _countdownTimer?.cancel();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
     final mine = widget.mySide == 'p2' ? widget.damage.p2 : widget.damage.p1;
+    final opponent =
+        widget.mySide == 'p2' ? widget.damage.p1 : widget.damage.p2;
     final won = widget.damage.winner?.name == widget.mySide;
     final game = Theme.of(context).extension<GameTheme>()!;
     final (icon, title, color) = mine.tie
@@ -68,45 +92,238 @@ class _RoundResultOverlayState extends State<RoundResultOverlay> {
             ? (Icons.emoji_events_outlined, 'ชนะรอบนี้!', game.success)
             : (
                 Icons.heart_broken_outlined,
-                'เสีย ${mine.damageApplied} HP',
+                'แพ้รอบนี้',
                 Theme.of(context).colorScheme.error,
               );
+    final detail = mine.tie
+        ? 'ทั้งสองฝ่ายเสีย ${mine.damageApplied} HP'
+        : won
+            ? 'สร้างความเสียหาย ${opponent.damageApplied} HP'
+            : 'ได้รับความเสียหาย ${mine.damageApplied} HP';
+    final mineIndex = widget.mySide == 'p2' ? 1 : 0;
+    final players = widget.phase?.players ?? const <PhasePlayer>[];
+    final mineReady = widget.readySubmitted ||
+        (mineIndex < players.length && players[mineIndex].ready);
+    final bothAtSummary = widget.phase?.phase == GamePhase.resolved;
+    final someoneReady = bothAtSummary && players.any((player) => player.ready);
+    if (_minimized) {
+      return Positioned(
+        left: AppSpacing.lg,
+        right: AppSpacing.lg,
+        bottom: AppSpacing.lg,
+        child: SafeArea(
+          child: FantasyPanel(
+            key: const ValueKey('round-summary-minimized-panel'),
+            padding: const EdgeInsets.all(AppSpacing.md),
+            child: Row(
+              children: [
+                Icon(icon, color: color),
+                const SizedBox(width: AppSpacing.sm),
+                Expanded(
+                  child: Text(
+                    someoneReady
+                        ? 'รอบถัดไปใน $_countdown วินาที'
+                        : 'สรุปรอบ ${widget.damage.round} · $title',
+                    style: Theme.of(context).textTheme.titleSmall,
+                  ),
+                ),
+                IconButton(
+                  key: const ValueKey('expand-round-summary'),
+                  tooltip: 'เปิดสรุปผล',
+                  onPressed: () => setState(() => _minimized = false),
+                  icon: Icon(Icons.open_in_full_rounded, color: game.gold),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+    }
     return Positioned.fill(
-      child: GestureDetector(
-        behavior: HitTestBehavior.opaque,
-        onTap: widget.onDismiss,
-        child: ColoredBox(
-          color: Theme.of(context).colorScheme.scrim.withValues(alpha: 0.58),
+      child: ColoredBox(
+        color: Theme.of(context).colorScheme.scrim.withValues(alpha: 0.48),
+        child: SafeArea(
           child: Center(
-            child: Padding(
-              padding: const EdgeInsets.all(AppSpacing.xl),
-              child: Card(
-                child: Padding(
-                  padding: const EdgeInsets.all(AppSpacing.xl),
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.all(AppSpacing.lg),
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 430),
+                child: FantasyPanel(
+                  key: const ValueKey('round-summary-panel'),
+                  padding: const EdgeInsets.all(AppSpacing.lg),
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      Icon(icon, size: AppSpacing.huge, color: color),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: Text(
+                              'สรุปรอบ ${widget.damage.round}',
+                              style: Theme.of(context)
+                                  .textTheme
+                                  .titleMedium
+                                  ?.copyWith(
+                                    color: game.gold,
+                                    fontWeight: FontWeight.w800,
+                                  ),
+                            ),
+                          ),
+                          IconButton(
+                            key: const ValueKey('minimize-round-summary'),
+                            tooltip: 'ย่อเพื่อดูสนามรบ',
+                            onPressed: () => setState(() => _minimized = true),
+                            icon: Icon(
+                              Icons.close_fullscreen_rounded,
+                              color: game.gold,
+                            ),
+                          ),
+                        ],
+                      ),
+                      const Divider(),
+                      Icon(icon, size: 44, color: color),
                       const SizedBox(height: AppSpacing.md),
                       Text(
                         title,
-                        style: Theme.of(context)
-                            .textTheme
-                            .headlineSmall
-                            ?.copyWith(color: color),
+                        style:
+                            Theme.of(context).textTheme.headlineSmall?.copyWith(
+                                  color: color,
+                                  fontWeight: FontWeight.w900,
+                                ),
                       ),
-                      const SizedBox(height: AppSpacing.md),
-                      HealthBar(
-                        current: mine.hpAfter,
-                        max: 100,
-                        size: HealthBarSize.lg,
-                      ),
-                      const SizedBox(height: AppSpacing.sm),
-                      Text('HP ${mine.hpBefore} → ${mine.hpAfter}'),
-                      const SizedBox(height: AppSpacing.sm),
+                      const SizedBox(height: AppSpacing.xs),
                       Text(
-                        'แตะเพื่อดูสนามต่อ',
-                        style: Theme.of(context).textTheme.bodySmall,
+                        detail,
+                        style: Theme.of(context).textTheme.titleMedium,
+                      ),
+                      const SizedBox(height: AppSpacing.lg),
+                      Container(
+                        padding: const EdgeInsets.all(AppSpacing.md),
+                        decoration: BoxDecoration(
+                          color: Colors.white.withValues(alpha: 0.05),
+                          borderRadius: BorderRadius.circular(18),
+                          border: Border.all(color: const Color(0x335F91B5)),
+                        ),
+                        child: Column(
+                          children: [
+                            Row(
+                              children: [
+                                const Expanded(child: Text('พลังชีวิตของคุณ')),
+                                const SizedBox(width: AppSpacing.sm),
+                                Text(
+                                  '${mine.hpBefore}  →  ${mine.hpAfter}',
+                                  style: const TextStyle(
+                                    fontWeight: FontWeight.w800,
+                                  ),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: AppSpacing.sm),
+                            HealthBar(
+                              current: mine.hpAfter,
+                              max: 100,
+                              size: HealthBarSize.lg,
+                            ),
+                          ],
+                        ),
+                      ),
+                      if (!bothAtSummary) ...[
+                        const SizedBox(height: AppSpacing.md),
+                        Text(
+                          'รอคู่แข่งเข้าสู่หน้าสรุปผล…',
+                          key: const ValueKey('waiting-for-opponent-summary'),
+                          style:
+                              Theme.of(context).textTheme.titleSmall?.copyWith(
+                                    color: game.ally,
+                                    fontWeight: FontWeight.w700,
+                                  ),
+                        ),
+                      ] else if (someoneReady) ...[
+                        const SizedBox(height: AppSpacing.md),
+                        Text(
+                          _countdown > 0
+                              ? 'เริ่มรอบถัดไปใน $_countdown วินาที'
+                              : 'กำลังเริ่มรอบถัดไป…',
+                          key: const ValueKey('round-ready-countdown'),
+                          style:
+                              Theme.of(context).textTheme.titleSmall?.copyWith(
+                                    color: game.gold,
+                                    fontWeight: FontWeight.w800,
+                                  ),
+                        ),
+                      ],
+                      const SizedBox(height: AppSpacing.lg),
+                      SizedBox(
+                        width: double.infinity,
+                        child: FilledButton(
+                          key: const ValueKey('next-round-button'),
+                          style: FilledButton.styleFrom(
+                            minimumSize: const Size.fromHeight(48),
+                            backgroundColor: game.gold,
+                            foregroundColor: const Color(0xFF211A08),
+                            disabledBackgroundColor: const Color(0xFF263A4A),
+                            disabledForegroundColor: const Color(0xFF9AAEBD),
+                            shape: const RoundedRectangleBorder(
+                              borderRadius: AppRadius.allMd,
+                            ),
+                          ),
+                          onPressed: !bothAtSummary || mineReady
+                              ? null
+                              : widget.onNextRound,
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Icon(
+                                !bothAtSummary || mineReady
+                                    ? Icons.hourglass_top_rounded
+                                    : Icons.arrow_forward_rounded,
+                              ),
+                              const SizedBox(width: AppSpacing.sm),
+                              Text(
+                                !bothAtSummary
+                                    ? 'รอคู่แข่ง'
+                                    : mineReady
+                                        ? 'รอคู่แข่ง'
+                                        : 'รอบถัดไป',
+                                style: const TextStyle(
+                                  fontWeight: FontWeight.w800,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: AppSpacing.sm),
+                      SizedBox(
+                        width: double.infinity,
+                        child: OutlinedButton(
+                          key: const ValueKey('surrender-button'),
+                          style: OutlinedButton.styleFrom(
+                            minimumSize: const Size.fromHeight(48),
+                            backgroundColor: const Color(0xFF102536),
+                            foregroundColor: game.enemy,
+                            side: BorderSide(
+                              color: game.enemy.withValues(alpha: 0.55),
+                            ),
+                            shape: const RoundedRectangleBorder(
+                              borderRadius: AppRadius.allMd,
+                            ),
+                          ),
+                          onPressed: _confirmSurrender,
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Icon(Icons.flag_outlined, color: game.enemy),
+                              const SizedBox(width: AppSpacing.sm),
+                              Text(
+                                'ยอมแพ้',
+                                style: TextStyle(
+                                  color: game.enemy,
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
                       ),
                     ],
                   ),
@@ -118,6 +335,72 @@ class _RoundResultOverlayState extends State<RoundResultOverlay> {
       ),
     );
   }
+
+  Future<void> _confirmSurrender() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => Dialog(
+        backgroundColor: Colors.transparent,
+        insetPadding: const EdgeInsets.all(AppSpacing.lg),
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 420),
+          child: FantasyPanel(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                const Icon(
+                  Icons.flag_outlined,
+                  color: Color(0xFFFFA19C),
+                  size: AppSpacing.xxl,
+                ),
+                const SizedBox(height: AppSpacing.md),
+                Text(
+                  'ยืนยันการยอมแพ้?',
+                  textAlign: TextAlign.center,
+                  style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                        fontWeight: FontWeight.w800,
+                      ),
+                ),
+                const SizedBox(height: AppSpacing.sm),
+                const Text(
+                  'การแข่งขันจะจบทันทีและคู่แข่งจะเป็นผู้ชนะ',
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: AppSpacing.xl),
+                Row(
+                  children: [
+                    Expanded(
+                      child: OutlinedButton(
+                        onPressed: () => Navigator.pop(context, false),
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: const Color(0xFFB8CEF0),
+                          side: const BorderSide(color: Color(0x806FA5C4)),
+                        ),
+                        child: const Text('เล่นต่อ'),
+                      ),
+                    ),
+                    const SizedBox(width: AppSpacing.sm),
+                    Expanded(
+                      child: FilledButton(
+                        onPressed: () => Navigator.pop(context, true),
+                        style: FilledButton.styleFrom(
+                          backgroundColor: const Color(0xFFE6817C),
+                          foregroundColor: const Color(0xFF251112),
+                        ),
+                        child: const Text('ยอมแพ้'),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+    if (confirmed == true) widget.onSurrender();
+  }
 }
 
 class MatchEndOverlay extends StatelessWidget {
@@ -126,6 +409,8 @@ class MatchEndOverlay extends StatelessWidget {
     required this.event,
     required this.didWin,
     required this.mySide,
+    required this.playerName,
+    required this.opponentName,
     required this.finalTeam,
     required this.rounds,
     required this.duration,
@@ -136,6 +421,8 @@ class MatchEndOverlay extends StatelessWidget {
   final MatchEndEvent event;
   final bool? didWin;
   final MatchSide mySide;
+  final String playerName;
+  final String opponentName;
 
   /// Nine board slots in row-major order so the result preserves placement.
   final List<Unit?> finalTeam;
@@ -150,10 +437,10 @@ class MatchEndOverlay extends StatelessWidget {
     final (icon, label, color) = event.isDraw
         ? (Icons.handshake_outlined, 'เสมอ', game.warning)
         : didWin == true
-            ? (Icons.emoji_events_outlined, 'ชนะ!', game.success)
+            ? (Icons.emoji_events_outlined, 'คุณชนะ', game.success)
             : (
-                Icons.sentiment_dissatisfied_outlined,
-                'แพ้',
+                Icons.heart_broken_rounded,
+                'คุณแพ้',
                 Theme.of(context).colorScheme.error,
               );
     final finalState = mySide == MatchSide.p1 ? event.finalP1 : event.finalP2;
@@ -163,31 +450,169 @@ class MatchEndOverlay extends StatelessWidget {
             ? 'win'
             : 'lose';
     return _OverlaySurface(
-      accent: color,
       outcomeKey: ValueKey('result-$outcome'),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(
-            key: const ValueKey('result-trophy'),
-            icon,
-            size: AppSpacing.huge + AppSpacing.lg,
-            color: color,
+          Row(
+            key: const ValueKey('match-result-divider'),
+            children: [
+              const Expanded(
+                child: Divider(color: Color(0xCC70D7FF), thickness: 1.5),
+              ),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: AppSpacing.sm),
+                child: Text(
+                  'ผลการแข่งขัน',
+                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                        color: const Color(0xFFFFE5A4),
+                        fontWeight: FontWeight.w900,
+                      ),
+                ),
+              ),
+              const Expanded(
+                child: Divider(color: Color(0xCCFF8E88), thickness: 1.5),
+              ),
+            ],
+          ),
+          const SizedBox(height: AppSpacing.sm),
+          Stack(
+            clipBehavior: Clip.none,
+            children: [
+              const Positioned(
+                left: -AppSpacing.lg,
+                top: -80,
+                child: SizedBox(
+                  key: ValueKey('result-ally-glow'),
+                  width: 250,
+                  height: 340,
+                  child: DecoratedBox(
+                    decoration: BoxDecoration(
+                      gradient: RadialGradient(
+                        center: Alignment(-0.75, -0.15),
+                        radius: 0.95,
+                        colors: [
+                          Color(0xB359B7E8),
+                          Color(0x70254562),
+                          Color(0x0010283B),
+                        ],
+                        stops: [0, 0.42, 0.82],
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+              const Positioned(
+                right: -AppSpacing.lg,
+                top: -80,
+                child: SizedBox(
+                  key: ValueKey('result-enemy-glow'),
+                  width: 250,
+                  height: 340,
+                  child: DecoratedBox(
+                    decoration: BoxDecoration(
+                      gradient: RadialGradient(
+                        center: Alignment(0.75, -0.15),
+                        radius: 0.95,
+                        colors: [
+                          Color(0xB3FF746D),
+                          Color(0x8046252F),
+                          Color(0x0010283B),
+                        ],
+                        stops: [0, 0.42, 0.82],
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: AppSpacing.sm,
+                  vertical: AppSpacing.md,
+                ),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Expanded(
+                      child: _ResultPlayer(name: playerName, mine: true),
+                    ),
+                    Padding(
+                      padding: const EdgeInsets.only(
+                        top: AppSpacing.md,
+                        left: AppSpacing.sm,
+                        right: AppSpacing.sm,
+                      ),
+                      child: Container(
+                        width: AppSpacing.huge,
+                        height: AppSpacing.huge,
+                        alignment: Alignment.center,
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          color: const Color(0xFF111B2A),
+                          border: Border.all(
+                            color: const Color(0xFFF2C14E),
+                            width: 2,
+                          ),
+                          boxShadow: const [
+                            BoxShadow(
+                              color: Color(0x8859B7E8),
+                              blurRadius: AppSpacing.lg,
+                              offset: Offset(-AppSpacing.sm, 0),
+                            ),
+                            BoxShadow(
+                              color: Color(0x88FF746D),
+                              blurRadius: AppSpacing.lg,
+                              offset: Offset(AppSpacing.sm, 0),
+                            ),
+                          ],
+                        ),
+                        child: Text(
+                          'VS',
+                          style:
+                              Theme.of(context).textTheme.titleMedium?.copyWith(
+                                    color: game.gold,
+                                    fontWeight: FontWeight.w900,
+                                    fontStyle: FontStyle.italic,
+                                  ),
+                        ),
+                      ),
+                    ),
+                    Expanded(
+                      child: _ResultPlayer(name: opponentName, mine: false),
+                    ),
+                  ],
+                ),
+              ),
+            ],
           ),
           const SizedBox(height: AppSpacing.md),
-          Text(
-            label,
-            style: Theme.of(context).textTheme.headlineLarge?.copyWith(
-                  color: color,
-                ),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(
+                key: const ValueKey('result-trophy'),
+                icon,
+                size: AppSpacing.xxl,
+                color: color,
+              ),
+              const SizedBox(width: AppSpacing.sm),
+              Text(
+                label,
+                key: const ValueKey('match-result-headline'),
+                style: Theme.of(context).textTheme.headlineLarge?.copyWith(
+                      color: color,
+                      fontWeight: FontWeight.w900,
+                    ),
+              ),
+            ],
           ),
           const SizedBox(height: AppSpacing.xs),
           Text(
-            '${_reasonText(event.reason, didWin)} · $rounds รอบ · ${_durationText(duration)}',
+            '${_reasonText(event.reason, didWin)} · $rounds รอบ',
             textAlign: TextAlign.center,
             style: Theme.of(context).textTheme.bodyMedium,
           ),
-          const SizedBox(height: AppSpacing.xl),
+          const SizedBox(height: AppSpacing.md),
           Align(
             alignment: Alignment.centerLeft,
             child: Text(
@@ -205,25 +630,25 @@ class MatchEndOverlay extends StatelessWidget {
           ),
           const SizedBox(height: AppSpacing.xs),
           Text('HP สุดท้าย ${finalState.hp} / 100'),
-          const SizedBox(height: AppSpacing.xl),
-          GameAssetButton(
-            onPressed: onPlayAgain,
-            frameAsset: GameUiAssets.readyButtonFrame,
-            minHeight: AppSpacing.huge + AppSpacing.sm,
-            accentColor: color,
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                const Icon(Icons.replay, color: Color(0xFF392500)),
-                const SizedBox(width: AppSpacing.sm),
-                Text(
-                  'เล่นอีกครั้ง',
-                  style: Theme.of(context)
-                      .textTheme
-                      .titleMedium
-                      ?.copyWith(color: const Color(0xFF392500)),
+          const SizedBox(height: AppSpacing.md),
+          SizedBox(
+            width: double.infinity,
+            child: FilledButton.icon(
+              key: const ValueKey('play-again-button'),
+              onPressed: onPlayAgain,
+              style: FilledButton.styleFrom(
+                minimumSize: const Size.fromHeight(AppSpacing.huge),
+                backgroundColor: game.gold,
+                foregroundColor: const Color(0xFF211A08),
+                shape: const RoundedRectangleBorder(
+                  borderRadius: AppRadius.allMd,
                 ),
-              ],
+                textStyle: Theme.of(context).textTheme.titleMedium?.copyWith(
+                      fontWeight: FontWeight.w800,
+                    ),
+              ),
+              icon: const Icon(Icons.replay_rounded),
+              label: const Text('เล่นอีกครั้ง'),
             ),
           ),
           const SizedBox(height: AppSpacing.sm),
@@ -234,12 +659,9 @@ class MatchEndOverlay extends StatelessWidget {
             child: OutlinedButton(
               onPressed: onBackToLobby,
               style: OutlinedButton.styleFrom(
-                foregroundColor: Theme.of(context).colorScheme.onSurface,
-                backgroundColor: Theme.of(context)
-                    .colorScheme
-                    .surfaceContainerHighest
-                    .withValues(alpha: 0.92),
-                side: BorderSide(color: game.gold.withValues(alpha: 0.72)),
+                foregroundColor: const Color(0xFFB8CEF0),
+                backgroundColor: const Color(0xFF102536),
+                side: const BorderSide(color: Color(0x806FA5C4)),
                 shape: const RoundedRectangleBorder(
                   borderRadius: AppRadius.allMd,
                 ),
@@ -267,11 +689,67 @@ class MatchEndOverlay extends StatelessWidget {
           didWin == true ? 'คู่แข่งหลุดการเชื่อมต่อ' : 'การเชื่อมต่อของคุณหลุด',
         MatchEndReason.unknown => 'การแข่งขันจบแล้ว',
       };
+}
 
-  static String _durationText(Duration duration) {
-    final minutes = duration.inMinutes;
-    final seconds = duration.inSeconds.remainder(60).toString().padLeft(2, '0');
-    return '$minutes:$seconds';
+class _ResultPlayer extends StatelessWidget {
+  const _ResultPlayer({
+    required this.name,
+    required this.mine,
+  });
+
+  final String name;
+  final bool mine;
+
+  @override
+  Widget build(BuildContext context) {
+    final sideColor = mine ? const Color(0xFF70D7FF) : const Color(0xFFFF8E88);
+    final displayName = name.trim().isEmpty ? (mine ? 'คุณ' : 'คู่แข่ง') : name;
+    return Column(
+      children: [
+        Container(
+          width: AppSpacing.huge + AppSpacing.xl,
+          height: AppSpacing.huge + AppSpacing.xl,
+          alignment: Alignment.center,
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            gradient: RadialGradient(
+              colors: mine
+                  ? const [Color(0xFF214C70), Color(0xFF172454)]
+                  : const [Color(0xFF49252B), Color(0xFF171622)],
+            ),
+            border: Border.all(color: sideColor, width: 2),
+            boxShadow: [
+              BoxShadow(
+                color: sideColor.withValues(alpha: 0.40),
+                blurRadius: AppSpacing.xl,
+                spreadRadius: AppSpacing.xxs,
+              ),
+            ],
+          ),
+          child: Text(
+            displayName.characters.first.toUpperCase(),
+            style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                  color: const Color(0xFFF4F7FF),
+                  fontWeight: FontWeight.w800,
+                ),
+          ),
+        ),
+        const SizedBox(height: AppSpacing.sm),
+        Tooltip(
+          message: displayName,
+          child: Text(
+            displayName,
+            key: ValueKey(mine ? 'result-player-name' : 'result-opponent-name'),
+            textAlign: TextAlign.center,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                  fontWeight: FontWeight.w800,
+                ),
+          ),
+        ),
+      ],
+    );
   }
 }
 
@@ -296,7 +774,10 @@ class _FinalBoard extends StatelessWidget {
         children: [
           Center(
             child: ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 264),
+              constraints: BoxConstraints(
+                maxWidth:
+                    (MediaQuery.sizeOf(context).height * 0.28).clamp(120, 264),
+              ),
               child: AspectRatio(
                 key: const ValueKey('result-board'),
                 aspectRatio: 1,
@@ -343,56 +824,29 @@ class _FinalBoard extends StatelessWidget {
 class _OverlaySurface extends StatelessWidget {
   const _OverlaySurface({
     required this.child,
-    required this.accent,
     required this.outcomeKey,
   });
 
   final Widget child;
-  final Color accent;
   final Key outcomeKey;
 
   @override
   Widget build(BuildContext context) => Positioned.fill(
-        child: DecoratedBox(
-          decoration: const BoxDecoration(
-            image: DecorationImage(
-              image: AssetImage(GameBackgroundAssets.arenaBlurred),
-              fit: BoxFit.cover,
-            ),
-          ),
-          child: ColoredBox(
-            color: Color.alphaBlend(
-              accent.withValues(alpha: 0.08),
-              Theme.of(context).colorScheme.scrim.withValues(alpha: 0.64),
-            ),
-            child: SafeArea(
+        child: ColoredBox(
+          color: Theme.of(context).colorScheme.scrim.withValues(alpha: 0.40),
+          child: SafeArea(
+            child: Padding(
+              padding: const EdgeInsets.all(AppSpacing.lg),
               child: LayoutBuilder(
                 builder: (context, constraints) => Center(
-                  child: SizedBox(
-                    key: outcomeKey,
-                    width: constraints.constrainWidth(520),
-                    height: constraints.constrainHeight(720),
-                    child: DecoratedBox(
-                      decoration: BoxDecoration(
-                        borderRadius: AppRadius.allLg,
-                        boxShadow: [
-                          BoxShadow(
-                            color: accent.withValues(alpha: 0.48),
-                            blurRadius: AppSpacing.xl,
-                            spreadRadius: AppSpacing.xs,
-                          ),
-                        ],
-                      ),
-                      child: GameArtFrame(
-                        frameAsset: GameUiAssets.resultPanelFrame,
-                        centerSlice: const Rect.fromLTWH(42, 42, 108, 156),
-                        padding: const EdgeInsets.fromLTRB(
-                          AppSpacing.xl,
-                          AppSpacing.huge,
-                          AppSpacing.xl,
-                          AppSpacing.xl,
-                        ),
-                        child: SingleChildScrollView(child: child),
+                  child: FittedBox(
+                    fit: BoxFit.scaleDown,
+                    child: SizedBox(
+                      width: constraints.maxWidth.clamp(0, 430),
+                      child: FantasyPanel(
+                        key: outcomeKey,
+                        padding: const EdgeInsets.all(AppSpacing.lg),
+                        child: child,
                       ),
                     ),
                   ),

@@ -54,7 +54,10 @@ async function harness() {
     finalize: jest.fn(async () => true),
     forfeitDisconnectedPlayer: jest.fn(async () => true),
   };
-  const queue = { schedulePhaseStart: jest.fn() };
+  const queue = {
+    schedulePhaseStart: jest.fn(),
+    scheduleRoundReadyTimeout: jest.fn(),
+  };
   const pubsub = {
     publish: jest.fn(),
     publishToUser: jest.fn(),
@@ -161,6 +164,30 @@ describe('MatchRuntimeAdapter legacy markReady + tryStartCombat (#307)', () => {
     expect(h.combat.runCombat).toHaveBeenCalledWith(match.id, 1);
   });
 
+  it('publishes the authoritative result before either playback is acknowledged', async () => {
+    const h = await harness();
+    (h.pubsub.getCombatResult as jest.Mock).mockResolvedValue(BATTLE_WIN_P1);
+
+    await expect(h.adapter.tryStartCombat(match.id, 1)).resolves.toBe(true);
+
+    expect(h.pubsub.publish).toHaveBeenCalledWith(
+      match.id,
+      'game:match:damage',
+      expect.objectContaining({
+        matchId: match.id,
+        round: 1,
+        winner: 'p1',
+        damage: expect.objectContaining({
+          p1: expect.objectContaining({ hpBefore: 100, hpAfter: 100 }),
+          p2: expect.objectContaining({ hpBefore: 100, hpAfter: 95 }),
+        }),
+      }),
+    );
+    const runtime = await h.adapter.getRuntime(match.id);
+    expect(runtime.phase).toBe('battle');
+    expect(runtime.p2State.hp).toBe(100);
+  });
+
   it('tryStartCombat ignores missing runtimes and stale phase/round', async () => {
     const h = await harness();
     await expect(h.adapter.tryStartCombat('missing', 1)).resolves.toBe(false);
@@ -190,14 +217,14 @@ describe('MatchRuntimeAdapter.handleCombatDone (#307)', () => {
     expect((await h.adapter.getRuntime(match.id)).phase).toBe('battle');
   });
 
-  it('second distinct ack advances the round', async () => {
+  it('second distinct ack opens the round summary', async () => {
     const h = await harness();
     await seedBattle(h, {});
     (h.pubsub.getCombatResult as jest.Mock).mockResolvedValue(BATTLE_WIN_P1);
     await h.adapter.handleCombatDone('player-1', match.id, 1);
     await expect(h.adapter.handleCombatDone('player-2', match.id, 1)).resolves.toBe(2);
-    expect((await h.adapter.getRuntime(match.id)).phase).toBe('shop_place');
-    expect((await h.adapter.getRuntime(match.id)).round).toBe(2);
+    expect((await h.adapter.getRuntime(match.id)).phase).toBe('resolved');
+    expect((await h.adapter.getRuntime(match.id)).round).toBe(1);
   });
 
   it('rejects acks outside battle and from non-participants', async () => {
@@ -212,25 +239,36 @@ describe('MatchRuntimeAdapter.handleCombatDone (#307)', () => {
   });
 });
 
-describe('MatchRuntimeAdapter.applyDamageAndAdvance (#307)', () => {
-  it('applies wipe damage, awards gold, and advances exactly once', async () => {
+describe('MatchRuntimeAdapter round summary flow', () => {
+  it('applies damage and waits at the summary until a player continues', async () => {
     const h = await harness();
     await seedBattle(h, {});
     (h.pubsub.getCombatResult as jest.Mock).mockResolvedValue(BATTLE_WIN_P1);
 
     await expect(h.adapter.applyDamageAndAdvance(match.id, 1)).resolves.toBe(true);
     const runtime = await h.adapter.getRuntime(match.id);
-    expect(runtime.phase).toBe('shop_place');
-    expect(runtime.round).toBe(2);
+    expect(runtime.phase).toBe('resolved');
+    expect(runtime.round).toBe(1);
     expect(runtime.p1State.hp).toBe(100);
     expect(runtime.p2State.hp).toBe(95);
     expect(runtime.p1State.gold).toBe(10);
     expect(runtime.wipeIndexP2).toBe(1);
     expect(runtime.combatRound).toBeNull();
     expect(h.matches.updateRuntimeSnapshot).toHaveBeenCalledTimes(1);
+    expect(h.queue.schedulePhaseStart).not.toHaveBeenCalled();
+    expect(h.shop.rollOffersForMatch).not.toHaveBeenCalled();
+    const firstReady = await h.adapter.markRoundReady('player-1', match.id, 1);
+    expect(firstReady.readyCount).toBe(1);
+    expect(h.queue.scheduleRoundReadyTimeout).toHaveBeenCalledWith(
+      match.id,
+      1,
+      3000,
+    );
+    await h.adapter.markRoundReady('player-2', match.id, 1);
+    expect((await h.adapter.getRuntime(match.id)).phase).toBe('shop_place');
+    expect((await h.adapter.getRuntime(match.id)).round).toBe(2);
     expect(h.queue.schedulePhaseStart).toHaveBeenCalledWith(match.id, 2, 40000);
     expect(h.shop.rollOffersForMatch).toHaveBeenCalledTimes(1);
-    // Second call is a no-op: the round already advanced.
     await expect(h.adapter.applyDamageAndAdvance(match.id, 1)).resolves.toBe(false);
   });
 
@@ -246,6 +284,7 @@ describe('MatchRuntimeAdapter.applyDamageAndAdvance (#307)', () => {
     // Cap holds on the next wipe too.
     await h.client.hset(runtimeKey(match.id), {
       phase: 'battle',
+      round: '2',
       combatRound: '2',
       p1State: JSON.stringify({ ...runtime.p1State, hp: 100 }),
       p2State: JSON.stringify({ ...runtime.p2State, hp: 100 }),
@@ -326,7 +365,33 @@ describe('MatchRuntimeAdapter.applyDamageAndAdvance (#307)', () => {
     const wins = results.filter((r) => r.status === 'fulfilled' && r.value === true);
     expect(wins).toHaveLength(1);
     expect(h.matches.updateRuntimeSnapshot).toHaveBeenCalledTimes(1);
-    expect((await h.adapter.getRuntime(match.id)).round).toBe(2);
+    expect((await h.adapter.getRuntime(match.id)).phase).toBe('resolved');
+  });
+
+  it('the 3-second grace path advances when only one player is ready', async () => {
+    const h = await harness();
+    await seedBattle(h, {});
+    (h.pubsub.getCombatResult as jest.Mock).mockResolvedValue(BATTLE_WIN_P1);
+    await h.adapter.applyDamageAndAdvance(match.id, 1);
+    await h.adapter.markRoundReady('player-1', match.id, 1);
+
+    await expect(h.adapter.advanceResolvedRound(match.id, 1)).resolves.toBe(true);
+    const runtime = await h.adapter.getRuntime(match.id);
+    expect(runtime.phase).toBe('shop_place');
+    expect(runtime.round).toBe(2);
+  });
+
+  it('surrender finalizes once and awards the opponent', async () => {
+    const h = await harness();
+    await expect(h.adapter.surrender('player-1', match.id, 1)).resolves.toBe(true);
+    expect(h.matches.finalize).toHaveBeenCalledWith(
+      match.id,
+      'player-2',
+      'forfeit',
+    );
+    expect((await h.adapter.getRuntime(match.id)).phase).toBe('finished');
+    await expect(h.adapter.surrender('player-1', match.id, 1)).resolves.toBe(false);
+    expect(h.matches.finalize).toHaveBeenCalledTimes(1);
   });
 });
 

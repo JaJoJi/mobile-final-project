@@ -69,22 +69,22 @@ class MatchPlayer {
 class RoundSummary {
   const RoundSummary({
     required this.roundNumber,
-    required this.eventCount,
+    required this.winnerId,
     required this.winnerName,
   });
 
   final int roundNumber;
-  final int eventCount;
+  final String? winnerId;
 
   /// Derived from the round's `battle_end` event when present, else `null`.
   final String? winnerName;
 
   factory RoundSummary.fromJson(
     Map<String, dynamic> j, {
-    required String? Function(String side) resolveSide,
+    required MatchPlayer? Function(String side) resolveSide,
   }) {
     final events = (j['events'] as List?) ?? const [];
-    String? winner;
+    MatchPlayer? winner;
     for (final e in events) {
       if (e is Map && e['type'] == 'battle_end') {
         final side = e['winner'];
@@ -94,8 +94,8 @@ class RoundSummary {
     }
     return RoundSummary(
       roundNumber: (j['roundNumber'] as num).toInt(),
-      eventCount: events.length,
-      winnerName: winner,
+      winnerId: winner?.id,
+      winnerName: winner?.name,
     );
   }
 }
@@ -104,6 +104,7 @@ class MatchDetail {
   const MatchDetail({
     required this.matchId,
     required this.players,
+    required this.winnerId,
     required this.winnerName,
     required this.status,
     required this.rounds,
@@ -113,6 +114,7 @@ class MatchDetail {
 
   final String matchId;
   final List<MatchPlayer> players;
+  final String? winnerId;
   final String? winnerName;
   final String status;
   final List<RoundSummary> rounds;
@@ -128,9 +130,9 @@ class MatchDetail {
         .toList();
 
     // side ('p1'/'p2') → username, so a round's winner reads as a name.
-    String? resolveSide(String side) {
+    MatchPlayer? resolveSide(String side) {
       final idx = side == 'p1' ? 0 : (side == 'p2' ? 1 : -1);
-      return idx >= 0 && idx < players.length ? players[idx].name : null;
+      return idx >= 0 && idx < players.length ? players[idx] : null;
     }
 
     final rounds = ((j['rounds'] as List?) ?? const [])
@@ -142,6 +144,7 @@ class MatchDetail {
     return MatchDetail(
       matchId: j['matchId'] as String,
       players: players,
+      winnerId: j['winnerId'] as String?,
       winnerName: j['winner'] as String?,
       status: j['status'] as String? ?? 'finished',
       rounds: rounds,

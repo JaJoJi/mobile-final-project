@@ -15,6 +15,65 @@ void main() {
   });
 
   group('BattlePlaybackController.loadBatch', () {
+    test('finish retains the authoritative final event and freezes at its end',
+        () {
+      final controller = BattlePlaybackController();
+      addTearDown(controller.dispose);
+      final batch = CombatEventBatch.fromJson({
+        'matchId': 'm1',
+        'round': 1,
+        'cycleCount': 1,
+        'endedAt': 0,
+        'events': [
+          {
+            'type': 'attack',
+            'cycle': 1,
+            'tick': 1,
+            'attacker': 'a',
+            'target': 'b',
+            'damage': 100,
+            'targetHpAfter': 0,
+          },
+          {
+            'type': 'battle_end',
+            'cycle': 1,
+            'winner': 'p1',
+            'unitStates': [
+              {
+                'instanceId': 'a',
+                'unitId': 'fighter',
+                'star': 0,
+                'hp': 75,
+                'maxHp': 100,
+                'slot': 0,
+                'side': 'p1',
+                'alive': true,
+              },
+              {
+                'instanceId': 'b',
+                'unitId': 'fighter',
+                'star': 0,
+                'hp': 0,
+                'maxHp': 100,
+                'slot': 0,
+                'side': 'p2',
+                'alive': false,
+              },
+            ],
+          },
+        ],
+      });
+      controller.loadBatch(batch);
+      controller.finish();
+      expect(controller.state.playheadProgress, 1);
+      expect(controller.state.batch!.events.last, isA<BattleEndEvent>());
+      final finalUnits = controller.state.batch!.events.last.unitStates!;
+      expect(finalUnits[0].hp, 75);
+      expect(finalUnits[0].alive, isTrue);
+      expect(finalUnits[1].hp, 0);
+      expect(finalUnits[1].alive, isFalse);
+    });
+
     test('drops death events — the paired attack already carries the kill', () {
       // `applyDamage` (backend/src/game/damage.ts) emits a `death` event
       // immediately followed by its own `attack` event for the SAME

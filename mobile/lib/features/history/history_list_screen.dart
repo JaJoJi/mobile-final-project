@@ -138,7 +138,7 @@ class _HistoryFilterBar extends StatelessWidget {
         ),
       _Filter.losses => (
           'แพ้',
-          Icons.close_rounded,
+          Icons.heart_broken_rounded,
           const Color(0xFFFFA6A6),
         ),
     };
@@ -229,7 +229,7 @@ class _FilterMenuItem extends StatelessWidget {
         ),
       _Filter.losses => (
           'แพ้',
-          Icons.close_rounded,
+          Icons.heart_broken_rounded,
           const Color(0xFFFFA6A6),
         ),
     };

@@ -31,6 +31,7 @@ class MatchViewState {
     this.refreshUsed = false,
     this.readySubmitted = false,
     this.combatDoneSubmitted = false,
+    this.roundReadySubmitted = false,
   });
 
   final MatchPhaseEvent? phase;
@@ -44,6 +45,7 @@ class MatchViewState {
   final bool refreshUsed;
   final bool readySubmitted;
   final bool combatDoneSubmitted;
+  final bool roundReadySubmitted;
 
   bool get loading => phase == null || match == null;
   bool get canAct =>
@@ -61,6 +63,7 @@ class MatchViewState {
     bool? refreshUsed,
     bool? readySubmitted,
     bool? combatDoneSubmitted,
+    bool? roundReadySubmitted,
     bool clearSelection = false,
     bool clearPending = false,
     bool clearError = false,
@@ -79,6 +82,7 @@ class MatchViewState {
         refreshUsed: refreshUsed ?? this.refreshUsed,
         readySubmitted: readySubmitted ?? this.readySubmitted,
         combatDoneSubmitted: combatDoneSubmitted ?? this.combatDoneSubmitted,
+        roundReadySubmitted: roundReadySubmitted ?? this.roundReadySubmitted,
       );
 }
 
@@ -132,14 +136,20 @@ class MatchController extends StateNotifier<MatchViewState> {
     );
     final side = state.match?.yourSide;
     final readyFromServer = side == null ? null : _phaseReady(event, side);
+    final roundReadyFromServer =
+        event.phase == GamePhase.resolved ? readyFromServer ?? false : false;
     state = state.copyWith(
       phase: event,
       refreshUsed: roundChanged ? false : null,
       readySubmitted: event.phase == GamePhase.shopPlace
           ? readyFromServer ?? (roundChanged ? false : state.readySubmitted)
           : false,
-      combatDoneSubmitted:
-          event.phase == GamePhase.battle ? state.combatDoneSubmitted : false,
+      combatDoneSubmitted: switch (event.phase) {
+        GamePhase.battle => state.combatDoneSubmitted,
+        GamePhase.resolved => true,
+        _ => false,
+      },
+      roundReadySubmitted: roundReadyFromServer,
       clearDamage: event.phase == GamePhase.shopPlace,
       clearError: true,
     );
@@ -200,7 +210,26 @@ class MatchController extends StateNotifier<MatchViewState> {
 
   void clearError() => state = state.copyWith(clearError: true);
 
-  void clearRoundResult() => state = state.copyWith(clearDamage: true);
+  void readyForNextRound() {
+    final phase = state.phase;
+    if (phase?.phase != GamePhase.resolved || state.roundReadySubmitted) return;
+    state = state.copyWith(roundReadySubmitted: true, clearError: true);
+    _client.emit(GameActions.matchRoundReady, {
+      'matchId': matchId,
+      'round': phase!.round,
+      'clientActionId': _actionId(),
+    });
+  }
+
+  void surrender() {
+    final phase = state.phase;
+    if (phase == null || phase.phase == GamePhase.finished) return;
+    _client.emit(GameActions.matchSurrender, {
+      'matchId': matchId,
+      'round': phase.round,
+      'clientActionId': _actionId(),
+    });
+  }
 
   void select(RosterArea area, int slot) {
     if (!state.canAct) return;

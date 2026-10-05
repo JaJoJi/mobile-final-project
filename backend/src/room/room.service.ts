@@ -1,6 +1,7 @@
 import {
   BadRequestException,
   ConflictException,
+  ForbiddenException,
   Injectable,
   Logger,
   NotFoundException,
@@ -189,16 +190,15 @@ export class RoomService {
   }
 
   /**
-   * Join a room by code (#258) then automatically hand off to a match
-   * (#259) — no Ready/Start. The Lua join admits exactly one guest; only
-   * that winner (or a retry resuming its full room) runs the handoff.
+   * Join a room by code. The Lua join admits exactly one guest, then both
+   * players remain in the room lobby until the owner explicitly starts.
    *
    * Known limitation (documented, accepted): the queue/active-match reads
    * cannot join the Lua atomically — a user could enter the FIFO queue in
    * the gap between the check and the commit. Lua still guarantees the
    * slot invariant; a global lock to close the gap is deliberately avoided.
    */
-  async joinRoom(userId: string, rawCode: string): Promise<RoomMatchedView> {
+  async joinRoom(userId: string, rawCode: string): Promise<RoomView> {
     const code = rawCode.trim().toUpperCase();
     if (!/^[A-Z2-9]{6}$/.test(code)) {
       throw new BadRequestException({
@@ -215,17 +215,15 @@ export class RoomService {
     }
     const ownRoomId = await this.redis.client.get(userRoomKey(userId));
     if (ownRoomId) {
-      // Idempotent retry (#259): the caller may already be the guest of a
-      // full room whose handoff failed or is still settling — resume it
-      // instead of rejecting. Any other membership still conflicts.
+      // Idempotent retry: a guest may repeat the request after the response
+      // was lost. Keep them in the lobby; only the owner starts the match.
       const existing = await this.loadRoomIfExists(ownRoomId);
       if (
         existing &&
         existing.guestId === userId &&
-        existing.status === 'full' &&
-        !existing.matchId
+        existing.status === 'full'
       ) {
-        return this.startRoomMatch(existing.roomId);
+        return existing;
       }
       throw new ConflictException({
         code: 'room.already_in_room',
@@ -287,10 +285,43 @@ export class RoomService {
         });
     }
 
-    // Winner proceeds straight to the handoff (#259): the single
-    // `game:room:state` event clients receive is the matched transition
-    // (finishRoomMatch publishes it), so no intermediate full-state emit.
-    return this.startRoomMatch(roomId);
+    const room = await this.loadRoomIfExists(roomId);
+    if (!room) {
+      throw new NotFoundException({
+        code: 'room.not_found',
+        message: 'Room no longer exists',
+      });
+    }
+    await this.pubsub.publishToRoom(roomId, 'game:room:state', room, [
+      room.ownerId,
+      userId,
+    ]);
+    return room;
+  }
+
+  /** Starts a full private room. Only its owner may trigger the handoff. */
+  async startRoomForOwner(ownerId: string): Promise<RoomMatchedView> {
+    const roomId = await this.redis.client.get(userRoomKey(ownerId));
+    const room = await this.loadRoomIfExists(roomId);
+    if (!room) {
+      throw new NotFoundException({
+        code: 'room.not_found',
+        message: 'Room no longer exists',
+      });
+    }
+    if (room.ownerId !== ownerId) {
+      throw new ForbiddenException({
+        code: 'room.owner_only',
+        message: 'Only the room owner can start the match',
+      });
+    }
+    if (room.status !== 'full' || !room.guestId) {
+      throw new ConflictException({
+        code: 'room.not_full',
+        message: 'A guest must join before the match can start',
+      });
+    }
+    return this.startRoomMatch(room.roomId);
   }
 
   /**

@@ -26,11 +26,15 @@ interface Result { name: string; passed: boolean; detail: string }
 class CaptureQueue {
   readonly phases: any[] = [];
   readonly timeouts: any[] = [];
+  readonly roundReadyTimeouts: any[] = [];
   async schedulePhaseStart(matchId: string, round: number, delay: number) {
     this.phases.push({ matchId, round, delay });
   }
   async scheduleCombatDoneTimeout(matchId: string, round: number, delay: number) {
     this.timeouts.push({ matchId, round, delay });
+  }
+  async scheduleRoundReadyTimeout(matchId: string, round: number, delay: number) {
+    this.roundReadyTimeouts.push({ matchId, round, delay });
   }
 }
 
@@ -212,6 +216,9 @@ async function run() {
     ]);
     await adapter.handleCombatDone(persisted.player1Id, persisted.id, 1);
     await adapter.handleCombatDone(persisted.player2Id, persisted.id, 1);
+    const resolved = await adapter.getRuntime(persisted.id);
+    await adapter.markRoundReady(persisted.player1Id, persisted.id, 1);
+    await adapter.markRoundReady(persisted.player2Id, persisted.id, 1);
     const [runtime, dbMatch, rounds] = await Promise.all([
       adapter.getRuntime(persisted.id),
       repository.findById(persisted.id),
@@ -220,7 +227,8 @@ async function run() {
     add(
       results,
       'real Redis/Postgres flow persists events, damage and next round',
-      runtime.phase === 'shop_place' && runtime.round === 2 &&
+      resolved.phase === 'resolved' && resolved.round === 1 &&
+        runtime.phase === 'shop_place' && runtime.round === 2 &&
         runtime.p2State.hp === 95 && runtime.p2State.gold === 10 &&
         dbMatch?.p2State.hp === 95 && rounds.length === 1,
       `phase=${runtime.phase} round=${runtime.round} hp=${runtime.p2State.hp} gold=${runtime.p2State.gold} dbRounds=${rounds.length}`,

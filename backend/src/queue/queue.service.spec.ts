@@ -63,6 +63,21 @@ describe('QueueService job contracts (#306)', () => {
     ]);
   });
 
+  it('schedules one round-ready grace timeout per match+round', async () => {
+    const { combatDoneTimeout, service } = makeService();
+    await service.scheduleRoundReadyTimeout('m1', 2, 3000);
+    expect(combatDoneTimeout.added).toEqual([
+      {
+        name: JOB_NAMES.ROUND_READY_TIMEOUT,
+        data: { matchId: 'm1', round: 2 },
+        opts: expect.objectContaining({
+          delay: 3000,
+          jobId: 'round-ready-timeout-m1-2',
+        }),
+      },
+    ]);
+  });
+
   it('schedules one disconnect check per match+user', async () => {
     const { disconnectDetect, service } = makeService();
     await service.scheduleDisconnectDetect('m1', 'u1', 30000);

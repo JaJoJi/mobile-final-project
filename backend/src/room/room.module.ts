@@ -5,6 +5,7 @@ import { MatchmakingModule } from '../matchmaking/matchmaking.module';
 import { PubsubModule } from '../runtime/pubsub.module';
 import { RoomController } from './room.controller';
 import { RoomService } from './room.service';
+import { UserModule } from '../user/user.module';
 
 /**
  * Room module (#255 core, #258 join/leave, #259 handoff).
@@ -16,7 +17,7 @@ import { RoomService } from './room.service';
  * Exports `RoomService` for future room consumers.
  */
 @Module({
-  imports: [JwtAuthModule, MatchModule, MatchmakingModule, PubsubModule],
+  imports: [JwtAuthModule, MatchModule, MatchmakingModule, PubsubModule, UserModule],
   controllers: [RoomController],
   providers: [RoomService],
   exports: [RoomService],

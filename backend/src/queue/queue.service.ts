@@ -39,6 +39,15 @@ export class QueueService {
     );
   }
 
+  /** Advances a resolved round after the first player has waited 3 seconds. */
+  async scheduleRoundReadyTimeout(matchId: string, round: number, delayMs: number) {
+    return this.combatDoneTimeout.add(
+      JOB_NAMES.ROUND_READY_TIMEOUT,
+      { matchId, round },
+      { delay: delayMs, jobId: `round-ready-timeout-${matchId}-${round}` },
+    );
+  }
+
   /**
    * Gives a disconnected player `delayMs` to reconnect before the
    * orchestrator declares the other player the winner.

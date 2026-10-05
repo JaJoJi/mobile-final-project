@@ -164,6 +164,12 @@ export class MatchCombatDoneDto {
   clientActionId!: string;
 }
 
+/** A player accepts the round summary and is ready to continue. */
+export class MatchRoundReadyDto extends MatchCombatDoneDto {}
+
+/** A player confirms surrendering the active match. */
+export class MatchSurrenderDto extends MatchCombatDoneDto {}
+
 /**
  * Event name → DTO class. P0-BE-10 wires each `@SubscribeMessage` to the
  * matching DTO; keeping the map here means one place lists the full WS
@@ -179,4 +185,6 @@ export const WS_INCOMING_DTOS = {
   'game:match:place': MatchPlaceDto,
   'game:match:ready': MatchReadyDto,
   'game:match:combat_done': MatchCombatDoneDto,
+  'game:match:round_ready': MatchRoundReadyDto,
+  'game:match:surrender': MatchSurrenderDto,
 } as const;

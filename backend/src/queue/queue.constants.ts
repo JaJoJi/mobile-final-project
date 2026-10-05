@@ -22,6 +22,7 @@ export const JOB_NAMES = {
   PHASE_START: 'phase-timer:start',
   // combat-done-timeout
   COMBAT_DONE_TIMEOUT: 'combat-done-timeout:fire',
+  ROUND_READY_TIMEOUT: 'round-ready-timeout:fire',
   // disconnect-detect
   DISCONNECT_DETECT: 'disconnect-detect:fire',
   // match-pair

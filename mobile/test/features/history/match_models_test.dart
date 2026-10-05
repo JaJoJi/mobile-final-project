@@ -79,9 +79,11 @@ void main() {
       });
 
       expect(d.rounds.map((r) => r.roundNumber), [1, 2]); // sorted
+      expect(d.winnerId, 'a');
+      expect(d.rounds[0].winnerId, 'a');
       expect(d.rounds[0].winnerName, 'alice');
+      expect(d.rounds[1].winnerId, 'b');
       expect(d.rounds[1].winnerName, 'bob');
-      expect(d.rounds[1].eventCount, 2);
       expect(d.duration, const Duration(minutes: 4, seconds: 12));
     });
 

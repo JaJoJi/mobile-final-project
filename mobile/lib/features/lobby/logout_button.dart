@@ -19,12 +19,70 @@ import '../../core/widgets/app_modal.dart';
 ///      `refreshListenable` so the redirect bounces them away from
 ///      any non-auth route they're currently on.
 class LogoutButton extends ConsumerWidget {
-  const LogoutButton({super.key});
+  const LogoutButton({
+    super.key,
+    this.decorated = false,
+    this.showLabel = false,
+  });
+
+  final bool decorated;
+  final bool showLabel;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    if (showLabel) {
+      return Tooltip(
+        message: 'ออกจากระบบ',
+        child: Container(
+          constraints: const BoxConstraints(minHeight: 52),
+          decoration: BoxDecoration(
+            color: const Color(0xE6153044),
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: const Color(0x4052738C)),
+          ),
+          child: TextButton.icon(
+            style: TextButton.styleFrom(
+              foregroundColor: const Color(0xFFF4F7FF),
+              minimumSize: const Size(0, 52),
+              padding: const EdgeInsets.symmetric(horizontal: 4),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(16),
+              ),
+              textStyle: Theme.of(context).textTheme.titleSmall?.copyWith(
+                    fontWeight: FontWeight.w900,
+                  ),
+            ),
+            onPressed: () => _confirmAndLogout(context, ref),
+            icon: Container(
+              width: 28,
+              height: 28,
+              alignment: Alignment.center,
+              decoration: const BoxDecoration(
+                color: Color(0x24FF8F9B),
+                shape: BoxShape.circle,
+              ),
+              child: const Icon(
+                Icons.logout_rounded,
+                size: 17,
+                color: Color(0xFFFF8F9B),
+              ),
+            ),
+            label: const Text(
+              'ออกจากระบบ',
+              maxLines: 1,
+              softWrap: false,
+            ),
+          ),
+        ),
+      );
+    }
     return IconButton(
       tooltip: 'ออกจากระบบ',
+      style: decorated
+          ? IconButton.styleFrom(
+              backgroundColor: const Color(0x4D102538),
+            )
+          : null,
       icon: const Icon(Icons.logout),
       onPressed: () => _confirmAndLogout(context, ref),
     );
