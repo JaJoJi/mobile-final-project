@@ -109,7 +109,8 @@ void main() {
 
     expect(find.text('alice'), findsOneWidget);
     expect(find.text('alice@example.com'), findsOneWidget);
-    expect(find.text('เรตติ้ง 1,200'), findsOneWidget);
+    expect(find.text('1,200'), findsOneWidget);
+    expect(find.bySemanticsLabel('เรตติ้ง 1,200'), findsOneWidget);
     expect(find.text('แมตช์ที่จบแล้ว'), findsOneWidget);
   });
 
@@ -386,7 +387,8 @@ void main() {
       find.text('commander.with.a.very.long.address@example.com'),
       findsOneWidget,
     );
-    expect(find.text('เรตติ้ง 1,240'), findsOneWidget);
+    expect(find.text('1,240'), findsOneWidget);
+    expect(find.bySemanticsLabel('เรตติ้ง 1,240'), findsOneWidget);
     expect(find.text('แมตช์ที่จบแล้ว'), findsOneWidget);
     expect(find.text('อันดับ 28'), findsOneWidget);
     expect(find.byKey(const ValueKey('profile-hero')), findsOneWidget);
