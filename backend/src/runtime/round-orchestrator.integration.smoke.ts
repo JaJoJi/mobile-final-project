@@ -14,6 +14,7 @@ import { Match } from '../match/match.entity';
 import { MatchRepository } from '../match/match.repository';
 import { MatchService } from '../match/match.service';
 import { JOB_NAMES, QUEUE_NAMES } from '../queue/queue.constants';
+import { JOB_RETENTION } from '../queue/queue.retention';
 import { RedisService } from '../redis/redis.service';
 import { User } from '../user/user.entity';
 import { UserService } from '../user/user.service';
@@ -268,11 +269,12 @@ async function run() {
     await adapter.initializeMatch(workerMatch);
     const phaseQueue = new Queue(QUEUE_NAMES.PHASE_TIMER, {
       connection: redis.bullClient,
+      defaultJobOptions: JOB_RETENTION,
     });
     await phaseQueue.add(
       JOB_NAMES.PHASE_START,
       { matchId: workerMatch.id, round: 1 },
-      { delay: 100, jobId: `integration-phase-${workerMatch.id}` },
+      { delay: 100, jobId: `integration-phase-${workerMatch.id}`, ...JOB_RETENTION },
     );
     const deadline = Date.now() + 5000;
     let workerRuntime = await adapter.getRuntime(workerMatch.id);

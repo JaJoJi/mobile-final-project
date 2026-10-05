@@ -166,7 +166,7 @@ flutter build apk --release --dart-define=API_BASE_URL=http://<vm-ip> --dart-def
 # -> build/app/outputs/flutter-apk/app-release.apk
 ```
 
-## 12. Match cleanup, retention and growth alerts (#388, #389, #391)
+## 12. Match cleanup, retention and growth alerts (#388, #389, #390, #391)
 
 Retention defaults are configured in `/etc/auto-chess/app.env`:
 
@@ -177,6 +177,15 @@ Retention defaults are configured in `/etc/auto-chess/app.env`:
 | `MATCH_RETENTION_BATCH_SIZE` | 500 | Maximum rows updated/deleted by each database statement. |
 
 Terminal matches now queue a one-shot Redis cleanup 30 seconds after the match row is saved. The worker confirms the row is terminal on the PostgreSQL primary, then removes only `match:<matchId>:*` runtime, shop, combat and action keys with Redis `SCAN` and `UNLINK`. It retries Redis failures up to five times. Room handoff already removes its code, membership and handoff keys when creating the match; its room hash remains for a five-minute retry tombstone. Existing Redis TTLs remain the fallback if enqueue or all retries fail. Inspect failed `match-cleanup` jobs and `match:<matchId>:*` keys if Redis memory remains high after games finish.
+
+All BullMQ queues now remove completed jobs and keep at most 100 failed jobs for diagnosis. To clear previously retained jobs, build the backend and preview counts first:
+
+```bash
+$C exec nest-1 node dist/queue/queue-retention.cli.js
+$C exec nest-1 node dist/queue/queue-retention.cli.js --apply
+```
+
+Each apply run removes at most 1,000 completed jobs older than one hour and 1,000 failed jobs older than seven days per queue. Run it again while old counts remain. It leaves waiting, active, delayed and repeat schedules intact. The Grafana BullMQ panel and `app_bullmq_jobs` metrics show retained completed and failed counts by queue.
 
 The retention worker runs daily. Preview eligible rows and estimated event bytes before deletion:
 

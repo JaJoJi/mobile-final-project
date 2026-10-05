@@ -22,6 +22,7 @@
     "migration:run": "npm run typeorm -- migration:run -d src/data-source.ts",
     "migration:revert": "npm run typeorm -- migration:revert -d src/data-source.ts",
     "retention:matches": "ts-node src/match/match-retention.cli.ts",
+    "retention:queues": "node dist/queue/queue-retention.cli.js",
     "lint": "tsc -p tsconfig.json --noEmit",
     "lint:eslint": "eslint src",
     "test": "jest",

@@ -49,6 +49,7 @@ describe('QueueService job contracts (#306)', () => {
         jobId: 'match-retention-daily',
         attempts: 3,
         removeOnComplete: true,
+        removeOnFail: 100,
       }),
     }]);
 
@@ -64,7 +65,7 @@ describe('QueueService job contracts (#306)', () => {
       {
         name: JOB_NAMES.PHASE_START,
         data: { matchId: 'm1', round: 2 },
-        opts: expect.objectContaining({ delay: 40000, jobId: 'phase-m1-2' }),
+        opts: expect.objectContaining({ delay: 40000, jobId: 'phase-m1-2', removeOnComplete: true, removeOnFail: 100 }),
       },
     ]);
     expect(QUEUE_NAMES.PHASE_TIMER).toBe('phase-timer');
@@ -77,7 +78,7 @@ describe('QueueService job contracts (#306)', () => {
       {
         name: JOB_NAMES.COMBAT_DONE_TIMEOUT,
         data: { matchId: 'm1', round: 2 },
-        opts: expect.objectContaining({ delay: 65000, jobId: 'combat-done-timeout-m1-2' }),
+        opts: expect.objectContaining({ delay: 65000, jobId: 'combat-done-timeout-m1-2', removeOnComplete: true, removeOnFail: 100 }),
       },
     ]);
   });
@@ -92,6 +93,8 @@ describe('QueueService job contracts (#306)', () => {
         opts: expect.objectContaining({
           delay: 3000,
           jobId: 'round-ready-timeout-m1-2',
+          removeOnComplete: true,
+          removeOnFail: 100,
         }),
       },
     ]);
@@ -104,7 +107,7 @@ describe('QueueService job contracts (#306)', () => {
       {
         name: JOB_NAMES.DISCONNECT_DETECT,
         data: { matchId: 'm1', userId: 'u1' },
-        opts: expect.objectContaining({ delay: 30000, jobId: 'disconnect-m1-u1' }),
+        opts: expect.objectContaining({ delay: 30000, jobId: 'disconnect-m1-u1', removeOnComplete: true, removeOnFail: 100 }),
       },
     ]);
   });
@@ -126,6 +129,7 @@ describe('QueueService job contracts (#306)', () => {
         opts: expect.objectContaining({
           jobId: 'match-pair-every-1000',
           removeOnComplete: true,
+          removeOnFail: 100,
         }),
       },
     ]);

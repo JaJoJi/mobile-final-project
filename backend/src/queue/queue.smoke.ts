@@ -17,6 +17,7 @@ import { Queue } from 'bullmq';
 import { randomUUID } from 'crypto';
 import Redis from 'ioredis';
 import { JOB_NAMES, QUEUE_NAMES } from './queue.constants';
+import { JOB_RETENTION } from './queue.retention';
 
 interface Result {
   queue: string;
@@ -30,6 +31,7 @@ interface Result {
 async function run() {
   const url = process.env.REDIS_URL ?? 'redis://localhost:6379';
   const connection = new Redis(url, { maxRetriesPerRequest: 3 });
+  const queueOptions = { connection, defaultJobOptions: JOB_RETENTION };
   await connection.ping();
   console.log('[connect]', url);
 
@@ -39,7 +41,7 @@ async function run() {
   const smokeUserId = randomUUID();
 
   // 1. phase-timer — delayed 2 s
-  const phaseQ = new Queue(QUEUE_NAMES.PHASE_TIMER, { connection });
+  const phaseQ = new Queue(QUEUE_NAMES.PHASE_TIMER, queueOptions);
   const phaseJob = await phaseQ.add(JOB_NAMES.PHASE_START, { matchId: smokeMatchId, round: 1 }, { delay: 2000 });
   results.push({
     queue: QUEUE_NAMES.PHASE_TIMER,
@@ -51,7 +53,7 @@ async function run() {
   });
 
   // 2. combat-done-timeout — delayed 3 s
-  const combatQ = new Queue(QUEUE_NAMES.COMBAT_DONE_TIMEOUT, { connection });
+  const combatQ = new Queue(QUEUE_NAMES.COMBAT_DONE_TIMEOUT, queueOptions);
   const combatJob = await combatQ.add(JOB_NAMES.COMBAT_DONE_TIMEOUT, { matchId: smokeMatchId, round: 1 }, { delay: 3000 });
   results.push({
     queue: QUEUE_NAMES.COMBAT_DONE_TIMEOUT,
@@ -63,7 +65,7 @@ async function run() {
   });
 
   // 3. disconnect-detect — delayed 4 s
-  const discQ = new Queue(QUEUE_NAMES.DISCONNECT_DETECT, { connection });
+  const discQ = new Queue(QUEUE_NAMES.DISCONNECT_DETECT, queueOptions);
   const discJob = await discQ.add(JOB_NAMES.DISCONNECT_DETECT, { matchId: smokeMatchId, userId: smokeUserId }, { delay: 4000 });
   results.push({
     queue: QUEUE_NAMES.DISCONNECT_DETECT,
@@ -76,7 +78,7 @@ async function run() {
 
   // 4. match-pair — repeatable every 1500 ms, limited to 2 occurrences
   //    (smaller than production 1000 ms for faster smoke verification)
-  const pairQ = new Queue(QUEUE_NAMES.MATCH_PAIR, { connection });
+  const pairQ = new Queue(QUEUE_NAMES.MATCH_PAIR, queueOptions);
   const pairJob = await pairQ.add(
     JOB_NAMES.MATCH_PAIR,
     {},
@@ -92,7 +94,7 @@ async function run() {
   });
 
   // 5. match-cleanup — scheduled at +5s
-  const cleanQ = new Queue(QUEUE_NAMES.MATCH_CLEANUP, { connection });
+  const cleanQ = new Queue(QUEUE_NAMES.MATCH_CLEANUP, queueOptions);
   const cleanJob = await cleanQ.add(
     JOB_NAMES.MATCH_CLEANUP,
     { matchId: smokeMatchId },
@@ -128,7 +130,7 @@ async function run() {
   // 9. After drain — final state per queue
   console.log('\n[final-state]');
   for (const name of Object.values(QUEUE_NAMES)) {
-    const counts = await new Queue(name, { connection }).getJobCounts();
+    const counts = await new Queue(name, queueOptions).getJobCounts();
     console.log(`  ${name.padEnd(22)} counts=${JSON.stringify(counts)}`);
   }
 

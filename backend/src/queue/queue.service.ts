@@ -2,6 +2,7 @@ import { InjectQueue } from '@nestjs/bullmq';
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { Queue } from 'bullmq';
 import { JOB_NAMES, QUEUE_NAMES } from './queue.constants';
+import { JOB_RETENTION } from './queue.retention';
 
 @Injectable()
 export class QueueService implements OnModuleInit {
@@ -33,8 +34,7 @@ export class QueueService implements OnModuleInit {
         jobId: 'match-retention-daily',
         attempts: 3,
         backoff: { type: 'exponential', delay: 60_000 },
-        removeOnComplete: true,
-        removeOnFail: 100,
+        ...JOB_RETENTION,
       },
     );
   }
@@ -47,7 +47,7 @@ export class QueueService implements OnModuleInit {
     return this.phaseTimer.add(
       JOB_NAMES.PHASE_START,
       { matchId, round },
-      { delay: delayMs, jobId: `phase-${matchId}-${round}` },
+      { delay: delayMs, jobId: `phase-${matchId}-${round}`, ...JOB_RETENTION },
     );
   }
 
@@ -59,7 +59,7 @@ export class QueueService implements OnModuleInit {
     return this.combatDoneTimeout.add(
       JOB_NAMES.COMBAT_DONE_TIMEOUT,
       { matchId, round },
-      { delay: delayMs, jobId: `combat-done-timeout-${matchId}-${round}` },
+      { delay: delayMs, jobId: `combat-done-timeout-${matchId}-${round}`, ...JOB_RETENTION },
     );
   }
 
@@ -68,7 +68,7 @@ export class QueueService implements OnModuleInit {
     return this.combatDoneTimeout.add(
       JOB_NAMES.ROUND_READY_TIMEOUT,
       { matchId, round },
-      { delay: delayMs, jobId: `round-ready-timeout-${matchId}-${round}` },
+      { delay: delayMs, jobId: `round-ready-timeout-${matchId}-${round}`, ...JOB_RETENTION },
     );
   }
 
@@ -80,7 +80,7 @@ export class QueueService implements OnModuleInit {
     return this.disconnectDetect.add(
       JOB_NAMES.DISCONNECT_DETECT,
       { matchId, userId },
-      { delay: delayMs, jobId: `disconnect-${matchId}-${userId}` },
+      { delay: delayMs, jobId: `disconnect-${matchId}-${userId}`, ...JOB_RETENTION },
     );
   }
 
@@ -103,8 +103,7 @@ export class QueueService implements OnModuleInit {
         jobId: `match-pair-every-${intervalMs}`,
         // This job runs forever; retaining every successful one-second tick
         // would grow the completed set without bound.
-        removeOnComplete: true,
-        removeOnFail: 100,
+        ...JOB_RETENTION,
       },
     );
     return this.matchPair.getRepeatableJobs();
@@ -123,8 +122,7 @@ export class QueueService implements OnModuleInit {
         jobId: `cleanup-${matchId}`,
         attempts: 5,
         backoff: { type: 'exponential', delay: 1000 },
-        removeOnComplete: true,
-        removeOnFail: 100,
+        ...JOB_RETENTION,
       },
     );
   }
