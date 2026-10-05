@@ -12,16 +12,15 @@ import '../../shared/models/game_events.dart';
 /// * `joining`   — join request sent; waiting for the server ACK.
 /// * `searching` — user tapped Find match. `game:matchmaking:join` was
 ///                 acknowledged; we're waiting for the server to pair us.
-/// * `matched`   — server paired us. The lobby screen auto-navigates to
-///                 `/match/<id>` after a short delay (set in
-///                 `LobbyScreen`).
+/// * `matched`   — server paired us. The app-level matchmaking coordinator
+///                 navigates to `/match/<id>` from whichever page is open.
 ///
 /// Transitions:
 ///   * `idle → joining → searching` via [beginSearch]
 ///     (emits `game:matchmaking:join` and waits for its acknowledgement)
 ///   * `searching → idle` via [cancelSearch] (emits `game:matchmaking:leave`)
-///   * `searching → matched` via [markMatched] (called from the
-///     `matchPhaseProvider` listener in `LobbyScreen`)
+///   * `searching → matched` via [markMatched] (called by the app-level
+///     matchmaking navigation coordinator)
 ///
 /// `matched → idle` happens when a fresh lobby screen mounts after the match.
 enum MatchmakingState { idle, joining, searching, matched }
@@ -95,8 +94,8 @@ class MatchmakingStateNotifier extends StateNotifier<MatchmakingState> {
 
   /// Searching → matched.
   ///
-  /// Called from `LobbyScreen` when a `game:match:phase` event lands while
-  /// we're in the `searching` state. Calling outside of `searching` is
+  /// Called by the app coordinator when a `game:match:phase` event lands
+  /// while we're in the `searching` state. Calling outside of `searching` is
   /// a no-op so a stale event arriving after navigation can't unhelpfully
   /// reset state.
   void markMatched() {

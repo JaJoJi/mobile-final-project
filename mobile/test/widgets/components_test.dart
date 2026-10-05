@@ -108,6 +108,15 @@ void main() {
       expect(find.text('Ranger'), findsNothing);
       expect(find.byKey(const ValueKey('shop-unit-type-ranger')), findsNothing);
       expect(find.byIcon(Icons.monetization_on), findsOneWidget);
+      expect(find.byType(PremiumShopCardFrame), findsOneWidget);
+      expect(
+        tester
+            .widget<PremiumShopCardFrame>(
+              find.byType(PremiumShopCardFrame),
+            )
+            .accent,
+        const Color(0xFF82B9A5),
+      );
       expect(find.text('2'), findsOneWidget);
       expect(find.byIcon(Icons.star), findsNothing);
       final heroArt = find.byWidgetPredicate(
@@ -117,6 +126,7 @@ void main() {
             (widget.image as AssetImage).assetName ==
                 'assets/images/units/ranger_3.png',
       );
+      expect(tester.widget<Image>(heroArt).width, greaterThan(75));
       expect(
         tester.getCenter(find.text('2')).dy,
         greaterThan(tester.getCenter(heroArt).dy),

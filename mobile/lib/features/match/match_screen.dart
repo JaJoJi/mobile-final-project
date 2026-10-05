@@ -22,6 +22,7 @@ import '../../core/ws/ws_providers.dart';
 import '../../shared/models/game_events.dart';
 import '../lobby/matchmaking_state.dart';
 import 'battle/battle_view.dart';
+import 'board/board_slot.dart';
 import 'board/board_tab.dart';
 import 'match_controller.dart';
 import 'result/result_overlay.dart';
@@ -263,7 +264,6 @@ class _MatchContent extends StatelessWidget {
                         selection: view.selection,
                         onSelect: controller.select,
                         onDrop: controller.place,
-                        onSell: controller.sell,
                       );
                       final shop = ShopTab(
                         shop: view.shop,
@@ -315,6 +315,7 @@ class _MatchContent extends StatelessWidget {
               audio.play(GameSfx.refresh);
               controller.refresh();
             },
+            onSell: controller.sell,
             onReady: () {
               audio.play(GameSfx.ready);
               controller.toggleReady();
@@ -635,6 +636,7 @@ class _ActionBar extends StatelessWidget {
     required this.enabled,
     required this.refreshUsed,
     required this.onRefresh,
+    required this.onSell,
     required this.onReady,
   });
 
@@ -644,6 +646,7 @@ class _ActionBar extends StatelessWidget {
   final bool enabled;
   final bool refreshUsed;
   final VoidCallback onRefresh;
+  final void Function(RosterArea, int) onSell;
   final VoidCallback onReady;
 
   @override
@@ -663,7 +666,7 @@ class _ActionBar extends StatelessWidget {
         child: Padding(
           padding: const EdgeInsets.symmetric(
             horizontal: AppSpacing.sm,
-            vertical: AppSpacing.xs,
+            vertical: AppSpacing.sm,
           ),
           child: SizedBox(
             height: AppSpacing.huge - AppSpacing.xs,
@@ -711,6 +714,14 @@ class _ActionBar extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(width: AppSpacing.sm),
+                SizedBox.square(
+                  dimension: AppSpacing.huge - AppSpacing.xs,
+                  child: _SellDropTarget(
+                    enabled: enabled,
+                    onSell: onSell,
+                  ),
+                ),
+                const SizedBox(width: AppSpacing.sm),
                 Expanded(
                   child: SizedBox(
                     height: double.infinity,
@@ -727,10 +738,12 @@ class _ActionBar extends StatelessWidget {
                           minimumSize: Size.zero,
                           tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                           backgroundColor: ready ? game.success : game.gold,
-                          foregroundColor: const Color(0xFF211A08),
+                          foregroundColor: const Color(0xFF171A20),
                           disabledBackgroundColor:
-                              scheme.surfaceContainerHighest,
-                          disabledForegroundColor: scheme.onSurfaceVariant,
+                              ready ? game.success : game.gold,
+                          disabledForegroundColor:
+                              const Color(0xFF171A20).withValues(alpha: 0.72),
+                          overlayColor: scheme.shadow.withValues(alpha: 0.12),
                           shape: const RoundedRectangleBorder(
                             borderRadius: AppRadius.allSm,
                           ),
@@ -746,7 +759,7 @@ class _ActionBar extends StatelessWidget {
                                 .textTheme
                                 .titleMedium
                                 ?.copyWith(
-                                  color: const Color(0xFF211A08),
+                                  color: const Color(0xFF171A20),
                                   fontWeight: FontWeight.w800,
                                 ),
                           ),
@@ -764,6 +777,75 @@ class _ActionBar extends StatelessWidget {
   }
 }
 
+class _SellDropTarget extends StatelessWidget {
+  const _SellDropTarget({
+    required this.enabled,
+    required this.onSell,
+  });
+
+  final bool enabled;
+  final void Function(RosterArea, int) onSell;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return DragTarget<UnitDragData>(
+      key: const ValueKey('sell-drop-target'),
+      onWillAcceptWithDetails: (_) => enabled,
+      onAcceptWithDetails: (details) {
+        final source = details.data.selection;
+        onSell(source.area, source.slot);
+      },
+      builder: (context, candidates, rejected) {
+        final hovering = candidates.isNotEmpty;
+        final accent =
+            hovering ? scheme.error : scheme.error.withValues(alpha: 0.72);
+        return Tooltip(
+          message: enabled ? 'ลากฮีโร่มาวางเพื่อขาย' : 'ขายได้เฉพาะช่วงวางแผน',
+          child: _ActionFrame(
+            frameKey: const ValueKey('sell-action-frame'),
+            accent: accent,
+            child: AnimatedContainer(
+              key: const ValueKey('sell-drop-surface'),
+              duration: AppMotion.short2,
+              decoration: BoxDecoration(
+                color: hovering
+                    ? scheme.errorContainer.withValues(alpha: 0.92)
+                    : Color.lerp(scheme.error, Colors.black, 0.68)!,
+                boxShadow: hovering
+                    ? [
+                        BoxShadow(
+                          color: scheme.error.withValues(alpha: 0.52),
+                          blurRadius: AppSpacing.md,
+                          spreadRadius: AppSpacing.xxs,
+                        ),
+                      ]
+                    : null,
+              ),
+              child: Semantics(
+                label: hovering ? 'ปล่อยเพื่อขายฮีโร่' : 'ลากฮีโร่มาเพื่อขาย',
+                child: Center(
+                  child: AnimatedSwitcher(
+                    duration: AppMotion.short2,
+                    child: Icon(
+                      hovering
+                          ? Icons.delete_sweep_rounded
+                          : Icons.delete_outline_rounded,
+                      key: ValueKey(hovering ? 'sell-bin-open' : 'sell-bin'),
+                      size: AppSpacing.xl - AppSpacing.xs,
+                      color: hovering ? scheme.onErrorContainer : scheme.error,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+}
+
 class _ActionFrame extends StatelessWidget {
   const _ActionFrame({
     required this.accent,
@@ -776,33 +858,38 @@ class _ActionFrame extends StatelessWidget {
   final Key? frameKey;
 
   @override
-  Widget build(BuildContext context) => DecoratedBox(
-        key: frameKey,
-        decoration: BoxDecoration(
-          borderRadius: AppRadius.allMd,
-          gradient: LinearGradient(
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-            colors: [
-              accent.withValues(alpha: 0.72),
-              Colors.white.withValues(alpha: 0.9),
-              accent.withValues(alpha: 0.24),
-              accent.withValues(alpha: 0.82),
-            ],
-            stops: const [0, 0.28, 0.58, 1],
-          ),
-          boxShadow: [
-            BoxShadow(
-              color: accent.withValues(alpha: 0.22),
-              blurRadius: AppSpacing.sm,
-            ),
+  Widget build(BuildContext context) {
+    return DecoratedBox(
+      key: frameKey,
+      decoration: BoxDecoration(
+        borderRadius: AppRadius.allMd,
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [
+            accent.withValues(alpha: 0.72),
+            Colors.white.withValues(alpha: 0.9),
+            accent.withValues(alpha: 0.24),
+            accent.withValues(alpha: 0.82),
           ],
+          stops: const [0, 0.28, 0.58, 1],
         ),
-        child: Padding(
-          padding: const EdgeInsets.all(AppSpacing.xxs),
-          child: ClipRRect(borderRadius: AppRadius.allSm, child: child),
+        boxShadow: [
+          BoxShadow(
+            color: accent.withValues(alpha: 0.22),
+            blurRadius: AppSpacing.sm,
+          ),
+        ],
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(AppSpacing.xxs),
+        child: ClipRRect(
+          borderRadius: AppRadius.allSm,
+          child: child,
         ),
-      );
+      ),
+    );
+  }
 }
 
 class _AnimatedGoldBadge extends StatefulWidget {
@@ -865,7 +952,7 @@ class _AnimatedGoldBadgeState extends State<_AnimatedGoldBadge>
                         BoxShadow(
                           color: game.gold.withValues(alpha: pulse * 0.75),
                           blurRadius: 14,
-                          spreadRadius: 2,
+                          spreadRadius: AppSpacing.xxs,
                         ),
                       ]
                     : null,
@@ -882,7 +969,7 @@ class _AnimatedGoldBadgeState extends State<_AnimatedGoldBadge>
         ),
         child: Row(
           children: [
-            Icon(Icons.monetization_on_outlined, color: game.gold),
+            Icon(Icons.monetization_on, color: game.gold),
             const SizedBox(width: AppSpacing.xs),
             TweenAnimationBuilder<int>(
               tween: IntTween(begin: widget.gold, end: widget.gold),

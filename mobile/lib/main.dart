@@ -8,6 +8,7 @@ import 'core/error_logger.dart';
 import 'core/router.dart';
 import 'core/theme/app_theme.dart';
 import 'core/ws/ws_providers.dart';
+import 'features/lobby/matchmaking_navigation_coordinator.dart';
 import 'features/profile/settings_provider.dart';
 
 /// App entry.
@@ -76,16 +77,19 @@ class _AutoChessAppState extends ConsumerState<AutoChessApp> {
   Widget build(BuildContext context) {
     final settings = ref.watch(settingsProvider);
     ref.read(gameAudioProvider).enabled = settings.soundEnabled;
-    return MaterialApp.router(
-      title: 'ออโต้เชส',
-      debugShowCheckedModeBanner: false,
-      theme: buildTheme(Brightness.light),
-      darkTheme: buildTheme(Brightness.dark),
-      themeMode: settings.themeMode,
-      scrollBehavior: const MaterialScrollBehavior().copyWith(
-        scrollbars: false,
+    return MatchmakingNavigationCoordinator(
+      router: _router,
+      child: MaterialApp.router(
+        title: 'ออโต้เชส',
+        debugShowCheckedModeBanner: false,
+        theme: buildTheme(Brightness.light),
+        darkTheme: buildTheme(Brightness.dark),
+        themeMode: settings.themeMode,
+        scrollBehavior: const MaterialScrollBehavior().copyWith(
+          scrollbars: false,
+        ),
+        routerConfig: _router,
       ),
-      routerConfig: _router,
     );
   }
 

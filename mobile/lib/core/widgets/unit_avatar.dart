@@ -4,8 +4,8 @@ import '../theme/app_spacing.dart';
 import '../theme/app_typography.dart';
 import '../theme/game_theme.dart';
 import '../utils/unit_star_level.dart';
-import 'game_art_frame.dart';
 import 'health_bar.dart';
+import 'premium_shop_card_frame.dart';
 
 /// The four unit types — `docs/05-combat-spec.md §3`.
 enum UnitKind { fighter, healer, ranger, tank }
@@ -42,6 +42,14 @@ extension UnitKindDisplay on UnitKind {
 
   /// The safe fallback used when an evolved illustration cannot be decoded.
   String get baseArtPath => artPathForTier(0);
+
+  /// Soft class colour shared with the unit collection cards.
+  Color get shopAccent => switch (this) {
+        UnitKind.fighter => const Color(0xFFE88989),
+        UnitKind.healer => const Color(0xFFF0B66A),
+        UnitKind.ranger => const Color(0xFF82B9A5),
+        UnitKind.tank => const Color(0xFF88AADB),
+      };
 
   /// Fallback shape when the art can't load — design spec §6 (● / ✚ / ▲ / ■).
   /// Also the small type glyph shown at `sm` size where there's no name label.
@@ -206,7 +214,12 @@ class UnitAvatar extends StatelessWidget {
     // Shop cards keep the hero as the only visual identifier. The price sits
     // directly below it, avoiding a cramped role/name footer at narrow sizes.
     Widget landscapeShopContent() => Padding(
-          padding: const EdgeInsets.all(AppSpacing.xs),
+          padding: const EdgeInsets.fromLTRB(
+            AppSpacing.xs,
+            AppSpacing.xxs,
+            AppSpacing.xs,
+            AppSpacing.xxs,
+          ),
           child: Column(
             children: [
               Expanded(
@@ -215,7 +228,7 @@ class UnitAvatar extends StatelessWidget {
                     kind: kind,
                     fusionTier: star,
                     tint: tint,
-                    size: _width * 0.7,
+                    size: _width * 0.84,
                   ),
                 ),
               ),
@@ -228,10 +241,10 @@ class UnitAvatar extends StatelessWidget {
     // focus; the price is centred immediately beneath the illustration.
     Widget portraitShopContent() => Padding(
           padding: const EdgeInsets.fromLTRB(
-            AppSpacing.md,
-            AppSpacing.sm,
-            AppSpacing.md,
-            AppSpacing.sm,
+            AppSpacing.xs,
+            AppSpacing.xs,
+            AppSpacing.xs,
+            AppSpacing.xxs,
           ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -242,14 +255,15 @@ class UnitAvatar extends StatelessWidget {
                     kind: kind,
                     fusionTier: star,
                     tint: tint,
-                    size: _width * 0.76,
+                    size: _width * 0.92,
                   ),
                 ),
               ),
               if (price != null)
                 SizedBox(
-                  height: AppSpacing.xl,
-                  child: Center(
+                  height: AppSpacing.xl - AppSpacing.xs,
+                  child: Align(
+                    alignment: Alignment.bottomCenter,
                     child: priceRow(alignment: Alignment.center),
                   ),
                 ),
@@ -407,9 +421,8 @@ class UnitAvatar extends StatelessWidget {
                       ]
                     : null,
               ),
-              child: GameArtFrame(
-                frameAsset: GameUiAssets.shopCardFrame,
-                kind: GameArtFrameKind.card,
+              child: PremiumShopCardFrame(
+                accent: kind.shopAccent,
                 child: avatarContent,
               ),
             )

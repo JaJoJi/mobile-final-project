@@ -30,7 +30,6 @@ abstract final class GameUiAssets {
   static const String reserveSlotFrame =
       'assets/images/ui/reserve_slot_frame.png';
   static const String shopPanelFrame = 'assets/images/ui/shop_panel_frame.png';
-  static const String shopCardFrame = 'assets/images/ui/shop_card_frame.png';
   static const String hudPlayerFrame = 'assets/images/ui/hud_player_frame.png';
   static const String hudEnemyFrame = 'assets/images/ui/hud_enemy_frame.png';
   static const String hudTimerMedallion =
@@ -52,14 +51,12 @@ abstract final class GameUiAssets {
     reservePanelFrame,
     reserveSlotFrame,
     shopPanelFrame,
-    shopCardFrame,
     ...hud,
   ];
 
   static const List<String> shop = [
     panelTextureBlue,
     shopPanelFrame,
-    shopCardFrame,
   ];
 
   static const List<String> reserve = [

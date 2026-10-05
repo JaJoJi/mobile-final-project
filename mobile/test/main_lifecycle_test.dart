@@ -3,9 +3,12 @@ import 'package:auto_chess_mobile/core/ws/ws_client.dart';
 import 'package:auto_chess_mobile/core/ws/ws_providers.dart';
 import 'package:auto_chess_mobile/features/history/history_providers.dart';
 import 'package:auto_chess_mobile/features/lobby/profile_card.dart';
+import 'package:auto_chess_mobile/features/match/match_screen.dart';
 import 'package:auto_chess_mobile/features/player_hub/player_hub_fixture_provider.dart';
 import 'package:auto_chess_mobile/features/profile/settings_provider.dart';
+import 'package:auto_chess_mobile/features/units/units_screen.dart';
 import 'package:auto_chess_mobile/main.dart';
+import 'package:auto_chess_mobile/shared/models/game_events.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -146,5 +149,37 @@ void main() {
       reason: 'a second sign-in must open a fresh WS',
     );
     expect(transport.disconnectCalls, 1);
+  });
+
+  testWidgets('full app opens a found match while the units page is visible', (
+    tester,
+  ) async {
+    await pumpApp(tester);
+    AuthGate.instance.signalSignedIn();
+    await tester.pump();
+    transport.serverConnect();
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('จับคู่ด่วน'));
+    await tester.pump();
+    await tester.tap(find.text('ยูนิต'));
+    await tester.pumpAndSettle();
+    expect(find.byType(UnitsScreen), findsOneWidget);
+
+    transport.emitFromServer(GameEvents.matchPhase, {
+      'matchId': 'full-app-away-match',
+      'phase': 'shop_place',
+      'round': 1,
+      'timer': 40,
+      'players': [
+        {'id': 'p1', 'hp': 100, 'gold': 5, 'ready': false},
+        {'id': 'p2', 'hp': 100, 'gold': 5, 'ready': false},
+      ],
+    });
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 600));
+    await tester.pump();
+
+    expect(find.byType(MatchScreen), findsOneWidget);
   });
 }

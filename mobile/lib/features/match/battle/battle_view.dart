@@ -26,7 +26,6 @@ import '../../../core/debug/combat_trace.dart';
 import '../../../core/theme/app_motion.dart';
 import '../../../core/theme/app_spacing.dart';
 import '../../../core/theme/game_theme.dart';
-import '../../../core/widgets/game_asset_button.dart';
 import '../../../core/widgets/unit_avatar.dart';
 import '../../../core/ws/ws_providers.dart';
 import '../../../shared/models/combat_event.dart';
@@ -518,32 +517,16 @@ class _BattleViewState extends ConsumerState<BattleView>
           if (!widget.skipSubmitted) ...[
             const SizedBox(height: AppSpacing.sm),
             _BatchSummary(view: view, staleDetected: _staleDetected),
-            const SizedBox(height: AppSpacing.xs),
+            if (view.batch == null) const SizedBox(height: AppSpacing.xs),
             ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 320),
-              child: GameAssetButton(
+              constraints: const BoxConstraints(maxWidth: 360),
+              child: _PremiumSkipButton(
                 key: const ValueKey('skip-combat-button'),
                 onPressed: widget.skipSubmitted ? null : widget.onSkip,
-                disabledReason:
-                    widget.skipSubmitted ? 'ส่งผลการทดสอบแล้ว' : null,
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Icon(
-                      widget.skipSubmitted
-                          ? Icons.hourglass_top
-                          : Icons.fast_forward,
-                    ),
-                    const SizedBox(width: AppSpacing.sm),
-                    Flexible(
-                      child: Text(
-                        widget.skipSubmitted ? 'รอคู่แข่ง…' : 'ข้ามการต่อสู้',
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ),
-                  ],
-                ),
+                label: widget.skipSubmitted ? 'รอคู่แข่ง…' : 'ข้ามการต่อสู้',
+                icon: widget.skipSubmitted
+                    ? Icons.hourglass_top_rounded
+                    : Icons.fast_forward_rounded,
               ),
             ),
           ],
@@ -1599,13 +1582,183 @@ class _BatchSummary extends StatelessWidget {
         style: TextStyle(fontSize: 12),
       );
     }
-    return Text(
-      'batch loaded · round ${batch.round} · ${batch.events.length} events · '
-      'playhead ${(view.playheadProgress * 100).toStringAsFixed(0)}% '
-      'index ${view.playheadIndex}',
-      key: const ValueKey('battle-batch-summary'),
-      textAlign: TextAlign.center,
-      style: const TextStyle(fontSize: 12),
+    return BattlePlaybackProbe(
+      round: batch.round,
+      eventCount: batch.events.length,
+      playheadProgress: view.playheadProgress,
+      playheadIndex: view.playheadIndex,
+    );
+  }
+}
+
+/// Invisible playback data used by widget tests without leaking developer
+/// diagnostics into the player's battle HUD.
+@visibleForTesting
+class BattlePlaybackProbe extends StatelessWidget {
+  const BattlePlaybackProbe({
+    super.key,
+    required this.round,
+    required this.eventCount,
+    required this.playheadProgress,
+    required this.playheadIndex,
+  });
+
+  final int round;
+  final int eventCount;
+  final double playheadProgress;
+  final int playheadIndex;
+
+  @override
+  Widget build(BuildContext context) => const SizedBox.shrink();
+}
+
+class _PremiumSkipButton extends StatelessWidget {
+  const _PremiumSkipButton({
+    super.key,
+    required this.onPressed,
+    required this.label,
+    required this.icon,
+  });
+
+  final VoidCallback? onPressed;
+  final String label;
+  final IconData icon;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final game = Theme.of(context).extension<GameTheme>()!;
+    final enabled = onPressed != null;
+    final accent = enabled ? game.ally : scheme.outline;
+
+    return Semantics(
+      button: true,
+      enabled: enabled,
+      label: label,
+      child: AnimatedOpacity(
+        duration: AppMotion.short2,
+        opacity: enabled ? 1 : 0.58,
+        child: DecoratedBox(
+          decoration: BoxDecoration(
+            borderRadius: AppRadius.allMd,
+            gradient: LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: [
+                accent.withValues(alpha: 0.82),
+                Colors.white.withValues(alpha: 0.92),
+                accent.withValues(alpha: 0.34),
+                game.gold.withValues(alpha: 0.82),
+              ],
+              stops: const [0, 0.28, 0.66, 1],
+            ),
+            boxShadow: [
+              BoxShadow(
+                color: accent.withValues(alpha: 0.28),
+                blurRadius: AppSpacing.md,
+              ),
+            ],
+          ),
+          child: Padding(
+            padding: const EdgeInsets.all(AppSpacing.xxs),
+            child: Material(
+              color: Colors.transparent,
+              borderRadius: AppRadius.allSm,
+              clipBehavior: Clip.antiAlias,
+              child: Ink(
+                height: AppSpacing.huge - AppSpacing.sm,
+                decoration: BoxDecoration(
+                  borderRadius: AppRadius.allSm,
+                  gradient: LinearGradient(
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                    colors: [
+                      scheme.surfaceContainerHigh.withValues(alpha: 0.98),
+                      scheme.surface.withValues(alpha: 0.98),
+                    ],
+                  ),
+                ),
+                child: InkWell(
+                  onTap: onPressed,
+                  child: Stack(
+                    fit: StackFit.expand,
+                    children: [
+                      Align(
+                        alignment: Alignment.topCenter,
+                        child: FractionallySizedBox(
+                          widthFactor: 0.72,
+                          child: Container(
+                            height: AppSpacing.xxs,
+                            decoration: BoxDecoration(
+                              gradient: LinearGradient(
+                                colors: [
+                                  Colors.transparent,
+                                  Colors.white.withValues(alpha: 0.72),
+                                  Colors.transparent,
+                                ],
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                      Center(
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(
+                              icon,
+                              color: accent,
+                              size: AppSpacing.xl - AppSpacing.xs,
+                            ),
+                            const SizedBox(width: AppSpacing.sm),
+                            Text(
+                              label,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: Theme.of(context)
+                                  .textTheme
+                                  .titleSmall
+                                  ?.copyWith(
+                                    color: scheme.onSurface,
+                                    fontWeight: FontWeight.w800,
+                                    letterSpacing: 0.2,
+                                  ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      Positioned(
+                        left: AppSpacing.sm,
+                        top: AppSpacing.sm,
+                        bottom: AppSpacing.sm,
+                        child: Container(
+                          width: AppSpacing.xxs,
+                          decoration: BoxDecoration(
+                            color: accent.withValues(alpha: 0.88),
+                            borderRadius: AppRadius.allFull,
+                          ),
+                        ),
+                      ),
+                      Positioned(
+                        right: AppSpacing.sm,
+                        top: AppSpacing.sm,
+                        bottom: AppSpacing.sm,
+                        child: Container(
+                          width: AppSpacing.xxs,
+                          decoration: BoxDecoration(
+                            color: game.gold.withValues(alpha: 0.88),
+                            borderRadius: AppRadius.allFull,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
     );
   }
 }

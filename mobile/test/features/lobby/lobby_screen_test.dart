@@ -5,6 +5,7 @@ import 'package:auto_chess_mobile/features/history/history_providers.dart';
 import 'package:auto_chess_mobile/features/lobby/find_match_button.dart';
 import 'package:auto_chess_mobile/features/lobby/lobby_screen.dart';
 import 'package:auto_chess_mobile/features/lobby/logout_button.dart';
+import 'package:auto_chess_mobile/features/lobby/matchmaking_navigation_coordinator.dart';
 import 'package:auto_chess_mobile/features/lobby/matchmaking_state.dart';
 import 'package:auto_chess_mobile/features/lobby/player_hub_navigation.dart';
 import 'package:auto_chess_mobile/features/lobby/profile_card.dart';
@@ -93,7 +94,10 @@ void main() {
             (ref) async => PlayerHubFixtures.leaderboard,
           ),
         ],
-        child: MaterialApp.router(routerConfig: router),
+        child: MatchmakingNavigationCoordinator(
+          router: router,
+          child: MaterialApp.router(routerConfig: router),
+        ),
       ),
     );
 
@@ -219,6 +223,33 @@ void main() {
     expect(
       container.read(matchmakingStateProvider),
       MatchmakingState.searching,
+    );
+  });
+
+  testWidgets('match found while on another page still opens the match', (
+    tester,
+  ) async {
+    final router = await pumpLobby(tester);
+
+    await tester.tap(find.text('จับคู่ด่วน'));
+    await tester.pump();
+    router.go('/away');
+    await tester.pumpAndSettle();
+    expect(find.text('away'), findsOneWidget);
+
+    transport.emitFromServer(GameEvents.matchPhase, {
+      'matchId': 'matched-while-away',
+      'phase': 'shop_place',
+      'round': 1,
+      'timer': 40,
+      'players': <Map<String, dynamic>>[],
+    });
+    await tester.pumpAndSettle(const Duration(seconds: 2));
+
+    expect(find.text('match:matched-while-away'), findsOneWidget);
+    expect(
+      transport.sent.map((event) => event.event),
+      isNot(contains(GameActions.matchmakingLeave)),
     );
   });
 

@@ -10,7 +10,6 @@ import '../../core/widgets/game_art_frame.dart';
 import '../../core/widgets/state_views.dart';
 import '../../core/ws/ws_client.dart';
 import '../../core/ws/ws_providers.dart';
-import '../../shared/models/game_events.dart';
 import '../history/history_format.dart';
 import '../history/history_providers.dart';
 import '../history/match_models.dart';
@@ -29,15 +28,11 @@ class LobbyScreen extends ConsumerStatefulWidget {
   const LobbyScreen({super.key});
 
   static const path = '/lobby';
-  static const _navDelay = Duration(milliseconds: 500);
-
   @override
   ConsumerState<LobbyScreen> createState() => _LobbyScreenState();
 }
 
 class _LobbyScreenState extends ConsumerState<LobbyScreen> {
-  bool _navigating = false;
-
   @override
   void initState() {
     super.initState();
@@ -51,17 +46,6 @@ class _LobbyScreenState extends ConsumerState<LobbyScreen> {
 
   @override
   Widget build(BuildContext context) {
-    ref.listen<AsyncValue<MatchPhaseEvent>>(matchPhaseProvider, (prev, next) {
-      final phase = next.valueOrNull;
-      if (phase == null) return;
-      final state = ref.read(matchmakingStateProvider);
-      if (state != MatchmakingState.joining &&
-          state != MatchmakingState.searching) {
-        return;
-      }
-      _onMatchFound(phase);
-    });
-
     final state = ref.watch(matchmakingStateProvider);
     final wsState = ref.watch(wsConnectionStateProvider);
     final connectionStatus = switch (wsState.valueOrNull) {
@@ -98,14 +82,6 @@ class _LobbyScreenState extends ConsumerState<LobbyScreen> {
         ),
       ),
     );
-  }
-
-  Future<void> _onMatchFound(MatchPhaseEvent phase) async {
-    if (_navigating) return;
-    _navigating = true;
-    ref.read(matchmakingStateProvider.notifier).markMatched();
-    await Future<void>.delayed(LobbyScreen._navDelay);
-    if (mounted) context.go('/match/${phase.matchId}');
   }
 }
 

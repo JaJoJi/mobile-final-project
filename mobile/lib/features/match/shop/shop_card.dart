@@ -4,7 +4,7 @@ import 'package:flutter/material.dart';
 
 import '../../../core/theme/app_motion.dart';
 import '../../../core/theme/app_spacing.dart';
-import '../../../core/widgets/game_art_frame.dart';
+import '../../../core/widgets/premium_shop_card_frame.dart';
 import '../../../core/widgets/unit_avatar.dart';
 import '../../../shared/models/shop_offer.dart';
 import '../match_controller.dart';
@@ -100,9 +100,8 @@ class _ShopCardState extends State<ShopCard> with TickerProviderStateMixin {
           // (or vice versa) reads as a card of the wrong size, not a sold
           // slot.
           aspectRatio: widget.landscape ? 64 / 35 : 64 / 84,
-          child: GameArtFrame(
-            frameAsset: GameUiAssets.shopCardFrame,
-            kind: GameArtFrameKind.card,
+          child: PremiumShopCardFrame(
+            accent: Theme.of(context).colorScheme.primary,
             child: Align(
               // Landscape's real card reads left-to-right (art, then
               // name); dead-centre text here read as an unstyled
