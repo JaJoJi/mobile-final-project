@@ -1,3 +1,5 @@
+jest.mock('../queue/queue.service', () => ({ QueueService: class QueueService {} }));
+
 import { MatchService } from './match.service';
 
 const makeMatch = () => ({
@@ -23,12 +25,14 @@ const makeService = (overrides: {
     bumpVersion: jest.fn(async () => undefined),
   };
   const published = overrides.published ?? [];
+  const queue = { scheduleMatchCleanup: jest.fn(async (_matchId: string, _atEpochMs: number) => undefined) };
   const service = new MatchService(
     { transaction: async (cb: any) => cb({}) } as any,
     {
       findByIdForUpdate: async () => ({
         ...makeMatch(),
         status: overrides.status ?? 'in_progress',
+        finishedAt: overrides.status && overrides.status !== 'in_progress' ? new Date() : null,
       }),
       finalize: async () => undefined,
     } as any,
@@ -42,8 +46,9 @@ const makeService = (overrides: {
     } as any,
     stats as any,
     leaderboard as any,
+    queue as any,
   );
-  return { service, stats, leaderboard, published };
+  return { service, stats, leaderboard, published, queue };
 };
 
 describe('MatchService.finalize stats invalidation (#254)', () => {
@@ -58,6 +63,34 @@ describe('MatchService.finalize stats invalidation (#254)', () => {
     const { service, stats } = makeService({ status: 'finished' });
     await expect(service.finalize('match-1', 'p2', 'hp_zero')).resolves.toBe(false);
     expect(stats.invalidateUsers).not.toHaveBeenCalled();
+  });
+});
+
+describe('MatchService.finalize cleanup scheduling (#389)', () => {
+  it.each(['hp_zero', 'forfeit', 'disconnect'] as const)(
+    'enqueues cleanup after a %s terminal transition', async (reason) => {
+      const { service, queue } = makeService({});
+      await expect(service.finalize('match-1', 'p2', reason)).resolves.toBe(true);
+      expect(queue.scheduleMatchCleanup).toHaveBeenCalledWith('match-1', expect.any(Number));
+      const due = queue.scheduleMatchCleanup.mock.calls[0][1];
+      expect(due).toBeGreaterThan(Date.now() + 25_000);
+      expect(due).toBeLessThanOrEqual(Date.now() + 30_000);
+    },
+  );
+
+  it('re-enqueues on a repeated terminal signal after the first enqueue failed', async () => {
+    const { service, queue, published } = makeService({ status: 'forfeited' });
+    queue.scheduleMatchCleanup.mockRejectedValueOnce(new Error('queue unavailable'));
+    await expect(service.finalize('match-1', 'p2', 'disconnect')).rejects.toThrow('queue unavailable');
+    await expect(service.finalize('match-1', 'p2', 'disconnect')).resolves.toBe(false);
+    expect(queue.scheduleMatchCleanup).toHaveBeenCalledTimes(2);
+    expect(published).toHaveLength(0);
+  });
+
+  it('enqueues cleanup for an abandoned match without a winner', async () => {
+    const { service, queue } = makeService({});
+    await expect(service.finalize('match-1', null, 'forfeit')).resolves.toBe(true);
+    expect(queue.scheduleMatchCleanup).toHaveBeenCalledTimes(1);
   });
 });
 

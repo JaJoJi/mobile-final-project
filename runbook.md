@@ -166,7 +166,7 @@ flutter build apk --release --dart-define=API_BASE_URL=http://<vm-ip> --dart-def
 # -> build/app/outputs/flutter-apk/app-release.apk
 ```
 
-## 12. Match retention and growth alerts (#388, #391)
+## 12. Match cleanup, retention and growth alerts (#388, #389, #391)
 
 Retention defaults are configured in `/etc/auto-chess/app.env`:
 
@@ -175,6 +175,8 @@ Retention defaults are configured in `/etc/auto-chess/app.env`:
 | `MATCH_EVENT_RETENTION_DAYS` | 90 | Clears detailed combat events from finished rounds after this many days, keeping round rows and match summaries. |
 | `MATCH_HISTORY_RETENTION_DAYS` | 365 | Deletes finished/forfeited match summaries and their round rows after this many days. Must be at least the event retention period. |
 | `MATCH_RETENTION_BATCH_SIZE` | 500 | Maximum rows updated/deleted by each database statement. |
+
+Terminal matches now queue a one-shot Redis cleanup 30 seconds after the match row is saved. The worker confirms the row is terminal on the PostgreSQL primary, then removes only `match:<matchId>:*` runtime, shop, combat and action keys with Redis `SCAN` and `UNLINK`. It retries Redis failures up to five times. Room handoff already removes its code, membership and handoff keys when creating the match; its room hash remains for a five-minute retry tombstone. Existing Redis TTLs remain the fallback if enqueue or all retries fail. Inspect failed `match-cleanup` jobs and `match:<matchId>:*` keys if Redis memory remains high after games finish.
 
 The retention worker runs daily. Preview eligible rows and estimated event bytes before deletion:
 
@@ -198,7 +200,7 @@ The Grafana dashboard **Auto Chess - Retention & Growth** shows database/table s
 | `MatchTablesGrowingQuickly` / `MatchTablesGrowthCritical` | Match tables grow over 512 MiB / 1 GiB in 7 days | `fiat222` (DevOps): check the Grafana table trend and retention job logs. Run the dry-run report; confirm the retention settings are applied. |
 | `RedisMemoryHigh` / `RedisMemoryCritical` | Redis exceeds 384 MiB / 512 MiB | `fiat222` (DevOps): inspect `app_redis_keys` by namespace in Grafana. Check stale match/room keys and cleanup failures before changing Redis memory limits. |
 | `BullMQBacklogGrowing` / `BullMQJobsStale` | More than 100 waiting jobs / oldest waiting over 5 minutes | `fiat222` (DevOps): check worker logs and oldest waiting age for the queue; restore worker health and retry only after identifying the failure. |
-| `MatchRetentionFailing` | One or more failed match-retention jobs | `fiat222` (DevOps): inspect the `match-cleanup` failed job and Nest logs, fix the cause, then run the dry-run report and retry. |
+| `MatchRetentionFailing` | One or more failed jobs on the `match-cleanup` queue | `fiat222` (DevOps): inspect the failed job name and Nest logs. Retry one-shot cleanup after fixing Redis or PostgreSQL; for the daily retention job, run the dry-run report first. |
 
 The metrics endpoint is scraped by Prometheus over the private Compose network. Nginx returns 404 for public `/metrics` requests.
 

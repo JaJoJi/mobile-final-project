@@ -1,7 +1,9 @@
 import { Processor, WorkerHost } from '@nestjs/bullmq';
 import { Logger } from '@nestjs/common';
 import { Job } from 'bullmq';
+import { DataSource } from 'typeorm';
 import { MatchRetentionService } from '../../match/match-retention.service';
+import { RedisService } from '../../redis/redis.service';
 import { JOB_NAMES, QUEUE_NAMES } from '../queue.constants';
 
 /**
@@ -21,7 +23,11 @@ import { JOB_NAMES, QUEUE_NAMES } from '../queue.constants';
 export class MatchCleanupWorker extends WorkerHost {
   private readonly logger = new Logger(MatchCleanupWorker.name);
 
-  constructor(private readonly retention: MatchRetentionService) {
+  constructor(
+    private readonly retention: MatchRetentionService,
+    private readonly dataSource: DataSource,
+    private readonly redis: RedisService,
+  ) {
     super();
   }
 
@@ -30,9 +36,32 @@ export class MatchCleanupWorker extends WorkerHost {
       await this.retention.run();
       return;
     }
-    this.logger.log(
-      `[match-cleanup] job=${job.name} id=${job.id} data=${JSON.stringify(job.data)}`,
+    if (job.name !== JOB_NAMES.MATCH_CLEANUP) return;
+    const matchId: unknown = job.data?.matchId;
+    if (typeof matchId !== 'string' || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(matchId)) {
+      throw new Error('Invalid match-cleanup matchId');
+    }
+
+    // A queued job can outlive a failed finalize; only the primary can
+    // confirm that this match is terminal before its Redis state is removed.
+    const rows: Array<{ status: string; finishedAt: Date | null }> = await this.dataSource.query(
+      'SELECT "status", "finishedAt" FROM "matches" WHERE "id" = $1',
+      [matchId],
     );
+    if (!rows.length || !['finished', 'forfeited'].includes(rows[0].status) || !rows[0].finishedAt) {
+      this.logger.warn(`cleanup skipped for non-terminal match=${matchId}`);
+      return;
+    }
+
+    const pattern = `match:${matchId}:*`;
+    let cursor = '0';
+    let removed = 0;
+    do {
+      const [next, keys] = await this.redis.client.scan(cursor, 'MATCH', pattern, 'COUNT', 200);
+      cursor = next;
+      if (keys.length) removed += await this.redis.client.unlink(...keys);
+    } while (cursor !== '0');
+    this.logger.log(`cleaned match=${matchId} keys=${removed}`);
   }
 }
 

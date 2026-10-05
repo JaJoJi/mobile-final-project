@@ -138,6 +138,7 @@ describe('QueueService job contracts (#306)', () => {
     expect(matchCleanup.added[0]).toMatchObject({
       name: JOB_NAMES.MATCH_CLEANUP,
       data: { matchId: 'm1' },
+      opts: { attempts: 5, removeOnComplete: true, removeOnFail: 100 },
     });
     const delay = (matchCleanup.added[0].opts as { delay: number }).delay;
     expect(delay).toBeGreaterThan(0);

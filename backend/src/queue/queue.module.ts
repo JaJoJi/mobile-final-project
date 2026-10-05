@@ -2,7 +2,7 @@ import { Global, Module } from '@nestjs/common';
 import { BullModule } from '@nestjs/bullmq';
 import { RedisService } from '../redis/redis.service';
 import { MatchRetentionService } from '../match/match-retention.service';
-import { QUEUE_NAMES } from './queue.constants';
+import { MATCH_CLEANUP_SCHEDULER, QUEUE_NAMES } from './queue.constants';
 import { QueueService } from './queue.service';
 import { QUEUE_WORKERS } from './workers/queue.workers';
 
@@ -62,7 +62,7 @@ import { QUEUE_WORKERS } from './workers/queue.workers';
       },
     ),
   ],
-  providers: [QueueService, MatchRetentionService, ...QUEUE_WORKERS],
-  exports: [QueueService, BullModule],
+  providers: [QueueService, { provide: MATCH_CLEANUP_SCHEDULER, useExisting: QueueService }, MatchRetentionService, ...QUEUE_WORKERS],
+  exports: [QueueService, MATCH_CLEANUP_SCHEDULER, BullModule],
 })
 export class QueueModule {}

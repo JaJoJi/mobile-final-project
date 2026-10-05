@@ -112,13 +112,20 @@ export class QueueService implements OnModuleInit {
 
   /**
    * One-shot job scheduled at a specific epoch (ms). Used for match-end
-   * cleanup of Redis keys + match row persistence.
+   * cleanup of transient Redis keys after the terminal row is persisted.
    */
   async scheduleMatchCleanup(matchId: string, atEpochMs: number) {
     return this.matchCleanup.add(
       JOB_NAMES.MATCH_CLEANUP,
       { matchId },
-      { delay: Math.max(0, atEpochMs - Date.now()), jobId: `cleanup-${matchId}` },
+      {
+        delay: Math.max(0, atEpochMs - Date.now()),
+        jobId: `cleanup-${matchId}`,
+        attempts: 5,
+        backoff: { type: 'exponential', delay: 1000 },
+        removeOnComplete: true,
+        removeOnFail: 100,
+      },
     );
   }
 }

@@ -1,3 +1,5 @@
+jest.mock('../queue/queue.service', () => ({ QueueService: class QueueService {} }));
+
 import { MatchService } from './match.service';
 
 const hoursAgo = (h: number) => new Date(Date.now() - h * 3600_000);
@@ -15,6 +17,7 @@ function harness() {
     matches as any,
     { publish: jest.fn() } as any,
     users as any,
+    {} as any,
     {} as any,
     {} as any,
   );

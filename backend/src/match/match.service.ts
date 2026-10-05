@@ -1,12 +1,15 @@
 import {
   BadRequestException,
   ForbiddenException,
+  Inject,
   Injectable,
   Logger,
   NotFoundException,
 } from '@nestjs/common';
 import { DataSource } from 'typeorm';
 import { runOnMaster } from '../database/postgres-replication';
+import { MATCH_CLEANUP_SCHEDULER } from '../queue/queue.constants';
+import type { QueueService } from '../queue/queue.service';
 import { PubsubBridge } from '../runtime/pubsub.bridge';
 import { LeaderboardService } from '../user/leaderboard.service';
 import { StatsService } from '../user/stats.service';
@@ -20,6 +23,7 @@ export type MatchEndReason = 'hp_zero' | 'forfeit' | 'disconnect';
 
 const ELO_K_FACTOR = 32;
 const HISTORY_LIMIT = 50;
+const CLEANUP_GRACE_MS = 30_000;
 
 @Injectable()
 export class MatchService {
@@ -32,6 +36,7 @@ export class MatchService {
     private readonly users: UserService,
     private readonly stats: StatsService,
     private readonly leaderboard: LeaderboardService,
+    @Inject(MATCH_CLEANUP_SCHEDULER) private readonly queue: Pick<QueueService, 'scheduleMatchCleanup'>,
   ) {}
 
   async findById(id: string): Promise<Match> {
@@ -124,11 +129,15 @@ export class MatchService {
     reason: MatchEndReason,
   ): Promise<boolean> {
     let finalized: Match | null = null;
+    let alreadyTerminal = false;
 
     await this.dataSource.transaction(async (manager) => {
       const match = await this.matches.findByIdForUpdate(matchId, manager);
       if (!match) this.throwNotFound(matchId);
-      if (match.status !== 'in_progress') return;
+      if (match.status !== 'in_progress') {
+        alreadyTerminal = !!match.finishedAt;
+        return;
+      }
       if (winnerId && winnerId !== match.player1Id && winnerId !== match.player2Id) {
         throw new BadRequestException({
           code: 'match.invalid_winner',
@@ -164,7 +173,14 @@ export class MatchService {
       finalized = Object.assign(match, { status, winnerId, finishedAt });
     });
 
-    if (!finalized) return false;
+    if (!finalized) {
+      // A retry after enqueue or publish failed can repair the missing job.
+      if (alreadyTerminal) {
+        await this.queue.scheduleMatchCleanup(matchId, Date.now() + CLEANUP_GRACE_MS);
+      }
+      return false;
+    }
+    await this.queue.scheduleMatchCleanup(finalized.id, Date.now() + CLEANUP_GRACE_MS);
     // Cache invalidation (#254 stats + #256 leaderboard): statistics and
     // ratings change exactly when a match reaches a terminal state, and every
     // terminal path funnels through finalize. Both are best-effort — the

@@ -17,6 +17,8 @@ export const QUEUE_NAMES = {
 
 export type QueueName = (typeof QUEUE_NAMES)[keyof typeof QUEUE_NAMES];
 
+export const MATCH_CLEANUP_SCHEDULER = 'MATCH_CLEANUP_SCHEDULER';
+
 export const JOB_NAMES = {
   // phase-timer
   PHASE_START: 'phase-timer:start',

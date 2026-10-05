@@ -11,6 +11,8 @@ import {
   PhaseTimerProcessor,
 } from './queue.processors';
 import { MatchCleanupWorker } from './workers/queue.workers';
+import RedisMock from 'ioredis-mock';
+import { randomUUID } from 'crypto';
 
 const roundJob = (name: string, matchId = 'match-1', round = 2) =>
   ({ name, data: { matchId, round } }) as any;
@@ -95,11 +97,71 @@ describe('DisconnectDetectProcessor (#307)', () => {
 describe('MatchCleanupWorker (#388)', () => {
   it('runs retention for the scheduled job and lets BullMQ retry failures', async () => {
     const retention = { run: jest.fn().mockRejectedValueOnce(new Error('database unavailable')) };
-    const worker = new MatchCleanupWorker(retention as any);
+    const worker = new MatchCleanupWorker(retention as any, {} as any, {} as any);
     const job = { name: JOB_NAMES.MATCH_RETENTION_RUN, data: {} } as any;
 
     await expect(worker.process(job)).rejects.toThrow('database unavailable');
     await expect(worker.process(job)).resolves.toBeUndefined();
     expect(retention.run).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe('MatchCleanupWorker (#389)', () => {
+  const matchId = randomUUID();
+  const liveId = randomUUID();
+  let client: InstanceType<typeof RedisMock>;
+  let rows: Map<string, { status: string; finishedAt: Date | null }>;
+  let worker: MatchCleanupWorker;
+
+  beforeEach(() => {
+    client = new RedisMock();
+    rows = new Map([
+      [matchId, { status: 'finished', finishedAt: new Date() }],
+      [liveId, { status: 'in_progress', finishedAt: null }],
+    ]);
+    worker = new MatchCleanupWorker(
+      { run: jest.fn() } as any,
+      { query: async (_sql: string, [id]: string[]) => rows.has(id) ? [rows.get(id)] : [] } as any,
+      { client } as any,
+    );
+  });
+
+  afterEach(async () => { await client.quit(); });
+
+  it('removes only terminal match runtime, shop, combat and transient keys; repeat is safe', async () => {
+    const own = ['runtime', 'shop:p1', 'shop-lock:p1', 'actionLog:p1', 'combat-result', 'combat-done']
+      .map((suffix) => `match:${matchId}:${suffix}`);
+    for (const key of own) await client.set(key, 'data');
+    const foreign = `match:${liveId}:runtime`;
+    await client.set(foreign, 'live');
+    await worker.process({ name: JOB_NAMES.MATCH_CLEANUP, data: { matchId } } as any);
+    await worker.process({ name: JOB_NAMES.MATCH_CLEANUP, data: { matchId } } as any);
+    for (const key of own) expect(await client.exists(key)).toBe(0);
+    expect(await client.get(foreign)).toBe('live');
+  });
+
+  it('leaves a live match untouched even when a stale cleanup job arrives', async () => {
+    const key = `match:${liveId}:runtime`;
+    await client.set(key, 'live');
+    await worker.process({ name: JOB_NAMES.MATCH_CLEANUP, data: { matchId: liveId } } as any);
+    expect(await client.get(key)).toBe('live');
+  });
+
+  it('propagates Redis errors so BullMQ retries, then removes the key', async () => {
+    const key = `match:${matchId}:runtime`;
+    await client.set(key, 'old');
+    const unlink = client.unlink.bind(client);
+    const failOnce = jest.spyOn(client, 'unlink').mockRejectedValueOnce(new Error('redis unavailable'));
+    const job = { name: JOB_NAMES.MATCH_CLEANUP, data: { matchId } } as any;
+    await expect(worker.process(job)).rejects.toThrow('redis unavailable');
+    expect(await client.exists(key)).toBe(1);
+    failOnce.mockImplementation(unlink);
+    await expect(worker.process(job)).resolves.toBeUndefined();
+    expect(await client.exists(key)).toBe(0);
+  });
+
+  it('rejects unsafe IDs before scanning Redis', async () => {
+    await expect(worker.process({ name: JOB_NAMES.MATCH_CLEANUP, data: { matchId: '*' } } as any))
+      .rejects.toThrow('Invalid match-cleanup matchId');
   });
 });
