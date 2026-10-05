@@ -5,6 +5,8 @@ import 'package:auto_chess_mobile/features/history/history_providers.dart';
 import 'package:auto_chess_mobile/features/lobby/find_match_button.dart';
 import 'package:auto_chess_mobile/features/lobby/lobby_screen.dart';
 import 'package:auto_chess_mobile/features/lobby/logout_button.dart';
+import 'package:auto_chess_mobile/features/lobby/matchmaking_navigation_coordinator.dart';
+import 'package:auto_chess_mobile/features/lobby/matchmaking_state.dart';
 import 'package:auto_chess_mobile/features/lobby/player_hub_navigation.dart';
 import 'package:auto_chess_mobile/features/lobby/profile_card.dart';
 import 'package:auto_chess_mobile/features/player_hub/player_hub_fixture_provider.dart';
@@ -16,6 +18,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../core/ws/fake_ws_transport.dart';
 import '../_util.dart';
+import '../match/match_entry_fixture.dart';
 
 /// P0-FE-03 — lobby screen state transitions + auto-nav.
 ///
@@ -63,6 +66,10 @@ void main() {
       routes: [
         GoRoute(path: '/lobby', builder: (_, __) => const LobbyScreen()),
         GoRoute(
+          path: '/away',
+          builder: (_, __) => const Scaffold(body: Text('away')),
+        ),
+        GoRoute(
           path: '/match/:id',
           builder: (_, GoRouterState state) => Scaffold(
             body: Center(child: Text('match:${state.pathParameters['id']}')),
@@ -88,7 +95,13 @@ void main() {
             (ref) async => PlayerHubFixtures.leaderboard,
           ),
         ],
-        child: MaterialApp.router(routerConfig: router),
+        child: MaterialApp.router(
+          routerConfig: router,
+          builder: (context, child) => MatchmakingNavigationCoordinator(
+            router: router,
+            child: child ?? const SizedBox.shrink(),
+          ),
+        ),
       ),
     );
 
@@ -107,6 +120,11 @@ void main() {
     expect(find.byType(LogoutButton), findsOneWidget);
     expect(find.text('เข้าสู่สนาม'), findsOneWidget);
     expect(find.text('อันดับประจำฤดูกาล'), findsOneWidget);
+    expect(find.text('#1'), findsNothing);
+    expect(find.text('#2'), findsNothing);
+    expect(find.text('#3'), findsNothing);
+    expect(find.byKey(const ValueKey('lobby-current-rank')), findsOneWidget);
+    expect(find.bySemanticsLabel('เรตติ้ง 1,234'), findsOneWidget);
     expect(find.text('การแข่งขันล่าสุด'), findsOneWidget);
     expect(find.text('สร้างห้อง'), findsOneWidget);
     expect(find.text('เข้าร่วมห้อง'), findsOneWidget);
@@ -178,6 +196,69 @@ void main() {
     expect(find.text('กำลังเข้าคิว…'), findsNothing);
   });
 
+  testWidgets('queue state and elapsed time survive leaving the lobby', (
+    tester,
+  ) async {
+    final router = await pumpLobby(tester);
+    final container = ProviderScope.containerOf(
+      tester.element(find.byType(LobbyScreen)),
+    );
+
+    await tester.tap(find.text('จับคู่ด่วน'));
+    await tester.pump();
+    await tester.pump(const Duration(seconds: 2));
+    expect(find.text('00:02'), findsOneWidget);
+
+    router.go('/away');
+    await tester.pumpAndSettle();
+    expect(
+      container.read(matchmakingStateProvider),
+      MatchmakingState.searching,
+    );
+    expect(
+      transport.sent.map((event) => event.event),
+      isNot(contains(GameActions.matchmakingLeave)),
+    );
+
+    router.go('/lobby');
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 100));
+    expect(find.text('00:02'), findsOneWidget);
+    expect(
+      container.read(matchmakingStateProvider),
+      MatchmakingState.searching,
+    );
+  });
+
+  testWidgets('match found while on another page still opens the match', (
+    tester,
+  ) async {
+    final router = await pumpLobby(tester);
+    await warmEntryArt(tester);
+
+    await tester.tap(find.text('จับคู่ด่วน'));
+    await tester.pump();
+    router.go('/away');
+    await tester.pumpAndSettle();
+    expect(find.text('away'), findsOneWidget);
+
+    transport.emitFromServer(GameEvents.matchPhase, {
+      'matchId': 'matched-while-away',
+      'phase': 'shop_place',
+      'round': 1,
+      'timer': 40,
+      'players': <Map<String, dynamic>>[],
+    });
+    seedEntrySnapshot(transport, 'matched-while-away');
+    await tester.pumpAndSettle(const Duration(seconds: 2));
+
+    expect(find.text('match:matched-while-away'), findsOneWidget);
+    expect(
+      transport.sent.map((event) => event.event),
+      isNot(contains(GameActions.matchmakingLeave)),
+    );
+  });
+
   testWidgets('Quick match stays disabled while WebSocket is disconnected',
       (tester) async {
     await pumpLobby(tester);
@@ -209,10 +290,12 @@ void main() {
   testWidgets('game:match:phase event while searching → state matched + nav',
       (tester) async {
     final router = await pumpLobby(tester);
+    await warmEntryArt(tester);
     await tester.tap(find.text('จับคู่ด่วน'));
     await tester.pump();
 
     // Server pairs us.
+    seedEntrySnapshot(transport, 'abc-123');
     transport.emitFromServer(GameEvents.matchPhase, {
       'matchId': 'abc-123',
       'phase': 'shop_place',
@@ -220,13 +303,28 @@ void main() {
       'timer': 40,
       'players': <Map<String, dynamic>>[],
     });
+    await tester.pump();
+    expect(
+      find.byKey(const ValueKey('match-found-transition')),
+      findsOneWidget,
+    );
+    expect(find.text('VS'), findsOneWidget);
+    expect(find.byKey(const ValueKey('left-fighter-icon')), findsOneWidget);
+    expect(find.byKey(const ValueKey('right-fighter-icon')), findsOneWidget);
+    final popup = tester.getRect(
+      find.byKey(const ValueKey('match-found-popup-card')),
+    );
+    expect(popup.width, lessThan(390));
+    expect(popup.height, lessThan(500));
     await tester.pumpAndSettle(const Duration(seconds: 2));
 
-    // The screen should now show "Match found!" then navigate.
+    // Navigate without leaving a match-found snackbar over the game.
+    expect(find.text('พบคู่แข่งแล้ว!'), findsNothing);
+    expect(find.byType(SnackBar), findsNothing);
     expect(
       find.text('match:abc-123'),
       findsOneWidget,
-      reason: 'should have navigated to /match/abc-123 after the toast delay',
+      reason: 'should have navigated to /match/abc-123',
     );
 
     // The notifier should have transitioned to `matched` (the nav is the

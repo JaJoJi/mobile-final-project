@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
@@ -13,7 +14,6 @@ import '../../core/theme/game_theme.dart';
 import '../../core/widgets/app_button.dart';
 import '../../core/widgets/app_scaffold.dart';
 import '../../core/widgets/game_art_frame.dart';
-import '../../core/widgets/game_asset_button.dart';
 import '../../core/widgets/health_bar.dart';
 import '../../core/widgets/phase_timer_ring.dart';
 import '../../core/widgets/state_views.dart';
@@ -23,8 +23,10 @@ import '../../core/ws/ws_providers.dart';
 import '../../shared/models/game_events.dart';
 import '../lobby/matchmaking_state.dart';
 import 'battle/battle_view.dart';
+import 'board/board_slot.dart';
 import 'board/board_tab.dart';
 import 'match_controller.dart';
+import 'match_loading_view.dart';
 import 'result/result_overlay.dart';
 import 'shop/shop_tab.dart';
 
@@ -109,7 +111,7 @@ class _MatchScreenState extends ConsumerState<MatchScreen> {
             child: Stack(
               children: [
                 if (view.loading)
-                  const _MatchSkeleton()
+                  const MatchLoadingView()
                 else
                   _MatchContent(
                     view: view,
@@ -122,21 +124,29 @@ class _MatchScreenState extends ConsumerState<MatchScreen> {
                     message: view.errorMessage!,
                     onDismiss: controller.clearError,
                   ),
-                if (view.damage != null && view.match != null)
+                if (view.damage != null &&
+                    view.match != null &&
+                    view.end == null &&
+                    view.combatDoneSubmitted)
                   RoundResultOverlay(
                     damage: view.damage!,
                     mySide: view.match!.yourSide.name,
-                    onDismiss: controller.clearRoundResult,
+                    phase: view.phase,
+                    readySubmitted: view.roundReadySubmitted,
+                    onNextRound: controller.readyForNextRound,
+                    onSurrender: controller.surrender,
                   ),
                 if (view.end != null && view.match != null)
                   MatchEndOverlay(
                     event: view.end!,
                     didWin: _didWin(view),
                     mySide: view.match!.yourSide,
+                    playerName: view.match!.roster.username ?? 'ผู้เล่นของคุณ',
+                    opponentName: view.match!.opponent.username ?? 'คู่แข่ง',
                     finalTeam: view.match!.roster.board,
                     rounds: view.match!.round,
                     duration: DateTime.now().difference(_openedAt),
-                    onPlayAgain: _returnToLobby,
+                    onPlayAgain: _playAgain,
                     onBackToLobby: _returnToLobby,
                   ),
                 if (connection == ConnectionStatus.disconnected)
@@ -171,6 +181,14 @@ class _MatchScreenState extends ConsumerState<MatchScreen> {
     ScaffoldMessenger.maybeOf(context)?.clearSnackBars();
     ref.read(matchmakingStateProvider.notifier).resetAfterMatch();
     context.go('/lobby');
+  }
+
+  void _playAgain() {
+    ScaffoldMessenger.maybeOf(context)?.clearSnackBars();
+    final matchmaking = ref.read(matchmakingStateProvider.notifier);
+    matchmaking.resetAfterMatch();
+    context.go('/lobby');
+    unawaited(matchmaking.beginSearch());
   }
 }
 
@@ -230,10 +248,18 @@ class _MatchContent extends StatelessWidget {
   Widget build(BuildContext context) {
     final phase = view.phase!;
     final match = view.match!;
-    final shopPlace = phase.phase == GamePhase.shopPlace;
+    final shopPlace = phase.phase == GamePhase.shopPlace && view.end == null;
     return Column(
       children: [
-        _MatchHud(phase: phase, match: match, deadline: deadline),
+        if (view.end == null)
+          _MatchHud(
+            phase: phase,
+            match: match,
+            deadline: deadline,
+            summary: view.combatDoneSubmitted ||
+                view.end != null ||
+                phase.phase == GamePhase.resolved,
+          ),
         Expanded(
           child: AnimatedSwitcher(
             duration: AppMotion.long2,
@@ -248,7 +274,6 @@ class _MatchContent extends StatelessWidget {
                         selection: view.selection,
                         onSelect: controller.select,
                         onDrop: controller.place,
-                        onSell: controller.sell,
                       );
                       final shop = ShopTab(
                         shop: view.shop,
@@ -273,12 +298,20 @@ class _MatchContent extends StatelessWidget {
                       );
                     },
                   )
-                : BattleView(
-                    match: match,
-                    matchId: match.matchId,
-                    skipSubmitted: view.combatDoneSubmitted,
-                    onSkip: controller.skipCombat,
-                  ),
+                : phase.phase == GamePhase.battle ||
+                        phase.phase == GamePhase.resolved ||
+                        view.end != null
+                    ? BattleView(
+                        key: ValueKey('battle-${phase.round}'),
+                        match: match,
+                        matchId: match.matchId,
+                        skipSubmitted:
+                            view.combatDoneSubmitted || view.end != null,
+                        onSkip: controller.skipCombat,
+                      )
+                    : const SizedBox.expand(
+                        key: ValueKey('round-resolved'),
+                      ),
           ),
         ),
         if (shopPlace)
@@ -292,6 +325,7 @@ class _MatchContent extends StatelessWidget {
               audio.play(GameSfx.refresh);
               controller.refresh();
             },
+            onSell: controller.sell,
             onReady: () {
               audio.play(GameSfx.ready);
               controller.toggleReady();
@@ -344,8 +378,11 @@ class _PlanningHost extends StatelessWidget {
             )
           : LayoutBuilder(
               builder: (context, constraints) {
+                // Five portrait cards derive their height from the available
+                // width. Sizing this panel from viewport height left a large
+                // empty band below the cards on tall phones.
                 final shopHeight =
-                    (constraints.maxHeight * 0.24).clamp(112.0, 160.0);
+                    (constraints.maxWidth * 0.34).clamp(128.0, 144.0);
                 return Column(
                   children: [
                     Expanded(child: board),
@@ -367,11 +404,13 @@ class _MatchHud extends StatelessWidget {
     required this.phase,
     required this.match,
     required this.deadline,
+    required this.summary,
   });
 
   final MatchPhaseEvent phase;
   final MatchState match;
   final DateTime deadline;
+  final bool summary;
 
   String _playerName(MatchSide side, String? stateName) {
     final current = stateName?.trim();
@@ -462,23 +501,39 @@ class _MatchHud extends StatelessWidget {
                           color: game.ally.withValues(alpha: 0.64),
                         ),
                       ),
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Text(
-                            'รอบ ${phase.round}',
-                            maxLines: 1,
-                            style: theme.textTheme.labelSmall,
-                          ),
-                          PhaseTimerRing(
-                            deadline: deadline,
-                            onExpire: () {},
-                            size: AppSpacing.xxl,
-                            stroke: AppSpacing.xs,
-                            compact: true,
-                          ),
-                        ],
-                      ),
+                      child: summary
+                          ? Center(
+                              child: Padding(
+                                padding: const EdgeInsets.all(AppSpacing.sm),
+                                child: FittedBox(
+                                  fit: BoxFit.scaleDown,
+                                  child: Text(
+                                    'รอบ ${phase.round}',
+                                    key: const ValueKey('hud-summary-round'),
+                                    style: theme.textTheme.titleLarge?.copyWith(
+                                      fontWeight: FontWeight.w800,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            )
+                          : Column(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Text(
+                                  'รอบ ${phase.round}',
+                                  maxLines: 1,
+                                  style: theme.textTheme.labelSmall,
+                                ),
+                                PhaseTimerRing(
+                                  deadline: deadline,
+                                  onExpire: () {},
+                                  size: AppSpacing.xxl,
+                                  stroke: AppSpacing.xs,
+                                  compact: true,
+                                ),
+                              ],
+                            ),
                     ),
                   ),
                 ],
@@ -591,6 +646,7 @@ class _ActionBar extends StatelessWidget {
     required this.enabled,
     required this.refreshUsed,
     required this.onRefresh,
+    required this.onSell,
     required this.onReady,
   });
 
@@ -600,6 +656,7 @@ class _ActionBar extends StatelessWidget {
   final bool enabled;
   final bool refreshUsed;
   final VoidCallback onRefresh;
+  final void Function(RosterArea, int) onSell;
   final VoidCallback onReady;
 
   @override
@@ -617,49 +674,106 @@ class _ActionBar extends StatelessWidget {
         ),
         clipBehavior: Clip.antiAlias,
         child: Padding(
-          padding: const EdgeInsets.all(AppSpacing.xs),
+          padding: const EdgeInsets.symmetric(
+            horizontal: AppSpacing.sm,
+            vertical: AppSpacing.sm,
+          ),
           child: SizedBox(
-            height: AppSpacing.huge + AppSpacing.sm,
+            height: AppSpacing.huge - AppSpacing.xs,
             child: Row(
               children: [
-                _AnimatedGoldBadge(gold: gold),
+                SizedBox(
+                  key: const ValueKey('gold-badge'),
+                  height: double.infinity,
+                  child: _AnimatedGoldBadge(gold: gold),
+                ),
+                const SizedBox(width: AppSpacing.sm),
+                Tooltip(
+                  message: refreshUsed
+                      ? 'ใช้รีเฟรชรอบนี้แล้ว'
+                      : !enabled
+                          ? 'จัดทีมได้เฉพาะช่วงวางแผน'
+                          : 'รีเฟรชร้านค้า',
+                  child: SizedBox.square(
+                    dimension: AppSpacing.huge - AppSpacing.xs,
+                    child: _ActionFrame(
+                      frameKey: const ValueKey('refresh-action-frame'),
+                      accent: game.ally,
+                      child: OutlinedButton(
+                        key: const ValueKey('refresh-button'),
+                        onPressed: enabled && !refreshUsed ? onRefresh : null,
+                        style: OutlinedButton.styleFrom(
+                          padding: EdgeInsets.zero,
+                          minimumSize: Size.zero,
+                          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                          foregroundColor: scheme.onSurface,
+                          backgroundColor:
+                              scheme.surface.withValues(alpha: 0.88),
+                          side: BorderSide.none,
+                          shape: const RoundedRectangleBorder(
+                            borderRadius: AppRadius.allSm,
+                          ),
+                        ),
+                        child: Icon(
+                          refreshUsed
+                              ? Icons.done_rounded
+                              : Icons.refresh_rounded,
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
                 const SizedBox(width: AppSpacing.sm),
                 SizedBox.square(
-                  dimension: AppSpacing.huge + AppSpacing.sm,
-                  child: GameAssetButton(
-                    onPressed: enabled && !refreshUsed ? onRefresh : null,
-                    disabledReason: refreshUsed
-                        ? 'ใช้รีเฟรชรอบนี้แล้ว'
-                        : !enabled
-                            ? 'จัดทีมได้เฉพาะช่วงวางแผน'
-                            : null,
-                    stretchFrame: false,
-                    padding: const EdgeInsets.all(AppSpacing.sm),
-                    child: Icon(refreshUsed ? Icons.done : Icons.refresh),
+                  dimension: AppSpacing.huge - AppSpacing.xs,
+                  child: _SellDropTarget(
+                    enabled: enabled,
+                    onSell: onSell,
                   ),
                 ),
                 const SizedBox(width: AppSpacing.sm),
                 Expanded(
-                  child: GameAssetButton(
-                    key: const ValueKey('ready-button'),
-                    onPressed: enabled && readyCount < 2 ? onReady : null,
-                    frameAsset: GameUiAssets.readyButtonFrame,
-                    minHeight: AppSpacing.huge + AppSpacing.sm,
-                    selected: ready,
-                    accentColor: game.success,
-                    disabledReason:
-                        readyCount >= 2 ? 'กำลังเริ่มการต่อสู้' : null,
-                    child: FittedBox(
-                      fit: BoxFit.scaleDown,
-                      child: Text(
-                        ready
-                            ? 'ยกเลิกพร้อม ($readyCount/2)'
-                            : 'พร้อม ($readyCount/2)',
-                        maxLines: 1,
-                        style: Theme.of(context)
-                            .textTheme
-                            .titleMedium
-                            ?.copyWith(color: const Color(0xFF392500)),
+                  child: SizedBox(
+                    height: double.infinity,
+                    child: _ActionFrame(
+                      frameKey: const ValueKey('ready-action-frame'),
+                      accent: ready ? game.success : game.gold,
+                      child: FilledButton(
+                        key: const ValueKey('ready-button'),
+                        onPressed: enabled && readyCount < 2 ? onReady : null,
+                        style: FilledButton.styleFrom(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: AppSpacing.md,
+                          ),
+                          minimumSize: Size.zero,
+                          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                          backgroundColor: ready ? game.success : game.gold,
+                          foregroundColor: const Color(0xFF171A20),
+                          disabledBackgroundColor:
+                              ready ? game.success : game.gold,
+                          disabledForegroundColor:
+                              const Color(0xFF171A20).withValues(alpha: 0.72),
+                          overlayColor: scheme.shadow.withValues(alpha: 0.12),
+                          shape: const RoundedRectangleBorder(
+                            borderRadius: AppRadius.allSm,
+                          ),
+                        ),
+                        child: FittedBox(
+                          fit: BoxFit.scaleDown,
+                          child: Text(
+                            ready
+                                ? 'ยกเลิกพร้อม ($readyCount/2)'
+                                : 'พร้อม ($readyCount/2)',
+                            maxLines: 1,
+                            style: Theme.of(context)
+                                .textTheme
+                                .titleMedium
+                                ?.copyWith(
+                                  color: const Color(0xFF171A20),
+                                  fontWeight: FontWeight.w800,
+                                ),
+                          ),
+                        ),
                       ),
                     ),
                   ),
@@ -667,6 +781,121 @@ class _ActionBar extends StatelessWidget {
               ],
             ),
           ),
+        ),
+      ),
+    );
+  }
+}
+
+class _SellDropTarget extends StatelessWidget {
+  const _SellDropTarget({
+    required this.enabled,
+    required this.onSell,
+  });
+
+  final bool enabled;
+  final void Function(RosterArea, int) onSell;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return DragTarget<UnitDragData>(
+      key: const ValueKey('sell-drop-target'),
+      onWillAcceptWithDetails: (_) => enabled,
+      onAcceptWithDetails: (details) {
+        final source = details.data.selection;
+        onSell(source.area, source.slot);
+      },
+      builder: (context, candidates, rejected) {
+        final hovering = candidates.isNotEmpty;
+        final accent =
+            hovering ? scheme.error : scheme.error.withValues(alpha: 0.72);
+        return Tooltip(
+          message: enabled ? 'ลากฮีโร่มาวางเพื่อขาย' : 'ขายได้เฉพาะช่วงวางแผน',
+          child: _ActionFrame(
+            frameKey: const ValueKey('sell-action-frame'),
+            accent: accent,
+            child: AnimatedContainer(
+              key: const ValueKey('sell-drop-surface'),
+              duration: AppMotion.short2,
+              decoration: BoxDecoration(
+                color: hovering
+                    ? scheme.errorContainer.withValues(alpha: 0.92)
+                    : Color.lerp(scheme.error, Colors.black, 0.68)!,
+                boxShadow: hovering
+                    ? [
+                        BoxShadow(
+                          color: scheme.error.withValues(alpha: 0.52),
+                          blurRadius: AppSpacing.md,
+                          spreadRadius: AppSpacing.xxs,
+                        ),
+                      ]
+                    : null,
+              ),
+              child: Semantics(
+                label: hovering ? 'ปล่อยเพื่อขายฮีโร่' : 'ลากฮีโร่มาเพื่อขาย',
+                child: Center(
+                  child: AnimatedSwitcher(
+                    duration: AppMotion.short2,
+                    child: Icon(
+                      hovering
+                          ? Icons.delete_sweep_rounded
+                          : Icons.delete_outline_rounded,
+                      key: ValueKey(hovering ? 'sell-bin-open' : 'sell-bin'),
+                      size: AppSpacing.xl - AppSpacing.xs,
+                      color: hovering ? scheme.onErrorContainer : scheme.error,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+}
+
+class _ActionFrame extends StatelessWidget {
+  const _ActionFrame({
+    required this.accent,
+    required this.child,
+    this.frameKey,
+  });
+
+  final Color accent;
+  final Widget child;
+  final Key? frameKey;
+
+  @override
+  Widget build(BuildContext context) {
+    return DecoratedBox(
+      key: frameKey,
+      decoration: BoxDecoration(
+        borderRadius: AppRadius.allMd,
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [
+            accent.withValues(alpha: 0.72),
+            Colors.white.withValues(alpha: 0.9),
+            accent.withValues(alpha: 0.24),
+            accent.withValues(alpha: 0.82),
+          ],
+          stops: const [0, 0.28, 0.58, 1],
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: accent.withValues(alpha: 0.22),
+            blurRadius: AppSpacing.sm,
+          ),
+        ],
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(AppSpacing.xxs),
+        child: ClipRRect(
+          borderRadius: AppRadius.allSm,
+          child: child,
         ),
       ),
     );
@@ -713,6 +942,7 @@ class _AnimatedGoldBadgeState extends State<_AnimatedGoldBadge>
   @override
   Widget build(BuildContext context) {
     final game = Theme.of(context).extension<GameTheme>()!;
+    final scheme = Theme.of(context).colorScheme;
     final reduceMotion = MediaQuery.disableAnimationsOf(context);
     return AnimatedBuilder(
       animation: _flash,
@@ -720,22 +950,25 @@ class _AnimatedGoldBadgeState extends State<_AnimatedGoldBadge>
         final pulse = math.sin(_flash.value * math.pi);
         return Transform.scale(
           scale: 1 + (pulse * 0.07),
-          child: DecoratedBox(
-            decoration: BoxDecoration(
-              color: Theme.of(context).colorScheme.surfaceContainerHighest,
-              borderRadius: AppRadius.allMd,
-              border: Border.all(color: game.gold),
-              boxShadow: _flash.isAnimating
-                  ? [
-                      BoxShadow(
-                        color: game.gold.withValues(alpha: pulse * 0.75),
-                        blurRadius: 14,
-                        spreadRadius: 2,
-                      ),
-                    ]
-                  : null,
+          child: _ActionFrame(
+            frameKey: const ValueKey('gold-action-frame'),
+            accent: game.gold,
+            child: DecoratedBox(
+              key: const ValueKey('gold-surface'),
+              decoration: BoxDecoration(
+                color: scheme.surface.withValues(alpha: 0.88),
+                boxShadow: _flash.isAnimating
+                    ? [
+                        BoxShadow(
+                          color: game.gold.withValues(alpha: pulse * 0.75),
+                          blurRadius: 14,
+                          spreadRadius: AppSpacing.xxs,
+                        ),
+                      ]
+                    : null,
+              ),
+              child: child,
             ),
-            child: child,
           ),
         );
       },
@@ -746,7 +979,7 @@ class _AnimatedGoldBadgeState extends State<_AnimatedGoldBadge>
         ),
         child: Row(
           children: [
-            Icon(Icons.monetization_on_outlined, color: game.gold),
+            Icon(Icons.monetization_on, color: game.gold),
             const SizedBox(width: AppSpacing.xs),
             TweenAnimationBuilder<int>(
               tween: IntTween(begin: widget.gold, end: widget.gold),
@@ -832,30 +1065,6 @@ class _DisconnectedOverlay extends StatelessWidget {
               ),
             ),
           ),
-        ),
-      );
-}
-
-class _MatchSkeleton extends StatelessWidget {
-  const _MatchSkeleton();
-
-  @override
-  Widget build(BuildContext context) => Padding(
-        padding: const EdgeInsets.all(AppSpacing.lg),
-        child: Column(
-          children: [
-            const SkeletonBox(height: 88),
-            const SizedBox(height: AppSpacing.lg),
-            Expanded(
-              child: GridView.count(
-                crossAxisCount: 3,
-                mainAxisSpacing: AppSpacing.sm,
-                crossAxisSpacing: AppSpacing.sm,
-                children: List.generate(9, (_) => const SkeletonBox()),
-              ),
-            ),
-            const Text('กำลังเข้าสู่แมตช์…'),
-          ],
         ),
       );
 }

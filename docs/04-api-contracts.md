@@ -17,8 +17,9 @@
 | `GET /leaderboard` | ✅ implemented | JWT-guarded; `RANK()` by rating, `?limit=&offset=`, always includes `me` |
 | `POST /rooms` | ✅ implemented | JWT-guarded; creates a 2-player private room, returns code |
 | `GET /rooms/mine` | ✅ implemented | JWT-guarded; caller's current room or 404 |
-| `POST /rooms/join` | ✅ implemented | JWT-guarded; join by code, auto-handoff to a match when full (verified: 23 suites / 206 tests) |
+| `POST /rooms/join` | ✅ implemented | JWT-guarded; join by code and remain in the shared room lobby |
 | `POST /rooms/leave` | ✅ implemented | JWT-guarded; guest leaves or owner destroys |
+| `POST /rooms/start` | ✅ implemented | JWT-guarded; owner starts a full room and hands both players to one match |
 | WS gateway (`/socket.io`, namespace `/game`) | ✅ implemented | all 9 incoming events validated and routed |
 
 ## 1. REST Endpoints
@@ -328,7 +329,21 @@ the match is still in `shop_place`; cancellation is no longer possible once
 both players are ready and the phase has flipped to `battle`.
 
 #### `game:match:combat_done`
-Client tells the server it's finished playing the `game:combat:events` batch locally and is ready for `game:match:damage`. Server waits for BOTH clients' acks (or 60 s timeout) before proceeding.
+Client tells the server it has finished or skipped its local playback. The authoritative `game:match:damage` preview is sent immediately after simulation, but each client reveals it only after sending this acknowledgement. Server waits for BOTH clients' acknowledgements (or the replay-length timeout), applies the previewed damage, then holds the match in `resolved`. Until that transition, the client already at its summary sees a disabled “waiting for opponent” next-round button.
+
+```ts
+{ matchId: string; round: number; clientActionId: string }
+```
+
+#### `game:match:round_ready`
+The player accepts the round summary. Two acknowledgements advance immediately. The first acknowledgement starts a durable 3-second grace timer; when it expires, both players advance even if the other player did not press the button.
+
+```ts
+{ matchId: string; round: number; clientActionId: string }
+```
+
+#### `game:match:surrender`
+Immediately ends the active match as a forfeit after client-side confirmation.
 
 ```ts
 { matchId: string; round: number; clientActionId: string }

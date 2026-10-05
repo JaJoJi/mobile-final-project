@@ -1,51 +1,90 @@
 import 'package:flutter/material.dart';
 
 import '../../core/theme/app_spacing.dart';
-import '../../core/theme/app_typography.dart';
+import '../../core/theme/game_theme.dart';
+import '../../core/widgets/fantasy_page.dart';
 import 'match_models.dart';
 
-/// One row of the match-detail round table — design spec §4.7.
-///
-/// The spec's damage column needs per-round damage, which only exists once
-/// the Round Orchestrator (P0-BE-13) writes it; until then this shows the
-/// event count from the stored `events[]` instead.
+/// A compact result card showing only the winner of one combat round.
 class RoundRow extends StatelessWidget {
-  const RoundRow({super.key, required this.round});
+  const RoundRow({
+    super.key,
+    required this.round,
+    required this.currentUserId,
+  });
 
   final RoundSummary round;
+  final String? currentUserId;
 
   @override
   Widget build(BuildContext context) {
-    final t = Theme.of(context);
-    final numStyle =
-        AppTypography.tabular(t.textTheme.bodyLarge ?? const TextStyle());
+    final theme = Theme.of(context);
+    final game = theme.extension<GameTheme>()!;
+    final hasWinner = round.winnerName != null;
+    final didWin = round.winnerId != null && round.winnerId == currentUserId;
+    final didLose = round.winnerId != null &&
+        currentUserId != null &&
+        round.winnerId != currentUserId;
+    final color = didWin
+        ? game.success
+        : didLose
+            ? theme.colorScheme.error
+            : const Color(0xFFB8CEF0);
+    final result = hasWinner ? round.winnerName! : 'เสมอ';
 
     return Semantics(
-      label: 'รอบ ${round.roundNumber} '
-          '${round.winnerName != null ? 'ผู้ชนะ ${round.winnerName}' : ''} '
-          '${round.eventCount} เหตุการณ์',
-      child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: AppSpacing.md),
+      label:
+          'รอบ ${round.roundNumber} ${hasWinner ? 'ผู้ชนะ $result' : result}',
+      excludeSemantics: true,
+      child: FantasyPanel(
+        translucent: true,
+        padding: const EdgeInsets.all(AppSpacing.md),
         child: Row(
           children: [
-            SizedBox(
-              width: 40,
-              child: Text('${round.roundNumber}', style: numStyle),
-            ),
-            const SizedBox(width: AppSpacing.md),
-            Expanded(
+            Container(
+              width: AppSpacing.huge,
+              height: AppSpacing.huge,
+              alignment: Alignment.center,
+              decoration: BoxDecoration(
+                color: const Color(0xCC07131F),
+                borderRadius: AppRadius.allMd,
+                border: Border.all(color: const Color(0x806FA5C4)),
+              ),
               child: Text(
-                round.winnerName ?? '—',
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: t.textTheme.bodyLarge,
+                '${round.roundNumber}',
+                style: theme.textTheme.titleMedium?.copyWith(
+                  color: const Color(0xFFFFD35A),
+                  fontWeight: FontWeight.w900,
+                ),
               ),
             ),
             const SizedBox(width: AppSpacing.md),
-            Text(
-              '${round.eventCount} เหตุการณ์',
-              style: t.textTheme.bodyMedium
-                  ?.copyWith(color: t.colorScheme.onSurfaceVariant),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'รอบที่ ${round.roundNumber}',
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: const Color(0xFFB8CEF0),
+                    ),
+                  ),
+                  const SizedBox(height: AppSpacing.xxs),
+                  Text(
+                    hasWinner ? '$result ชนะ' : result,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: theme.textTheme.titleMedium?.copyWith(
+                      color: color,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            Icon(
+              hasWinner ? Icons.emoji_events_rounded : Icons.handshake_outlined,
+              color: color,
             ),
           ],
         ),

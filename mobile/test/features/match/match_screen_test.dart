@@ -1,13 +1,20 @@
+import 'package:auto_chess_mobile/core/theme/app_motion.dart';
 import 'package:auto_chess_mobile/core/theme/app_spacing.dart';
+import 'package:auto_chess_mobile/core/theme/game_theme.dart';
 import 'package:auto_chess_mobile/core/widgets/game_art_frame.dart';
 import 'package:auto_chess_mobile/core/widgets/game_asset_button.dart';
+import 'package:auto_chess_mobile/core/widgets/phase_timer_ring.dart';
+import 'package:auto_chess_mobile/core/widgets/premium_shop_card_frame.dart';
+import 'package:auto_chess_mobile/core/widgets/unit_avatar.dart';
 import 'package:auto_chess_mobile/core/ws/ws_client.dart';
 import 'package:auto_chess_mobile/core/ws/ws_providers.dart';
 import 'package:auto_chess_mobile/features/match/board/stone_board_tile.dart';
 import 'package:auto_chess_mobile/features/match/match_screen.dart';
 import 'package:auto_chess_mobile/shared/models/game_events.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:go_router/go_router.dart';
 
 import '../../core/ws/fake_ws_transport.dart';
 import '../_util.dart';
@@ -47,6 +54,14 @@ void main() {
     );
     expect(find.byKey(const ValueKey('bench-horizontal-list')), findsOneWidget);
     expect(
+      tester.getSize(find.byKey(const ValueKey('reserve-panel'))).height,
+      78,
+    );
+    expect(
+      tester.getSize(find.byKey(const ValueKey('bench-0'))).width,
+      64,
+    );
+    expect(
       tester
           .widget<ListView>(
             find.byKey(const ValueKey('bench-horizontal-list')),
@@ -70,11 +85,22 @@ void main() {
     final firstShopCard = find.byKey(const ValueKey('shop-0'));
     final firstShopFrame = find.descendant(
       of: firstShopCard,
-      matching: find.byType(GameArtFrame),
+      matching: find.byType(PremiumShopCardFrame),
     );
     expect(
       tester.getSize(firstShopFrame).width,
       closeTo(tester.getSize(firstShopCard).width, 0.1),
+    );
+    expect(
+      find.byWidgetPredicate(
+        (widget) =>
+            widget is Image &&
+            widget.image is AssetImage &&
+            (widget.image as AssetImage).assetName.endsWith(
+                  'shop_card_frame.png',
+                ),
+      ),
+      findsNothing,
     );
     final firstShopPrice = find.descendant(
       of: firstShopCard,
@@ -83,6 +109,10 @@ void main() {
     expect(
       tester.getBottomRight(firstShopPrice).dy,
       lessThan(tester.getBottomRight(firstShopCard).dy),
+    );
+    expect(
+      tester.getBottomRight(firstShopPrice).dy,
+      greaterThan(tester.getBottomRight(firstShopCard).dy - AppSpacing.md),
     );
     expect(
       find.descendant(
@@ -94,16 +124,73 @@ void main() {
     expect(find.text('พร้อม (0/2)'), findsOneWidget);
     expect(find.text('5'), findsOneWidget);
     expect(find.text('ร้านค้า'), findsOneWidget);
-    expect(find.text('Fighter'), findsWidgets);
-    expect(find.text('Healer'), findsOneWidget);
+    expect(find.text('Fighter'), findsNothing);
+    expect(find.text('Healer'), findsNothing);
+    expect(find.byKey(const ValueKey('shop-unit-type-fighter')), findsNothing);
+    expect(find.byKey(const ValueKey('shop-unit-type-healer')), findsNothing);
     expect(find.byKey(const ValueKey('player-hp-value')), findsOneWidget);
     expect(find.byKey(const ValueKey('opponent-hp-value')), findsOneWidget);
     expect(find.byKey(const ValueKey('hud-timer-medallion')), findsOneWidget);
     expect(find.byKey(const ValueKey('action-bar-frame')), findsOneWidget);
     expect(
-      tester.getSize(find.byKey(const ValueKey('ready-button'))).height,
-      greaterThanOrEqualTo(48),
+      find.descendant(
+        of: find.byKey(const ValueKey('gold-badge')),
+        matching: find.byIcon(Icons.monetization_on),
+      ),
+      findsOneWidget,
     );
+    expect(
+      find.descendant(
+        of: find.byKey(const ValueKey('gold-badge')),
+        matching: find.byIcon(Icons.monetization_on_outlined),
+      ),
+      findsNothing,
+    );
+    expect(
+      tester.getSize(find.byKey(const ValueKey('ready-action-frame'))).height,
+      AppSpacing.huge - AppSpacing.xs,
+    );
+    expect(
+      tester.getSize(find.byKey(const ValueKey('shop-panel'))).height,
+      lessThanOrEqualTo(144),
+    );
+    final actionHeight =
+        tester.getSize(find.byKey(const ValueKey('ready-action-frame'))).height;
+    expect(
+      tester.getSize(find.byKey(const ValueKey('refresh-action-frame'))).height,
+      actionHeight,
+    );
+    expect(
+      tester.getSize(find.byKey(const ValueKey('gold-action-frame'))).height,
+      actionHeight,
+    );
+    expect(
+      tester.getSize(find.byKey(const ValueKey('sell-action-frame'))).height,
+      actionHeight,
+    );
+    expect(
+      actionHeight,
+      lessThan(
+        tester.getSize(find.byKey(const ValueKey('action-bar-frame'))).height,
+      ),
+      reason: 'controls should have breathing room inside the bottom bar',
+    );
+    expect(find.byKey(const ValueKey('sell-bin')), findsOneWidget);
+    expect(find.text('ขาย'), findsNothing);
+    expect(find.byIcon(Icons.sell_outlined), findsNothing);
+    for (final key in const [
+      'gold-action-frame',
+      'refresh-action-frame',
+      'sell-action-frame',
+      'ready-action-frame',
+    ]) {
+      final frame = tester.widget<DecoratedBox>(find.byKey(ValueKey(key)));
+      expect(
+        (frame.decoration as BoxDecoration).gradient,
+        isNotNull,
+        reason: '$key should use the premium reflective frame',
+      );
+    }
     final frameAssets = tester
         .widgetList<GameArtFrame>(find.byType(GameArtFrame))
         .map((frame) => frame.frameAsset)
@@ -115,7 +202,14 @@ void main() {
     expect(frameAssets, isNot(contains(GameUiAssets.actionBarFrame)));
     expect(frameAssets, isNot(contains(GameUiAssets.hudPlayerFrame)));
     expect(frameAssets, isNot(contains(GameUiAssets.hudEnemyFrame)));
-    expect(buttonAssets, contains(GameUiAssets.readyButtonFrame));
+    expect(buttonAssets, isNot(contains(GameUiAssets.readyButtonFrame)));
+    expect(
+      find.descendant(
+        of: find.byKey(const ValueKey('ready-button')),
+        matching: find.byType(GameAssetButton),
+      ),
+      findsNothing,
+    );
     expect(
       tester.getCenter(find.text('player1')).dx,
       lessThan(tester.getCenter(find.text('player2')).dx),
@@ -132,22 +226,22 @@ void main() {
     await tester.tap(find.byKey(const ValueKey('ready-button')));
     await tester.pump();
     expect(find.text('ยกเลิกพร้อม (1/2)'), findsOneWidget);
+    final readyButton = tester.widget<FilledButton>(
+      find.byKey(const ValueKey('ready-button')),
+    );
+    final game = Theme.of(
+      tester.element(find.byKey(const ValueKey('ready-button'))),
+    ).extension<GameTheme>()!;
     expect(
-      tester
-          .widget<GameAssetButton>(
-            find.byKey(const ValueKey('ready-button')),
-          )
-          .selected,
-      isTrue,
+      readyButton.style?.backgroundColor?.resolve({WidgetState.disabled}),
+      game.success,
+      reason: 'waiting for the ready acknowledgement must not flash blue',
     );
     expect(
-      tester
-          .widget<AnimatedOpacity>(
-            find.byKey(const ValueKey('planning-board-dimmer')),
-          )
-          .opacity,
-      0.68,
+      find.byKey(const ValueKey('planning-board-surface')),
+      findsOneWidget,
     );
+    expect(find.byKey(const ValueKey('planning-board-dimmer')), findsNothing);
     expect(transport.sent.last.event, GameActions.matchReady);
     expect(tester.takeException(), isNull);
   });
@@ -420,6 +514,64 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets('a unit is sold only by dragging it onto the trash target', (
+    tester,
+  ) async {
+    final transport = FakeWsTransport();
+    final client = WsClient(
+      url: 'ws://localhost',
+      getAccessToken: () async => 'token',
+      transport: transport,
+    );
+    addTearDown(client.dispose);
+    final connected = client.connect();
+    transport.serverConnect();
+    await connected;
+    _seed(transport, withUnits: true);
+
+    await pumpScreen(
+      tester,
+      const MatchScreen(matchId: 'm1'),
+      overrides: [wsClientProvider.overrideWithValue(client)],
+      surfaceSize: const Size(430, 932),
+    );
+    await tester.pump();
+
+    final benchUnit = find.byKey(const ValueKey('bench-0'));
+    final sellTarget = find.byKey(const ValueKey('sell-drop-target'));
+    expect(find.byKey(const ValueKey('sell-bin')), findsOneWidget);
+    expect(find.byKey(const ValueKey('sell-bin-open')), findsNothing);
+
+    await tester.tap(benchUnit);
+    await tester.tap(benchUnit);
+    await tester.pump();
+    expect(
+      transport.sent.where((event) => event.event == GameActions.shopSell),
+      isEmpty,
+      reason: 'selecting a unit must no longer expose or trigger tap-to-sell',
+    );
+
+    final gesture = await tester.startGesture(tester.getCenter(benchUnit));
+    await tester.pump();
+    await gesture.moveTo(tester.getCenter(sellTarget));
+    await tester.pump();
+    await tester.pump(AppMotion.short4);
+
+    expect(find.byKey(const ValueKey('sell-bin-open')), findsOneWidget);
+    expect(find.byKey(const ValueKey('sell-bin')), findsNothing);
+
+    await gesture.up();
+    await tester.pump();
+
+    expect(transport.sent.last.event, GameActions.shopSell);
+    final payload = transport.sent.last.data! as Map<String, dynamic>;
+    expect(payload['source'], 'bench');
+    expect(payload['slot'], 0);
+    expect(find.byKey(const ValueKey('sell-bin')), findsOneWidget);
+    expect(find.byIcon(Icons.sell_outlined), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('a star upgrade shows the golden fuse treatment', (tester) async {
     final transport = FakeWsTransport();
     final client = WsClient(
@@ -654,6 +806,16 @@ void main() {
       overrides: [wsClientProvider.overrideWithValue(client)],
       surfaceSize: const Size(360, 640),
     );
+    transport.emitFromServer(GameEvents.matchPhase, {
+      'matchId': 'm1',
+      'phase': 'battle',
+      'round': 1,
+      'timer': 0,
+      'players': [
+        {'id': 'p1', 'hp': 100, 'gold': 5, 'ready': true},
+        {'id': 'p2', 'hp': 100, 'gold': 5, 'ready': true},
+      ],
+    });
     transport.emitFromServer(GameEvents.matchDamage, {
       'matchId': 'm1',
       'round': 1,
@@ -675,9 +837,160 @@ void main() {
       },
       'winner': 'p1',
     });
+    transport.emitFromServer(GameEvents.combatEvents, {
+      'matchId': 'm1',
+      'round': 1,
+      'cycleCount': 1,
+      'endedAt': 0,
+      'events': [
+        {
+          'type': 'attack',
+          'cycle': 1,
+          'tick': 1,
+          'attacker': 'fighter-1',
+          'target': 'opponent-0',
+          'damage': 100,
+          'targetHpAfter': 0,
+        },
+        {
+          'type': 'battle_end',
+          'cycle': 1,
+          'winner': 'p1',
+          'unitStates': [
+            {
+              'instanceId': 'fighter-1',
+              'unitId': 'fighter',
+              'star': 0,
+              'hp': 75,
+              'maxHp': 100,
+              'slot': 0,
+              'side': 'p1',
+              'alive': true,
+            },
+            {
+              'instanceId': 'opponent-0',
+              'unitId': 'fighter',
+              'star': 0,
+              'hp': 0,
+              'maxHp': 100,
+              'slot': 0,
+              'side': 'p2',
+              'alive': false,
+            },
+          ],
+        },
+      ],
+    });
+    await tester.pump();
+    expect(find.text('ชนะรอบนี้!'), findsNothing);
+    await tester.tap(find.byKey(const ValueKey('skip-combat-button')));
     await tester.pump();
     expect(find.text('ชนะรอบนี้!'), findsOneWidget);
+    final summaryPanel = find.byKey(const ValueKey('round-summary-panel'));
+    expect(summaryPanel, findsOneWidget);
+    expect(
+      find.descendant(of: summaryPanel, matching: find.byType(GameArtFrame)),
+      findsNothing,
+    );
+    expect(
+      find.descendant(of: summaryPanel, matching: find.byType(GameAssetButton)),
+      findsNothing,
+    );
+    expect(find.text('รอคู่แข่งเข้าสู่หน้าสรุปผล…'), findsOneWidget);
+    final waitingButton = tester.widget<FilledButton>(
+      find.byKey(const ValueKey('next-round-button')),
+    );
+    expect(waitingButton.onPressed, isNull);
+    expect(find.byType(PhaseTimerRing), findsNothing);
+    expect(find.byKey(const ValueKey('hud-summary-round')), findsOneWidget);
     await tester.pump(const Duration(milliseconds: 1600));
+    expect(find.text('ชนะรอบนี้!'), findsOneWidget);
+    expect(find.text('รอคู่แข่ง'), findsOneWidget);
+    expect(find.text('ยอมแพ้'), findsOneWidget);
+    await tester.tap(find.byKey(const ValueKey('minimize-round-summary')));
+    await tester.pump();
+    expect(find.byKey(const ValueKey('next-round-button')), findsNothing);
+    expect(find.byKey(const ValueKey('battle-player-board')), findsOneWidget);
+    final finalAvatars = tester.widgetList<UnitAvatar>(find.byType(UnitAvatar));
+    expect(
+      finalAvatars.map((avatar) => avatar.state),
+      contains(UnitAvatarState.dead),
+    );
+    expect(
+      finalAvatars
+          .where((avatar) => avatar.state == UnitAvatarState.normal)
+          .map((avatar) => avatar.hp),
+      contains(75),
+    );
+    await tester.tap(find.byKey(const ValueKey('expand-round-summary')));
+    await tester.pump();
+    expect(find.byKey(const ValueKey('next-round-button')), findsOneWidget);
+
+    transport.emitFromServer(GameEvents.matchPhase, {
+      'matchId': 'm1',
+      'phase': 'resolved',
+      'round': 1,
+      'timer': 0,
+      'players': [
+        {'id': 'p1', 'hp': 100, 'gold': 10, 'ready': false},
+        {'id': 'p2', 'hp': 95, 'gold': 10, 'ready': false},
+      ],
+    });
+    await tester.pump();
+    expect(find.text('รอคู่แข่งเข้าสู่หน้าสรุปผล…'), findsNothing);
+    expect(find.text('รอบถัดไป'), findsOneWidget);
+    await tester.tap(find.byKey(const ValueKey('surrender-button')));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 400));
+    expect(find.text('ยืนยันการยอมแพ้?'), findsOneWidget);
+    expect(
+      find.text('การแข่งขันจะจบทันทีและคู่แข่งจะเป็นผู้ชนะ'),
+      findsOneWidget,
+    );
+    await tester.tap(find.text('เล่นต่อ'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 400));
+    await tester.tap(find.byKey(const ValueKey('next-round-button')));
+    await tester.pump();
+    expect(
+      transport.sent.where(
+        (event) => event.event == GameActions.matchRoundReady,
+      ),
+      hasLength(1),
+    );
+
+    transport.emitFromServer(GameEvents.matchPhase, {
+      'matchId': 'm1',
+      'phase': 'resolved',
+      'round': 1,
+      'timer': 3,
+      'players': [
+        {'id': 'p1', 'hp': 100, 'gold': 10, 'ready': true},
+        {'id': 'p2', 'hp': 95, 'gold': 10, 'ready': false},
+      ],
+    });
+    await tester.pump();
+    expect(find.text('เริ่มรอบถัดไปใน 3 วินาที'), findsOneWidget);
+    await tester.tap(find.byKey(const ValueKey('minimize-round-summary')));
+    await tester.pump();
+    expect(find.text('รอบถัดไปใน 3 วินาที'), findsOneWidget);
+    await tester.pump(const Duration(seconds: 1));
+    expect(find.text('รอบถัดไปใน 2 วินาที'), findsOneWidget);
+    await tester.tap(find.byKey(const ValueKey('expand-round-summary')));
+    await tester.pump();
+    expect(find.text('เริ่มรอบถัดไปใน 2 วินาที'), findsOneWidget);
+
+    transport.emitFromServer(GameEvents.matchPhase, {
+      'matchId': 'm1',
+      'phase': 'shop_place',
+      'round': 2,
+      'timer': 40,
+      'players': [
+        {'id': 'p1', 'hp': 100, 'gold': 10, 'ready': false},
+        {'id': 'p2', 'hp': 95, 'gold': 10, 'ready': false},
+      ],
+    });
+    await tester.pump();
     expect(find.text('ชนะรอบนี้!'), findsNothing);
 
     transport.emitFromServer(GameEvents.matchEnd, {
@@ -690,13 +1003,40 @@ void main() {
       },
     });
     await tester.pump();
-    expect(find.text('ชนะ!'), findsOneWidget);
+    expect(find.text('คุณชนะ'), findsOneWidget);
     expect(find.byKey(const ValueKey('result-win')), findsOneWidget);
+    expect(find.byKey(const ValueKey('match-result-divider')), findsOneWidget);
+    expect(find.byKey(const ValueKey('result-ally-glow')), findsOneWidget);
+    expect(find.byKey(const ValueKey('result-enemy-glow')), findsOneWidget);
+    expect(find.byKey(const ValueKey('result-player-outcome')), findsNothing);
+    expect(find.byKey(const ValueKey('result-opponent-outcome')), findsNothing);
+    expect(find.text('พลังชีวิตหมด · 1 รอบ'), findsOneWidget);
     expect(
       tester
-          .widgetList<GameArtFrame>(find.byType(GameArtFrame))
-          .map((frame) => frame.frameAsset),
-      contains(GameUiAssets.resultPanelFrame),
+          .widget<Text>(find.byKey(const ValueKey('result-player-name')))
+          .data,
+      'player1',
+    );
+    expect(
+      find.descendant(
+        of: find.byKey(const ValueKey('result-win')),
+        matching: find.text('VS'),
+      ),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(
+        of: find.byKey(const ValueKey('result-win')),
+        matching: find.byType(GameArtFrame),
+      ),
+      findsNothing,
+    );
+    expect(
+      find.descendant(
+        of: find.byKey(const ValueKey('result-win')),
+        matching: find.byType(GameAssetButton),
+      ),
+      findsNothing,
     );
     expect(find.text('ทีมสุดท้าย'), findsOneWidget);
     expect(find.text('HP สุดท้าย 72 / 100'), findsOneWidget);
@@ -751,15 +1091,108 @@ void main() {
     await tester.pump();
 
     expect(find.byKey(const ValueKey('result-lose')), findsOneWidget);
-    expect(find.text('แพ้'), findsOneWidget);
+    expect(find.text('คุณแพ้'), findsOneWidget);
+    expect(find.byKey(const ValueKey('result-player-outcome')), findsNothing);
+    expect(find.byKey(const ValueKey('result-opponent-outcome')), findsNothing);
+    expect(
+      find.descendant(
+        of: find.byKey(const ValueKey('result-lose')),
+        matching: find.byType(SingleChildScrollView),
+      ),
+      findsNothing,
+    );
+    expect(
+      tester
+          .getBottomLeft(find.byKey(const ValueKey('back-to-lobby-button')))
+          .dy,
+      lessThanOrEqualTo(640),
+    );
+    expect(find.byType(PhaseTimerRing), findsNothing);
+    expect(find.byKey(const ValueKey('hud-summary-round')), findsNothing);
+    expect(find.byKey(const ValueKey('battle-player-board')), findsOneWidget);
+    expect(find.byKey(const ValueKey('battle-opponent-board')), findsOneWidget);
+    expect(find.byKey(const ValueKey('player-hp-value')), findsNothing);
+    expect(find.byKey(const ValueKey('opponent-hp-value')), findsNothing);
     expect(find.text('HP สุดท้าย 0 / 100'), findsOneWidget);
     expect(
       tester.getSize(find.text('เล่นอีกครั้ง')).height,
       lessThanOrEqualTo(
-        tester.getSize(find.byType(GameAssetButton).first).height,
+        tester.getSize(find.byKey(const ValueKey('play-again-button'))).height,
       ),
     );
+    for (final viewport in const [
+      Size(320, 568),
+      Size(390, 844),
+      Size(844, 390),
+    ]) {
+      tester.view.physicalSize = viewport;
+      await tester.pump();
+      final panel = tester.getRect(find.byKey(const ValueKey('result-lose')));
+      expect(panel.top, greaterThanOrEqualTo(0));
+      expect(panel.bottom, lessThanOrEqualTo(viewport.height));
+      expect(panel.left, greaterThanOrEqualTo(0));
+      expect(panel.right, lessThanOrEqualTo(viewport.width));
+      expect(tester.takeException(), isNull);
+    }
     expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('play again returns home and immediately joins matchmaking',
+      (tester) async {
+    final transport = FakeWsTransport();
+    final client = WsClient(
+      url: 'ws://localhost',
+      getAccessToken: () async => 'token',
+      transport: transport,
+    );
+    addTearDown(client.dispose);
+    final connected = client.connect();
+    transport.serverConnect();
+    await connected;
+    _seed(transport, withUnits: true);
+
+    final router = GoRouter(
+      initialLocation: '/match/m1',
+      routes: [
+        GoRoute(
+          path: '/match/:id',
+          builder: (_, state) => MatchScreen(
+            matchId: state.pathParameters['id']!,
+          ),
+        ),
+        GoRoute(
+          path: '/lobby',
+          builder: (_, __) => const Scaffold(body: Text('lobby-home')),
+        ),
+      ],
+    );
+    addTearDown(router.dispose);
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [wsClientProvider.overrideWithValue(client)],
+        child: MaterialApp.router(routerConfig: router),
+      ),
+    );
+    await tester.pump();
+    transport.emitFromServer(GameEvents.matchEnd, {
+      'matchId': 'm1',
+      'winnerId': 'p1',
+      'reason': 'hp_zero',
+      'final': {
+        'p1': {'hp': 72, 'gold': 4},
+        'p2': {'hp': 0, 'gold': 2},
+      },
+    });
+    await tester.pump();
+
+    await tester.tap(find.byKey(const ValueKey('play-again-button')));
+    await tester.pumpAndSettle();
+
+    expect(find.text('lobby-home'), findsOneWidget);
+    expect(
+      transport.sent.map((message) => message.event),
+      contains(GameActions.matchmakingJoin),
+    );
   });
 
   testWidgets('landscape keeps board and shop visible without overflow',
@@ -823,11 +1256,16 @@ void main() {
     await tester.pump(const Duration(milliseconds: 600));
 
     expect(find.byKey(const ValueKey('skip-combat-button')), findsOneWidget);
-    await tester.tap(find.byKey(const ValueKey('skip-combat-button')));
-    await tester.pump();
-    expect(find.text('รอคู่แข่ง…'), findsOneWidget);
-    expect(transport.sent.last.event, GameActions.matchCombatDone);
-
+    expect(
+      tester.widget(find.byKey(const ValueKey('skip-combat-button'))),
+      isNot(isA<GameAssetButton>()),
+      reason: 'the battle action must use the code-native premium frame',
+    );
+    expect(find.textContaining('batch loaded'), findsNothing);
+    expect(
+      tester.getSize(find.byKey(const ValueKey('skip-combat-button'))).height,
+      lessThan(AppSpacing.huge),
+    );
     final opponentBoard = tester.getCenter(
       find.byKey(const ValueKey('battle-opponent-board')),
     );
@@ -853,6 +1291,36 @@ void main() {
     expect(opponentLabel.dy, closeTo(versus.dy, 1));
     expect(playerLabel.dy, closeTo(versus.dy, 1));
     expect(playerBoard.dy, lessThan(skip.dy));
+
+    transport.emitFromServer(GameEvents.matchDamage, {
+      'matchId': 'm1',
+      'round': 1,
+      'damage': {
+        'p1': {
+          'wiped': false,
+          'tie': false,
+          'hpBefore': 100,
+          'hpAfter': 100,
+          'damageApplied': 0,
+        },
+        'p2': {
+          'wiped': true,
+          'tie': false,
+          'hpBefore': 100,
+          'hpAfter': 95,
+          'damageApplied': 5,
+        },
+      },
+      'winner': 'p1',
+    });
+    await tester.pump();
+    await tester.tap(find.byKey(const ValueKey('skip-combat-button')));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 100));
+    expect(find.byKey(const ValueKey('battle-player-board')), findsOneWidget);
+    expect(find.text('ชนะรอบนี้!'), findsOneWidget);
+    expect(find.text('รอคู่แข่งเข้าสู่หน้าสรุปผล…'), findsOneWidget);
+    expect(transport.sent.last.event, GameActions.matchCombatDone);
     expect(tester.takeException(), isNull);
   });
 

@@ -168,7 +168,10 @@ class _WidgetGalleryScreenState extends State<WidgetGalleryScreen> {
                   tabs: const [
                     AppTab(label: 'ทั้งหมด', icon: Icons.list),
                     AppTab(label: 'ชนะ', icon: Icons.emoji_events_outlined),
-                    AppTab(label: 'แพ้', icon: Icons.close),
+                    AppTab(
+                      label: 'แพ้',
+                      icon: Icons.heart_broken_rounded,
+                    ),
                   ],
                 ),
               ]),

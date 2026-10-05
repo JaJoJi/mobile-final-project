@@ -1,3 +1,4 @@
+import 'package:auto_chess_mobile/core/theme/app_spacing.dart';
 import 'package:auto_chess_mobile/features/match/shop/shop_tab.dart';
 import 'package:auto_chess_mobile/shared/models/match_state.dart';
 import 'package:auto_chess_mobile/shared/models/shop_offer.dart';
@@ -94,6 +95,20 @@ void main() {
     final second = tester.getTopLeft(find.byKey(const ValueKey('shop-1')));
     expect(second.dx, greaterThan(first.dx));
     expect(find.byType(ListView), findsNothing);
+    expect(find.text('Fighter'), findsNothing);
+    expect(find.byKey(const ValueKey('shop-unit-type-fighter')), findsNothing);
+    final helper = find.byKey(const ValueKey('shop-helper-text'));
+    expect(helper, findsOneWidget);
+    expect(
+      tester.getTopRight(helper).dx,
+      greaterThan(
+        tester.getTopRight(find.byKey(const ValueKey('shop-panel'))).dx - 20,
+      ),
+    );
+    expect(
+      second.dx - tester.getTopRight(find.byKey(const ValueKey('shop-0'))).dx,
+      greaterThanOrEqualTo(AppSpacing.xs - 0.1),
+    );
     expect(tester.takeException(), isNull);
   });
 }

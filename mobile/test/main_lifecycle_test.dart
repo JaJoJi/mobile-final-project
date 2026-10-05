@@ -3,9 +3,13 @@ import 'package:auto_chess_mobile/core/ws/ws_client.dart';
 import 'package:auto_chess_mobile/core/ws/ws_providers.dart';
 import 'package:auto_chess_mobile/features/history/history_providers.dart';
 import 'package:auto_chess_mobile/features/lobby/profile_card.dart';
+import 'package:auto_chess_mobile/features/match/match_loading_view.dart';
+import 'package:auto_chess_mobile/features/match/match_screen.dart';
 import 'package:auto_chess_mobile/features/player_hub/player_hub_fixture_provider.dart';
 import 'package:auto_chess_mobile/features/profile/settings_provider.dart';
+import 'package:auto_chess_mobile/features/units/units_screen.dart';
 import 'package:auto_chess_mobile/main.dart';
+import 'package:auto_chess_mobile/shared/models/game_events.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -13,6 +17,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import 'core/ws/fake_ws_transport.dart';
 import 'features/_util.dart';
+import 'features/match/match_entry_fixture.dart';
 
 /// Regression test for the WS-gateway lifecycle bug found while exercising
 /// P0-FE-03: nothing in the app was calling [WsClient.connect], so the
@@ -146,5 +151,59 @@ void main() {
       reason: 'a second sign-in must open a fresh WS',
     );
     expect(transport.disconnectCalls, 1);
+  });
+
+  testWidgets('full app opens a found match while the units page is visible', (
+    tester,
+  ) async {
+    await pumpApp(tester);
+    AuthGate.instance.signalSignedIn();
+    await tester.pump();
+    transport.serverConnect();
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('จับคู่ด่วน'));
+    await tester.pump();
+    await tester.tap(find.text('ยูนิต'));
+    await tester.pumpAndSettle();
+    expect(find.byType(UnitsScreen), findsOneWidget);
+    await warmEntryArt(tester);
+
+    transport.emitFromServer(GameEvents.matchPhase, {
+      'matchId': 'full-app-away-match',
+      'phase': 'shop_place',
+      'round': 1,
+      'timer': 40,
+      'players': [
+        {'id': 'p1', 'hp': 100, 'gold': 5, 'ready': false},
+        {'id': 'p2', 'hp': 100, 'gold': 5, 'ready': false},
+      ],
+    });
+    await tester.pump();
+    await tester.pump();
+    expect(
+      find.byKey(const ValueKey('match-found-transition')),
+      findsOneWidget,
+    );
+    await tester.pump(const Duration(milliseconds: 16));
+    await tester.pump(const Duration(milliseconds: 2700));
+    expect(
+      find.byKey(const ValueKey('match-found-transition')),
+      findsOneWidget,
+      reason: 'animation finished but the match snapshot is not ready',
+    );
+    expect(find.byType(MatchScreen), findsNothing);
+    seedEntrySnapshot(transport, 'full-app-away-match');
+    for (var frame = 0; frame < 10; frame++) {
+      await tester.pump(const Duration(milliseconds: 16));
+    }
+    expect(find.byType(MatchScreen), findsOneWidget);
+    expect(find.byType(MatchLoadingView), findsNothing);
+    await tester.pump();
+    await tester.pump();
+    expect(
+      find.byKey(const ValueKey('match-found-transition')),
+      findsNothing,
+    );
   });
 }

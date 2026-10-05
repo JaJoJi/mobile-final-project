@@ -87,6 +87,19 @@ const seedFullRoom = async (mock: Mock) => {
 };
 
 describe('RoomService.startRoomMatch exactly-once (#259)', () => {
+  it('allows only the owner to start a full room', async () => {
+    const { mock, pairing, service } = makeService();
+    await seedFullRoom(mock);
+
+    await expect(service.startRoomForOwner('guest-1')).rejects.toMatchObject({
+      response: { code: 'room.owner_only' },
+    });
+    const result = await service.startRoomForOwner('owner-1');
+
+    expect(result).toMatchObject({ status: 'matched', matchId: 'match-1' });
+    expect(pairing.calls).toEqual([['owner-1', 'guest-1']]);
+  });
+
   it('concurrent triggers create exactly one match with one matchId', async () => {
     const { mock, pairing, published, service } = makeService();
     await seedFullRoom(mock);

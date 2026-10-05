@@ -259,15 +259,16 @@ void main() {
     );
 
     // The batch must actually be loaded, not silently dropped.
+    expect(find.textContaining('batch loaded'), findsNothing);
     expect(
-      find.textContaining('batch loaded'),
+      find.byType(BattlePlaybackProbe),
       findsOneWidget,
-      reason: 'BattleView should report a loaded batch',
+      reason: 'BattleView should expose a loaded batch without debug UI',
     );
 
     // Walk the playhead forward and record what the attacker tile does.
     final offsets = <Offset>[];
-    final summaries = <String>[];
+    final playheadSamples = <double>[];
     var travellerSeen = 0;
     for (var i = 0; i < 40; i++) {
       await tester.pump(const Duration(milliseconds: 100));
@@ -275,18 +276,19 @@ void main() {
       if (find.byKey(const ValueKey('lunge-traveler')).evaluate().isNotEmpty) {
         travellerSeen++;
       }
-      final text = tester
-          .widget<Text>(find.byKey(const ValueKey('battle-batch-summary')))
-          .data!;
-      summaries.add(text);
+      final probe = find.byType(BattlePlaybackProbe);
+      if (probe.evaluate().isNotEmpty) {
+        playheadSamples.add(
+          tester.widget<BattlePlaybackProbe>(probe).playheadProgress,
+        );
+      }
     }
 
     // 1. Playback must progress past 0%.
     expect(
-      summaries.any((s) => !s.contains('playhead 0%')),
+      playheadSamples.any((progress) => progress > 0),
       isTrue,
-      reason: 'playhead never advanced past 0%: ${summaries.first} '
-          '... ${summaries.last}',
+      reason: 'playhead never advanced past 0%: $playheadSamples',
     );
 
     // 2. The attacker tile must actually move at some point.
@@ -460,7 +462,8 @@ void main() {
     expect(ackSent(), isFalse);
     await tester.pump(const Duration(seconds: 2));
     expect(ackSent(), isTrue);
-    expect(find.text('รอคู่แข่ง…'), findsOneWidget);
+    expect(speedButton, findsNothing);
+    expect(find.byKey(const ValueKey('battle-player-board')), findsOneWidget);
 
     await tester.pumpWidget(const SizedBox.shrink());
     await tester.pump(const Duration(seconds: 1));
@@ -530,13 +533,13 @@ void main() {
     );
 
     // And it must still be a real replay, not a frozen frame.
-    final summary = tester
-        .widget<Text>(find.byKey(const ValueKey('battle-batch-summary')))
-        .data!;
+    final probe = tester.widget<BattlePlaybackProbe>(
+      find.byType(BattlePlaybackProbe),
+    );
     expect(
-      summary.contains('playhead 100%'),
-      isFalse,
-      reason: 'playhead jumped straight to the end: $summary',
+      probe.playheadProgress,
+      lessThan(1),
+      reason: 'playhead jumped straight to the end: ${probe.playheadProgress}',
     );
 
     await tester.pumpWidget(const SizedBox.shrink());
@@ -593,8 +596,9 @@ void main() {
     await tester.pump();
     await tester.pump();
 
+    expect(find.textContaining('batch loaded'), findsNothing);
     expect(
-      find.textContaining('batch loaded'),
+      find.byType(BattlePlaybackProbe),
       findsOneWidget,
       reason: 'the early batch was dropped and never replayed',
     );
@@ -660,9 +664,9 @@ void main() {
     bool ackSent() =>
         transport.sent.any((m) => m.event == GameActions.matchCombatDone);
 
-    String summary() => tester
-        .widget<Text>(find.byKey(const ValueKey('battle-batch-summary')))
-        .data!;
+    double playheadProgress() => tester
+        .widget<BattlePlaybackProbe>(find.byType(BattlePlaybackProbe))
+        .playheadProgress;
 
     final total = combatPlaybackDuration(30);
     // Comfortably past the 5%-scaled duration this used to finish in.
@@ -681,12 +685,10 @@ void main() {
       await tester.pump(total ~/ 50);
     }
     expect(ackSent(), isFalse, reason: 'combat_done was sent at 60% of $total');
-    final midway = summary();
-    final percent =
-        int.parse(RegExp(r'playhead (\d+)%').firstMatch(midway)!.group(1)!);
+    final midway = playheadProgress();
     expect(
-      percent,
-      inInclusiveRange(30, 90),
+      midway,
+      inInclusiveRange(0.3, 0.9),
       reason: 'playhead froze or jumped instead of tracking the clock '
           'halfway through a $total replay: $midway',
     );

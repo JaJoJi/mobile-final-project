@@ -46,4 +46,6 @@ abstract final class GameActions {
   static const matchPlace = 'game:match:place';
   static const matchReady = 'game:match:ready';
   static const matchCombatDone = 'game:match:combat_done';
+  static const matchRoundReady = 'game:match:round_ready';
+  static const matchSurrender = 'game:match:surrender';
 }

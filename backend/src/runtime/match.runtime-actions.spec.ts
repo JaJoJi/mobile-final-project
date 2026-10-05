@@ -50,7 +50,10 @@ async function harness() {
     updateState: jest.fn(async () => undefined),
     forfeitDisconnectedPlayer: jest.fn(async () => true),
   };
-  const queue = { schedulePhaseStart: jest.fn() };
+  const queue = {
+    schedulePhaseStart: jest.fn(),
+    scheduleRoundReadyTimeout: jest.fn(),
+  };
   const pubsub = { publish: jest.fn(), publishToUser: jest.fn(), getCombatResult: jest.fn() };
   const combat = { runCombat: jest.fn(async () => undefined) };
   const shop = {

@@ -3,7 +3,6 @@ import 'dart:convert';
 import 'package:auto_chess_mobile/core/api/api_client.dart';
 import 'package:auto_chess_mobile/core/auth/auth_gate.dart';
 import 'package:auto_chess_mobile/core/theme/app_theme.dart';
-import 'package:auto_chess_mobile/features/player_hub/player_crest.dart';
 import 'package:auto_chess_mobile/features/profile/profile_screen.dart';
 import 'package:auto_chess_mobile/features/profile/settings_provider.dart';
 import 'package:auto_chess_mobile/features/profile/settings_tile.dart';
@@ -111,7 +110,7 @@ void main() {
     expect(find.text('alice'), findsOneWidget);
     expect(find.text('alice@example.com'), findsOneWidget);
     expect(find.text('1,200'), findsOneWidget);
-    expect(find.text('เรตติ้งปัจจุบัน'), findsOneWidget);
+    expect(find.bySemanticsLabel('เรตติ้ง 1,200'), findsOneWidget);
     expect(find.text('แมตช์ที่จบแล้ว'), findsOneWidget);
   });
 
@@ -120,21 +119,22 @@ void main() {
     await tester.pumpWidget(await app(adapter: okMe));
     await tester.pumpAndSettle();
 
-    expect(find.text('โปรไฟล์ผู้บัญชาการ'), findsOneWidget);
-    expect(find.byKey(const ValueKey('player-crest')), findsOneWidget);
+    expect(find.byKey(const ValueKey('profile-hero')), findsOneWidget);
     expect(find.byKey(const ValueKey('player-hub-navigation')), findsOneWidget);
     expect(find.text('บันทึกการประลอง'), findsOneWidget);
   });
 
-  testWidgets('shows the V2 rank, history, and private-account hierarchy',
+  testWidgets('shows the V2 rank and account settings hierarchy',
       (tester) async {
     await tester.pumpWidget(await app(adapter: okMe));
     await tester.pumpAndSettle();
 
-    expect(find.text('ดูตารางอันดับ'), findsOneWidget);
-    expect(find.text('ทุกแมตช์คือประสบการณ์'), findsOneWidget);
-    expect(find.text('ดูประวัติการแข่งขัน'), findsOneWidget);
-    expect(find.text('ข้อมูลบัญชีเป็นส่วนตัว'), findsOneWidget);
+    expect(
+      find.byKey(const ValueKey('profile-rank-action')),
+      findsOneWidget,
+    );
+    expect(find.byTooltip('แก้ไขชื่อผู้ใช้'), findsOneWidget);
+    expect(find.text('ตั้งค่า'), findsOneWidget);
   });
 
   testWidgets('opens the Player Hub rank and history destinations',
@@ -157,15 +157,13 @@ void main() {
 
     await tester.pumpWidget(await app(adapter: okMe, router: router));
     await tester.pumpAndSettle();
-    await tester.ensureVisible(find.text('ดูตารางอันดับ'));
-    await tester.tap(find.text('ดูตารางอันดับ'));
+    await tester.tap(find.byKey(const ValueKey('profile-rank-action')));
     await tester.pumpAndSettle();
     expect(find.text('leaderboard route'), findsOneWidget);
 
     router.go('/');
     await tester.pumpAndSettle();
-    await tester.ensureVisible(find.text('ดูประวัติการแข่งขัน'));
-    await tester.tap(find.text('ดูประวัติการแข่งขัน'));
+    await tester.tap(find.bySemanticsLabel('ประวัติ'));
     await tester.pumpAndSettle();
     expect(find.text('history route'), findsOneWidget);
   });
@@ -207,12 +205,7 @@ void main() {
     expect(find.text('26'), findsOneWidget);
     expect(find.text('16'), findsOneWidget);
     expect(find.text('61.9%'), findsOneWidget);
-    expect(
-      find.byKey(const ValueKey('profile-rank-banner')),
-      findsOneWidget,
-    );
-    expect(find.text('อันดับ #28'), findsOneWidget);
-    expect(find.text('บนตารางอันดับ'), findsOneWidget);
+    expect(find.text('อันดับ 28'), findsOneWidget);
   });
 
   testWidgets('guides a new player who has no completed matches',
@@ -247,7 +240,6 @@ void main() {
     await tester.pumpWidget(await app(adapter: newPlayer));
     await tester.pumpAndSettle();
 
-    expect(find.text('ลงสนามครั้งแรกเพื่อเริ่มบันทึกสถิติ'), findsOneWidget);
     expect(find.text('ยังไม่มีอันดับ'), findsOneWidget);
   });
 
@@ -274,25 +266,18 @@ void main() {
 
     expect(find.text('alice'), findsOneWidget);
     expect(find.text('โหลดสถิติการแข่งขันไม่ได้'), findsOneWidget);
-    expect(find.text('แก้ไขชื่อผู้ใช้'), findsOneWidget);
+    expect(find.byTooltip('แก้ไขชื่อผู้ใช้'), findsOneWidget);
   });
 
-  testWidgets('theme segmented button drives settingsProvider', (tester) async {
-    late ProviderContainer container;
+  testWidgets('profile only shows settings supported by the player hub', (
+    tester,
+  ) async {
     await tester.pumpWidget(await app(adapter: okMe));
     await tester.pumpAndSettle();
 
-    container = ProviderScope.containerOf(
-      tester.element(find.byType(ProfileScreen)),
-    );
-    expect(container.read(settingsProvider).themeMode, ThemeMode.system);
-
-    await tester.ensureVisible(find.text('มืด'));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('มืด'));
-    await tester.pumpAndSettle();
-
-    expect(container.read(settingsProvider).themeMode, ThemeMode.dark);
+    expect(find.text('ธีม'), findsNothing);
+    expect(find.text('เชื่อมต่อใหม่อัตโนมัติ'), findsOneWidget);
+    expect(find.text('เสียงเอฟเฟกต์'), findsOneWidget);
   });
 
   testWidgets('sound switch drives settingsProvider', (tester) async {
@@ -320,9 +305,7 @@ void main() {
     await tester.pumpWidget(await app(adapter: okMe));
     await tester.pumpAndSettle();
 
-    await tester.ensureVisible(find.text('ออกจากระบบ'));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('ออกจากระบบ'));
+    await tester.tap(find.byTooltip('ออกจากระบบ'));
     await tester.pumpAndSettle();
 
     expect(find.text('ออกจากระบบ?'), findsOneWidget); // confirm dialog title
@@ -405,25 +388,10 @@ void main() {
       findsOneWidget,
     );
     expect(find.text('1,240'), findsOneWidget);
-    expect(find.text('เรตติ้งปัจจุบัน'), findsOneWidget);
+    expect(find.bySemanticsLabel('เรตติ้ง 1,240'), findsOneWidget);
     expect(find.text('แมตช์ที่จบแล้ว'), findsOneWidget);
-    expect(find.text('อันดับ #28'), findsOneWidget);
-    expect(find.text('บนตารางอันดับ'), findsOneWidget);
-    expect(find.text('ดูตารางอันดับ'), findsOneWidget);
-    final compactIdentity = find.byKey(
-      const ValueKey('profile-identity-compact-row'),
-    );
-    expect(compactIdentity, findsOneWidget);
-    expect(tester.widget<Row>(compactIdentity).direction, Axis.horizontal);
-    expect(
-      find.descendant(
-        of: compactIdentity,
-        matching: find.byWidgetPredicate(
-          (widget) => widget is PlayerCrest && widget.compact,
-        ),
-      ),
-      findsOneWidget,
-    );
+    expect(find.text('อันดับ 28'), findsOneWidget);
+    expect(find.byKey(const ValueKey('profile-hero')), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 }

@@ -24,9 +24,10 @@ class FakeRedis {
   async eval<T>(name: string, keys: string[], args: Array<string | number>): Promise<T> {
     const hash = this.hashes.get(keys[0]) ?? {};
     if (name === 'phase_flip') {
-      const [expected, next, instanceId, expectedRound] = args.map(String);
+      const [expected, next, instanceId, expectedRound, nextRound] = args.map(String);
       if (hash.phase !== expected || (expectedRound && hash.round !== expectedRound)) return 0 as T;
       hash.phase = next;
+      if (nextRound) hash.round = nextRound;
       if (next === 'battle') hash.combatLockInstance = instanceId;
       this.hashes.set(keys[0], hash);
       return 1 as T;
@@ -43,11 +44,15 @@ class FakeRedis {
 class FakeQueue {
   readonly phases: Array<{ matchId: string; round: number; delay: number }> = [];
   readonly timeouts: Array<{ matchId: string; round: number; delay: number }> = [];
+  readonly roundReadyTimeouts: Array<{ matchId: string; round: number; delay: number }> = [];
   async schedulePhaseStart(matchId: string, round: number, delay: number) {
     this.phases.push({ matchId, round, delay });
   }
   async scheduleCombatDoneTimeout(matchId: string, round: number, delay: number) {
     this.timeouts.push({ matchId, round, delay });
+  }
+  async scheduleRoundReadyTimeout(matchId: string, round: number, delay: number) {
+    this.roundReadyTimeouts.push({ matchId, round, delay });
   }
 }
 
@@ -189,12 +194,19 @@ async function run() {
   const firstAck = await h.runtime.handleCombatDone(game.player1Id, game.id, 1);
   const duplicateAck = await h.runtime.handleCombatDone(game.player1Id, game.id, 1);
   const secondAck = await h.runtime.handleCombatDone(game.player2Id, game.id, 1);
+  const resolved = await h.runtime.getRuntime(game.id);
+  const firstRoundReady = await h.runtime.markRoundReady(game.player1Id, game.id, 1);
+  const secondRoundReady = await h.runtime.markRoundReady(game.player2Id, game.id, 1);
   const round2 = await h.runtime.getRuntime(game.id);
   add(
     results,
-    'acks are idempotent and the second player advances the round',
-    firstAck === 1 && duplicateAck === 1 && secondAck === 2 && round2.round === 2,
-    `acks=${firstAck},${duplicateAck},${secondAck} round=${round2.round}`,
+    'acks are idempotent and hold the resolved round until both players continue',
+    firstAck === 1 && duplicateAck === 1 && secondAck === 2 &&
+      resolved.phase === 'resolved' && resolved.round === 1 &&
+      firstRoundReady.readyCount === 1 && secondRoundReady.readyCount === 2 &&
+      round2.phase === 'shop_place' && round2.round === 2,
+    `acks=${firstAck},${duplicateAck},${secondAck} resolved=${resolved.phase} ` +
+      `ready=${firstRoundReady.readyCount}/${secondRoundReady.readyCount} round=${round2.round}`,
   );
   add(
     results,

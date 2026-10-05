@@ -7,7 +7,11 @@ import 'package:go_router/go_router.dart';
 import '../../core/auth/auth_gate.dart';
 import '../../core/auth/auth_repository.dart';
 import '../../core/platform/bootstrap_overlay.dart';
-import '../../core/theme/app_spacing.dart';
+import '../../core/widgets/game_art_frame.dart';
+import '../history/history_providers.dart';
+import '../lobby/profile_card.dart';
+import '../player_hub/player_hub_fixture_provider.dart';
+import 'launch_backdrop.dart';
 
 /// Auth gate shown on launch (design spec §4.1).
 ///
@@ -42,10 +46,12 @@ class _SplashScreenState extends ConsumerState<SplashScreen> {
     super.dispose();
   }
 
-  void _settle(bool signedIn) {
-    if (_settled) return;
+  Future<void> _settle(bool signedIn) async {
+    if (_settled || !mounted) return;
     _settled = true;
     _fallback?.cancel();
+    await _prepareDestination(signedIn);
+    if (!mounted) return;
     signedIn
         ? AuthGate.instance.signalSignedIn()
         : AuthGate.instance.signalSignedOut();
@@ -54,7 +60,41 @@ class _SplashScreenState extends ConsumerState<SplashScreen> {
     // On web, keep the HTML bootstrap above this internal auth route until
     // the actual destination has painted. This prevents a second splash from
     // flashing between the browser bootstrap and Login / Lobby.
-    WidgetsBinding.instance.addPostFrameCallback((_) => hideBootstrapOverlay());
+    await WidgetsBinding.instance.endOfFrame;
+    await WidgetsBinding.instance.endOfFrame;
+    hideBootstrapOverlay();
+  }
+
+  Future<void> _prepareDestination(bool signedIn) async {
+    // Retain auto-dispose data until the destination takes over its listeners.
+    // Do not signal auth-ready first: the router would immediately leave splash.
+    if (signedIn) {
+      ref.listenManual(currentUserProvider, (_, __) {});
+      ref.listenManual(leaderboardSourceProvider, (_, __) {});
+      ref.listenManual(matchHistoryProvider, (_, __) {});
+    }
+    final pending = <Future<Object?>>[
+      precacheImage(
+        const AssetImage(GameBackgroundAssets.arenaBlurred),
+        context,
+      ),
+      precacheImage(const AssetImage(GameUiAssets.panelTextureBlue), context),
+      if (signedIn) ...[
+        precacheImage(
+          const AssetImage(GameBackgroundAssets.homeTeamBanner),
+          context,
+        ),
+        ref.read(currentUserProvider.future),
+        ref.read(leaderboardSourceProvider.future),
+        ref.read(matchHistoryProvider.future),
+      ],
+    ];
+    try {
+      // Secondary feed failures must not sign a valid user out or trap launch.
+      await Future.wait(pending).timeout(const Duration(seconds: 3));
+    } catch (_) {
+      // The destination already has error / retry states for failed requests.
+    }
   }
 
   Future<void> _resolve() async {
@@ -65,80 +105,18 @@ class _SplashScreenState extends ConsumerState<SplashScreen> {
 
     final hasToken = (await auth.getAccessToken())?.isNotEmpty ?? false;
     if (!hasToken) {
-      _settle(false);
+      await _settle(false);
       return;
     }
     final refreshed = await auth.tryRefresh();
-    _settle(refreshed != null);
+    await _settle(refreshed != null);
   }
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: const Color(0xFF071624),
-      body: DecoratedBox(
-        decoration: const BoxDecoration(
-          gradient: RadialGradient(
-            center: Alignment(0, -0.25),
-            radius: 1.15,
-            colors: [Color(0xFF183E58), Color(0xFF071624)],
-          ),
-        ),
-        child: Center(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Container(
-                width: 88,
-                height: 88,
-                decoration: BoxDecoration(
-                  color: const Color(0xE60D2639),
-                  borderRadius: AppRadius.allLg,
-                  border: Border.all(color: const Color(0xB359B7E8)),
-                  boxShadow: const [
-                    BoxShadow(
-                      color: Color(0x66000000),
-                      blurRadius: 28,
-                      offset: Offset(0, 12),
-                    ),
-                  ],
-                ),
-                child: const Icon(
-                  Icons.shield_rounded,
-                  size: 54,
-                  color: Color(0xFFFFD35A),
-                ),
-              ),
-              const SizedBox(height: 22),
-              Text(
-                'เตรียมเข้าสู่สนาม',
-                style: Theme.of(context).textTheme.labelLarge?.copyWith(
-                      color: const Color(0xFF77D8FF),
-                      fontWeight: FontWeight.w700,
-                      letterSpacing: 2.4,
-                    ),
-              ),
-              const SizedBox(height: 8),
-              Text(
-                'ออโต้เชส',
-                style: Theme.of(context).textTheme.displaySmall?.copyWith(
-                      color: const Color(0xFFFFF5D6),
-                      fontWeight: FontWeight.w800,
-                    ),
-              ),
-              const SizedBox(height: 24),
-              const SizedBox(
-                width: 28,
-                height: 28,
-                child: CircularProgressIndicator(
-                  strokeWidth: 3,
-                  color: Color(0xFF77D8FF),
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
+    return const Scaffold(
+      backgroundColor: Color(0xFF071624),
+      body: LaunchBackdrop(),
     );
   }
 }

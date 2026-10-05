@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 
-import '../../../core/theme/app_motion.dart';
 import '../../../core/theme/app_spacing.dart';
 import '../../../core/theme/game_theme.dart';
 import '../../../core/utils/unit_star_level.dart';
@@ -23,7 +22,6 @@ class BoardTab extends StatefulWidget {
     required this.selection,
     required this.onSelect,
     required this.onDrop,
-    required this.onSell,
   });
 
   final MatchState match;
@@ -32,7 +30,6 @@ class BoardTab extends StatefulWidget {
   final UnitSelection? selection;
   final void Function(RosterArea, int) onSelect;
   final void Function(RosterArea, int, UnitSelection) onDrop;
-  final void Function(RosterArea, int) onSell;
 
   @override
   State<BoardTab> createState() => _BoardTabState();
@@ -99,7 +96,6 @@ class _BoardTabState extends State<BoardTab>
   @override
   Widget build(BuildContext context) {
     final roster = widget.match.roster;
-    final selected = _selectedUnit(roster);
     final scheme = Theme.of(context).colorScheme;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -131,7 +127,6 @@ class _BoardTabState extends State<BoardTab>
           child: _BoardArena(
             roster: roster,
             enabled: widget.enabled,
-            locked: widget.ready,
             isSelected: _isSelected,
             onSelect: widget.onSelect,
             onDrop: widget.onDrop,
@@ -165,13 +160,10 @@ class _BoardTabState extends State<BoardTab>
             },
             child: _BenchBar(
               roster: roster,
-              selected: selected,
-              selection: widget.selection,
               enabled: widget.enabled,
               isSelected: _isSelected,
               onSelect: widget.onSelect,
               onDrop: widget.onDrop,
-              onSell: widget.onSell,
             ),
           ),
         ),
@@ -181,21 +173,12 @@ class _BoardTabState extends State<BoardTab>
 
   bool _isSelected(RosterArea area, int slot) =>
       widget.selection?.area == area && widget.selection?.slot == slot;
-
-  Unit? _selectedUnit(PlayerRoster roster) {
-    final selection = widget.selection;
-    if (selection == null) return null;
-    final list =
-        selection.area == RosterArea.board ? roster.board : roster.bench;
-    return selection.slot < list.length ? list[selection.slot] : null;
-  }
 }
 
 class _BoardArena extends StatelessWidget {
   const _BoardArena({
     required this.roster,
     required this.enabled,
-    required this.locked,
     required this.isSelected,
     required this.onSelect,
     required this.onDrop,
@@ -203,7 +186,6 @@ class _BoardArena extends StatelessWidget {
 
   final PlayerRoster roster;
   final bool enabled;
-  final bool locked;
   final bool Function(RosterArea, int) isSelected;
   final void Function(RosterArea, int) onSelect;
   final void Function(RosterArea, int, UnitSelection) onDrop;
@@ -211,87 +193,80 @@ class _BoardArena extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
-    return AnimatedOpacity(
-      key: const ValueKey('planning-board-dimmer'),
-      opacity: locked ? 0.68 : 1,
-      duration: AppMotion.maybe(
-        AppMotion.short4,
-        reduceMotion: MediaQuery.disableAnimationsOf(context),
-      ),
-      child: Card(
-        margin: EdgeInsets.zero,
-        color: scheme.surfaceContainerLow.withValues(alpha: 0.20),
-        clipBehavior: Clip.antiAlias,
-        child: Padding(
-          padding: const EdgeInsets.all(AppSpacing.xs),
-          child: LayoutBuilder(
-            builder: (context, constraints) {
-              const labelGutter = 56.0;
-              final centeredWidth = constraints.maxWidth - (labelGutter * 2);
-              final side = centeredWidth < constraints.maxHeight
-                  ? centeredWidth
-                  : constraints.maxHeight;
-              final top = (constraints.maxHeight - side) / 2;
-              final left = (constraints.maxWidth - side) / 2;
-              return Stack(
-                children: [
-                  Positioned(
-                    left: left - labelGutter,
-                    top: top,
-                    width: labelGutter,
-                    height: side,
-                    child: const Column(
-                      children: [
-                        Expanded(child: _RowLabel(row: 0)),
-                        Expanded(child: _RowLabel(row: 1)),
-                        Expanded(child: _RowLabel(row: 2)),
-                      ],
-                    ),
+    return Card(
+      key: const ValueKey('planning-board-surface'),
+      margin: EdgeInsets.zero,
+      color: scheme.surfaceContainerLow.withValues(alpha: 0.20),
+      clipBehavior: Clip.antiAlias,
+      child: Padding(
+        padding: const EdgeInsets.all(AppSpacing.xs),
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            const labelGutter = 56.0;
+            final centeredWidth = constraints.maxWidth - (labelGutter * 2);
+            final side = centeredWidth < constraints.maxHeight
+                ? centeredWidth
+                : constraints.maxHeight;
+            final top = (constraints.maxHeight - side) / 2;
+            final left = (constraints.maxWidth - side) / 2;
+            return Stack(
+              children: [
+                Positioned(
+                  left: left - labelGutter,
+                  top: top,
+                  width: labelGutter,
+                  height: side,
+                  child: const Column(
+                    children: [
+                      Expanded(child: _RowLabel(row: 0)),
+                      Expanded(child: _RowLabel(row: 1)),
+                      Expanded(child: _RowLabel(row: 2)),
+                    ],
                   ),
-                  Center(
-                    child: SizedBox.square(
-                      dimension: side,
-                      child: GridView.builder(
-                        key: const ValueKey('planning-board-grid'),
-                        physics: const NeverScrollableScrollPhysics(),
-                        gridDelegate:
-                            const SliverGridDelegateWithFixedCrossAxisCount(
-                          crossAxisCount: 3,
-                          mainAxisSpacing: AppSpacing.xs,
-                          crossAxisSpacing: AppSpacing.xs,
-                        ),
-                        itemCount: 9,
-                        itemBuilder: (context, slot) {
-                          final unit = roster.board[slot];
-                          return BoardSlot(
-                            key: ValueKey('board-$slot'),
-                            area: RosterArea.board,
-                            slot: slot,
-                            unit: unit,
-                            enabled: enabled,
-                            selected: isSelected(RosterArea.board, slot),
-                            expand: true,
-                            onTap: () => onSelect(RosterArea.board, slot),
-                            onLongPress: unit == null
-                                ? null
-                                : () => _showUnitDetailSheet(
-                                      context,
-                                      unitId: unit.unitId,
-                                      star: unit.star,
-                                      hp: unit.hp,
-                                      maxHp: unit.maxHp,
-                                    ),
-                            onDrop: (from) =>
-                                onDrop(RosterArea.board, slot, from),
-                          );
-                        },
+                ),
+                Center(
+                  child: SizedBox.square(
+                    dimension: side,
+                    child: GridView.builder(
+                      key: const ValueKey('planning-board-grid'),
+                      physics: const NeverScrollableScrollPhysics(),
+                      gridDelegate:
+                          const SliverGridDelegateWithFixedCrossAxisCount(
+                        crossAxisCount: 3,
+                        mainAxisSpacing: AppSpacing.xs,
+                        crossAxisSpacing: AppSpacing.xs,
                       ),
+                      itemCount: 9,
+                      itemBuilder: (context, slot) {
+                        final unit = roster.board[slot];
+                        return BoardSlot(
+                          key: ValueKey('board-$slot'),
+                          area: RosterArea.board,
+                          slot: slot,
+                          unit: unit,
+                          enabled: enabled,
+                          selected: isSelected(RosterArea.board, slot),
+                          expand: true,
+                          onTap: () => onSelect(RosterArea.board, slot),
+                          onLongPress: unit == null
+                              ? null
+                              : () => _showUnitDetailSheet(
+                                    context,
+                                    unitId: unit.unitId,
+                                    star: unit.star,
+                                    hp: unit.hp,
+                                    maxHp: unit.maxHp,
+                                  ),
+                          onDrop: (from) =>
+                              onDrop(RosterArea.board, slot, from),
+                        );
+                      },
                     ),
                   ),
-                ],
-              );
-            },
-          ),
+                ),
+              ],
+            );
+          },
         ),
       ),
     );
@@ -301,23 +276,17 @@ class _BoardArena extends StatelessWidget {
 class _BenchBar extends StatelessWidget {
   const _BenchBar({
     required this.roster,
-    required this.selected,
-    required this.selection,
     required this.enabled,
     required this.isSelected,
     required this.onSelect,
     required this.onDrop,
-    required this.onSell,
   });
 
   final PlayerRoster roster;
-  final Unit? selected;
-  final UnitSelection? selection;
   final bool enabled;
   final bool Function(RosterArea, int) isSelected;
   final void Function(RosterArea, int) onSelect;
   final void Function(RosterArea, int, UnitSelection) onDrop;
-  final void Function(RosterArea, int) onSell;
 
   @override
   Widget build(BuildContext context) {
@@ -334,17 +303,6 @@ class _BenchBar extends StatelessWidget {
         padding: const EdgeInsets.all(AppSpacing.xs),
         child: Row(
           children: [
-            if (selected != null) ...[
-              IconButton(
-                visualDensity: VisualDensity.compact,
-                tooltip: 'ขาย +${unitPrice(selected!.unitId)} ทอง',
-                onPressed: enabled && selection != null
-                    ? () => onSell(selection!.area, selection!.slot)
-                    : null,
-                icon: const Icon(Icons.sell_outlined),
-              ),
-              VerticalDivider(color: scheme.outlineVariant),
-            ],
             Expanded(
               child: ListView.separated(
                 key: const ValueKey('bench-horizontal-list'),

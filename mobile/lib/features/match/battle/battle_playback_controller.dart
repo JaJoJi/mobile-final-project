@@ -49,6 +49,7 @@ Duration combatPlaybackDuration(int eventCount) =>
 
 class BattlePlaybackController extends StateNotifier<BattleVisualState> {
   BattlePlaybackController() : super(BattleVisualState.empty);
+  CombatEventBatch? _originalBatch;
 
   /// Load a fresh batch from the server. Resets the playhead to 0.
   ///
@@ -64,6 +65,7 @@ class BattlePlaybackController extends StateNotifier<BattleVisualState> {
   /// kill looked like a still-alive unit attacking a target the board
   /// was already showing as dead.
   void loadBatch(CombatEventBatch batch) {
+    _originalBatch = batch;
     final effective = batch.events
         .where(
           (e) =>
@@ -77,6 +79,7 @@ class BattlePlaybackController extends StateNotifier<BattleVisualState> {
         cycleCount: batch.cycleCount,
         endedAt: batch.endedAt,
         events: effective,
+        initialBoard: batch.initialBoard,
       ),
       playheadIndex: 0,
       playheadProgress: 0.0,
@@ -101,9 +104,10 @@ class BattlePlaybackController extends StateNotifier<BattleVisualState> {
 
   /// Fast-forward straight to the end (the skip button calls this).
   void finish() {
-    final batch = state.batch;
+    final batch = _originalBatch ?? state.batch;
     if (batch == null) return;
-    state = state.copyWith(
+    state = BattleVisualState(
+      batch: batch,
       playheadIndex: batch.events.isEmpty ? 0 : batch.events.length - 1,
       playheadProgress: 1.0,
     );

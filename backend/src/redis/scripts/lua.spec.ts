@@ -42,6 +42,22 @@ describe('phase_flip.lua — atomic CAS phase transition (R6/R10)', () => {
     await redis.eval(src, 1, rt, 'battle', 'resolved', 'inst-7');
     expect(await redis.hget(rt, 'combatLockInstance')).toBeNull();
   });
+
+  it('can update the round atomically with the phase transition', async () => {
+    await redis.hset(rt, 'round', '1');
+    const ret = await redis.eval(
+      src,
+      1,
+      rt,
+      'shop_place',
+      'resolved',
+      'inst-7',
+      '1',
+      '2',
+    );
+    expect(ret).toBe(1);
+    expect(await redis.hmget(rt, 'phase', 'round')).toEqual(['resolved', '2']);
+  });
 });
 
 describe('combat_done.lua — idempotent per-player ack (R12)', () => {

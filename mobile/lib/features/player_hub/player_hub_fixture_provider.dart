@@ -21,7 +21,7 @@ abstract final class PlayerHubFixtures {
   static const _host = RoomPlayer(
     username: 'JaJoJi',
     crestLabel: 'JJ',
-    roleLabel: 'คุณ · เจ้าของห้อง',
+    roleLabel: 'เจ้าของห้อง',
   );
 
   static const _guest = RoomPlayer(
@@ -35,6 +35,7 @@ abstract final class PlayerHubFixtures {
     host: _host,
     guest: null,
     status: RoomFixtureStatus.waiting,
+    isHost: true,
   );
 
   static const joined = RoomViewState(
@@ -42,6 +43,7 @@ abstract final class PlayerHubFixtures {
     host: _host,
     guest: _guest,
     status: RoomFixtureStatus.joined,
+    isHost: true,
   );
 
   static const reconnecting = RoomViewState(
@@ -49,6 +51,7 @@ abstract final class PlayerHubFixtures {
     host: _host,
     guest: _guest,
     status: RoomFixtureStatus.reconnecting,
+    isHost: true,
   );
 }
 

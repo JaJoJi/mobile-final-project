@@ -7,6 +7,8 @@ jest.mock('../matchmaking/matchmaking.service', () => ({
 }));
 import { RoomController } from './room.controller';
 
+const users = { findById: jest.fn(async (id: string) => ({ username: `name-${id}` })) };
+
 describe('RoomController (#255)', () => {
   it('delegates creation to RoomService with the caller id', async () => {
     const rooms = {
@@ -20,11 +22,12 @@ describe('RoomController (#255)', () => {
       })),
       getMyRoom: jest.fn(),
     };
-    const controller = new RoomController(rooms as any);
+    const controller = new RoomController(rooms as any, users as any);
     const body = await controller.create({ sub: 'owner-1', type: 'access' });
     expect(rooms.createRoom).toHaveBeenCalledWith('owner-1');
     expect(body).toMatchObject({ ownerId: 'owner-1', guestId: null, status: 'waiting' });
     expect(body.code).toMatch(/^[A-Z2-9]{6}$/);
+    expect(body.ownerUsername).toBe('name-owner-1');
   });
 
   it('delegates mine lookup to RoomService', async () => {
@@ -34,7 +37,7 @@ describe('RoomController (#255)', () => {
       leaveRoom: jest.fn(),
       getMyRoom: jest.fn(async (userId: string) => ({ roomId: 'r', ownerId: userId })),
     };
-    const controller = new RoomController(rooms as any);
+    const controller = new RoomController(rooms as any, users as any);
     await controller.mine({ sub: 'owner-1', type: 'access' });
     expect(rooms.getMyRoom).toHaveBeenCalledWith('owner-1');
   });
@@ -45,13 +48,16 @@ describe('RoomController (#255)', () => {
       getMyRoom: jest.fn(),
       joinRoom: jest.fn(async () => ({ status: 'full' })),
       leaveRoom: jest.fn(async () => ({ room: null, closed: true })),
+      startRoomForOwner: jest.fn(async () => ({ status: 'matched' })),
     };
-    const controller = new RoomController(rooms as any);
+    const controller = new RoomController(rooms as any, users as any);
     await controller.join({ sub: 'guest-1', type: 'access' }, { code: 'ABC234' } as any);
     expect(rooms.joinRoom).toHaveBeenCalledWith('guest-1', 'ABC234');
     await expect(
       controller.leave({ sub: 'guest-1', type: 'access' }),
     ).resolves.toEqual({ room: null, closed: true });
+    await controller.start({ sub: 'owner-1', type: 'access' });
+    expect(rooms.startRoomForOwner).toHaveBeenCalledWith('owner-1');
   });
 
   it('requires a JWT (missing header → 401 via the shared guard)', () => {

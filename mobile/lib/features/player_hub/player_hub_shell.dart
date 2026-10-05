@@ -8,17 +8,21 @@ class PlayerHubShell extends StatelessWidget {
   const PlayerHubShell({
     super.key,
     required this.title,
-    required this.subtitle,
     required this.body,
     required this.navigation,
+    this.subtitle,
     this.badge,
     this.headerAction,
+    this.headerLeading,
+    this.lighter = false,
   });
 
   final String title;
-  final String subtitle;
+  final String? subtitle;
   final String? badge;
   final Widget? headerAction;
+  final Widget? headerLeading;
+  final bool lighter;
   final Widget body;
   final Widget navigation;
 
@@ -28,6 +32,7 @@ class PlayerHubShell extends StatelessWidget {
         child: Scaffold(
           backgroundColor: Colors.transparent,
           body: FantasyBackdrop(
+            lighter: lighter,
             child: SafeArea(
               child: Column(
                 children: [
@@ -36,6 +41,7 @@ class PlayerHubShell extends StatelessWidget {
                     subtitle: subtitle,
                     badge: badge,
                     action: headerAction,
+                    leading: headerLeading,
                   ),
                   Expanded(child: body),
                   navigation,
@@ -53,12 +59,14 @@ class _PlayerHubHeader extends StatelessWidget {
     required this.subtitle,
     required this.badge,
     required this.action,
+    required this.leading,
   });
 
   final String title;
-  final String subtitle;
+  final String? subtitle;
   final String? badge;
   final Widget? action;
+  final Widget? leading;
 
   @override
   Widget build(BuildContext context) => Container(
@@ -77,20 +85,27 @@ class _PlayerHubHeader extends StatelessWidget {
           maxScaleFactor: 1.25,
           child: Row(
             children: [
+              if (leading != null) ...[
+                leading!,
+                const SizedBox(width: AppSpacing.sm),
+              ],
               Expanded(
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(title, style: Theme.of(context).textTheme.titleLarge),
-                    const SizedBox(height: AppSpacing.xxs),
-                    Text(
-                      subtitle,
-                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                            color:
-                                Theme.of(context).colorScheme.onSurfaceVariant,
-                          ),
-                    ),
+                    if (subtitle != null && subtitle!.isNotEmpty) ...[
+                      const SizedBox(height: AppSpacing.xxs),
+                      Text(
+                        subtitle!,
+                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                              color: Theme.of(context)
+                                  .colorScheme
+                                  .onSurfaceVariant,
+                            ),
+                      ),
+                    ],
                   ],
                 ),
               ),
@@ -102,14 +117,23 @@ class _PlayerHubHeader extends StatelessWidget {
                 const SizedBox(width: AppSpacing.sm),
                 Container(
                   padding: const EdgeInsets.symmetric(
-                    horizontal: AppSpacing.sm,
+                    horizontal: AppSpacing.md,
                     vertical: AppSpacing.xs,
                   ),
-                  decoration: BoxDecoration(
-                    border: Border.all(color: const Color(0x80F2C14E)),
-                    borderRadius: AppRadius.allSm,
+                  decoration: const BoxDecoration(
+                    gradient: LinearGradient(
+                      colors: [Color(0xFF1C4A63), Color(0xFF514426)],
+                    ),
+                    borderRadius: AppRadius.allFull,
                   ),
-                  child: Text(badge!),
+                  child: Text(
+                    badge!,
+                    style: Theme.of(context).textTheme.labelLarge?.copyWith(
+                          color: const Color(0xFFFFF1C4),
+                          fontWeight: FontWeight.w900,
+                          letterSpacing: .6,
+                        ),
+                  ),
                 ),
               ],
             ],

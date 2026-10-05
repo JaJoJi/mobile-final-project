@@ -10,5 +10,6 @@ export 'app_text_field.dart';
 export 'app_toast.dart';
 export 'health_bar.dart';
 export 'phase_timer_ring.dart';
+export 'premium_shop_card_frame.dart';
 export 'state_views.dart';
 export 'unit_avatar.dart';
