@@ -56,7 +56,8 @@ abstract final class PlayerHubFixtures {
   );
 }
 
-final leaderboardSourceProvider = FutureProvider<LeaderboardViewData>((ref) async {
+final leaderboardSourceProvider =
+    FutureProvider<LeaderboardViewData>((ref) async {
   final value = LeaderboardViewData.fromJson(
     await ref.read(apiClientProvider).getLeaderboard(),
   );

@@ -27,7 +27,8 @@ class PlayerHubFreshness
     Duration ttl = playerHubCacheTtl,
   }) {
     final fetchedAt = state[resource];
-    return fetchedAt == null || (now ?? DateTime.now()).difference(fetchedAt) >= ttl;
+    return fetchedAt == null ||
+        (now ?? DateTime.now()).difference(fetchedAt) >= ttl;
   }
 
   void markStale(Iterable<PlayerHubResource> resources) {
