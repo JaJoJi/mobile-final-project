@@ -7,8 +7,10 @@ import 'core/auth/auth_gate.dart';
 import 'core/error_logger.dart';
 import 'core/router.dart';
 import 'core/theme/app_theme.dart';
+import 'core/ws/ws_client.dart';
 import 'core/ws/ws_providers.dart';
 import 'features/lobby/matchmaking_navigation_coordinator.dart';
+import 'features/player_hub/player_hub_refresh_controller.dart';
 import 'features/profile/settings_provider.dart';
 
 /// App entry.
@@ -52,25 +54,51 @@ class AutoChessApp extends ConsumerStatefulWidget {
   ConsumerState<AutoChessApp> createState() => _AutoChessAppState();
 }
 
-class _AutoChessAppState extends ConsumerState<AutoChessApp> {
+class _AutoChessAppState extends ConsumerState<AutoChessApp>
+    with WidgetsBindingObserver {
   final _router = buildRouter();
   bool? _lastSignedIn;
+  WsConnectionState? _lastConnectionState;
+  ProviderSubscription<AsyncValue<WsConnectionState>>? _connectionSubscription;
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     // React to every subsequent auth flip (login, register, logout,
     // expired refresh). Cleaned up in `dispose` so the listener
     // doesn't outlive the widget tree on hot restart.
     AuthGate.instance.addListener(_onAuthChanged);
+    _connectionSubscription = ref.listenManual(
+      wsConnectionStateProvider,
+      (_, next) {
+        final current = next.valueOrNull;
+        if (current == WsConnectionState.connected &&
+            _lastConnectionState != null &&
+            _lastConnectionState != WsConnectionState.connected) {
+          ref.read(playerHubRefreshControllerProvider).refreshStaleAll();
+        }
+        if (current != null) _lastConnectionState = current;
+      },
+    );
     // Pick up the splash screen's resolution when this widget mounts —
     // addListener fires for the initial assignment too.
   }
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _connectionSubscription?.close();
     AuthGate.instance.removeListener(_onAuthChanged);
     super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed &&
+        AuthGate.instance.isSignedIn == true) {
+      ref.read(playerHubRefreshControllerProvider).refreshStaleAll();
+    }
   }
 
   @override
@@ -78,7 +106,7 @@ class _AutoChessAppState extends ConsumerState<AutoChessApp> {
     final settings = ref.watch(settingsProvider);
     ref.read(gameAudioProvider).enabled = settings.soundEnabled;
     return MaterialApp.router(
-      title: 'ออโต้เชส',
+      title: 'Rival Arena',
       debugShowCheckedModeBanner: false,
       theme: buildTheme(Brightness.light),
       darkTheme: buildTheme(Brightness.dark),
@@ -105,9 +133,15 @@ class _AutoChessAppState extends ConsumerState<AutoChessApp> {
 
     final client = ref.read(wsClientProvider);
     if (signedIn) {
+      // A different account may sign in after logout. Clear every cached
+      // response before the authenticated shell is mounted.
+      ref.read(playerHubRefreshControllerProvider).prepareForSignIn();
       client.connect();
     } else {
       client.disconnect();
+      // Do not invalidate retained providers until sign-in: the authenticated
+      // shell is still mounted during this callback and would refetch them.
+      ref.read(playerHubRefreshControllerProvider).clearFreshnessForSignOut();
     }
   }
 }

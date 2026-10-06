@@ -158,13 +158,38 @@ describe('LeaderboardService (#256)', () => {
     const { pg, client, service } = makeService();
     const first = await service.getLeaderboard('u4', 20, 0);
     expect(client.sets).toEqual([
-      { key: leaderboardCacheKey('0', 20, 0), ttl: LEADERBOARD_CACHE_TTL_SECONDS },
+      {
+        key: leaderboardCacheKey('0', 'u4', 20, 0),
+        ttl: LEADERBOARD_CACHE_TTL_SECONDS,
+      },
     ]);
     expect(LEADERBOARD_CACHE_TTL_SECONDS).toBe(30);
 
     pg.queries.length = 0;
     await expect(service.getLeaderboard('u4', 20, 0)).resolves.toEqual(first);
     expect(pg.queries).toHaveLength(0);
+  });
+
+  it('never shares the cached me row between different callers', async () => {
+    const { client, service } = makeService();
+
+    const player1 = await service.getLeaderboard('u1', 20, 0);
+    const player2 = await service.getLeaderboard('u2', 20, 0);
+
+    expect(player1.me).toEqual({
+      rank: 1,
+      username: 'MoonKnight',
+      rating: 2000,
+    });
+    expect(player2.me).toEqual({
+      rank: 1,
+      username: 'BlueRanger',
+      rating: 2000,
+    });
+    expect(client.sets.map(({ key }) => key)).toEqual([
+      leaderboardCacheKey('0', 'u1', 20, 0),
+      leaderboardCacheKey('0', 'u2', 20, 0),
+    ]);
   });
 
   it('version bump retires old keys without DEL', async () => {
@@ -174,7 +199,9 @@ describe('LeaderboardService (#256)', () => {
     pg.queries.length = 0;
     await service.getLeaderboard('u4', 20, 0);
     expect(pg.queries.length).toBeGreaterThan(0);
-    expect(client.sets.at(-1)?.key).toBe(leaderboardCacheKey('1', 20, 0));
+    expect(client.sets.at(-1)?.key).toBe(
+      leaderboardCacheKey('1', 'u4', 20, 0),
+    );
   });
 
   it('fails open to PG on Redis GET/SET/version failures', async () => {

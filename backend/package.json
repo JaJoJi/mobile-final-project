@@ -1,7 +1,7 @@
 {
   "name": "auto-chess-backend",
   "version": "0.1.0",
-  "description": "Backend for the Auto Chess mobile game โ€” NestJS + TypeORM + ioredis + BullMQ",
+  "description": "Backend for the Rival Arena mobile game — NestJS + TypeORM + ioredis + BullMQ",
   "private": true,
   "scripts": {
     "build": "tsc -p tsconfig.build.json && npm run build:assets",
@@ -21,6 +21,8 @@
     "migration:generate": "npm run typeorm -- migration:generate -d src/data-source.ts",
     "migration:run": "npm run typeorm -- migration:run -d src/data-source.ts",
     "migration:revert": "npm run typeorm -- migration:revert -d src/data-source.ts",
+    "retention:matches": "ts-node src/match/match-retention.cli.ts",
+    "retention:queues": "node dist/queue/queue-retention.cli.js",
     "lint": "tsc -p tsconfig.json --noEmit",
     "lint:eslint": "eslint src",
     "test": "jest",

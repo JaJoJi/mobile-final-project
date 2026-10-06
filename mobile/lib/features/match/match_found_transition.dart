@@ -4,6 +4,57 @@ import 'package:flutter/material.dart';
 
 import '../../core/theme/app_spacing.dart';
 
+@immutable
+class ProfileClashMotion {
+  const ProfileClashMotion({
+    required this.collision,
+    required this.reveal,
+    required this.flash,
+    required this.shake,
+  });
+
+  final double collision;
+  final double reveal;
+  final double flash;
+  final double shake;
+}
+
+/// Shared timing for the profile collision used when a match is found and
+/// when its result is revealed.
+ProfileClashMotion profileClashMotion(double progress) {
+  final reveal = const Cubic(.2, .8, .3, 1.15).transform(
+    ((progress - .38) / .16).clamp(0.0, 1.0),
+  );
+  final flash = math.sin(
+    ((progress - .25) / .10).clamp(0.0, 1.0) * math.pi,
+  );
+  final impact = ((progress - .25) / .12).clamp(0.0, 1.0);
+  final shake = math.sin(impact * math.pi * 2) * 2.5 * math.pow(1 - impact, 2);
+  return ProfileClashMotion(
+    collision: progress,
+    reveal: reveal,
+    flash: flash,
+    shake: shake,
+  );
+}
+
+double profileClashDistance({
+  required double progress,
+  required double width,
+}) {
+  final resting = width / 4 + 22;
+  if (progress < .25) {
+    final t = Curves.easeInOutCubic.transform(
+      ((progress - .10) / .15).clamp(0.0, 1.0),
+    );
+    return (width / 2 + 45) * (1 - t) + 41 * t;
+  }
+  final t = const Cubic(.16, .8, .3, 1.1).transform(
+    ((progress - .25) / .16).clamp(0.0, 1.0),
+  );
+  return 41 + (resting - 41) * t;
+}
+
 /// A non-dismissible encounter popup shared by quick match and private rooms.
 /// The current page remains visible behind it while both fighters clash.
 class MatchFoundTransition extends StatefulWidget {
@@ -73,26 +124,19 @@ class _MatchFoundTransitionState extends State<MatchFoundTransition>
                         final popup = Curves.easeOutCubic.transform(
                           (_controller.value / .10).clamp(0.0, 1.0),
                         );
-                        final collision = _controller.value;
-                        final reveal = const Cubic(.2, .8, .3, 1.15).transform(
-                          ((_controller.value - .38) / .16).clamp(0.0, 1.0),
-                        );
-                        final flash = math.sin(
-                          ((_controller.value - .25) / .10).clamp(0.0, 1.0) *
-                              math.pi,
-                        );
-                        final impact =
-                            ((_controller.value - .25) / .12).clamp(0.0, 1.0);
-                        final shake = math.sin(impact * math.pi * 2) *
-                            2.5 *
-                            math.pow(1 - impact, 2);
+                        final motion = profileClashMotion(_controller.value);
                         return Transform(
                           alignment: Alignment.center,
                           transform: Matrix4.identity()
-                            ..translateByDouble(shake, -flash * 2, 0, 1)
+                            ..translateByDouble(
+                              motion.shake,
+                              -motion.flash * 2,
+                              0,
+                              1,
+                            )
                             ..scaleByDouble(
-                              .94 + popup * .06 + flash * .012,
-                              .94 + popup * .06 + flash * .012,
+                              .94 + popup * .06 + motion.flash * .012,
+                              .94 + popup * .06 + motion.flash * .012,
                               1,
                               1,
                             ),
@@ -102,9 +146,9 @@ class _MatchFoundTransitionState extends State<MatchFoundTransition>
                               title: widget.title,
                               leftName: widget.leftName,
                               rightName: widget.rightName,
-                              collision: collision,
-                              reveal: reveal,
-                              flash: flash,
+                              collision: motion.collision,
+                              reveal: motion.reveal,
+                              flash: motion.flash,
                             ),
                           ),
                         );
@@ -230,19 +274,10 @@ class _EncounterCard extends StatelessWidget {
                         child: LayoutBuilder(
                           builder: (context, constraints) {
                             final width = constraints.maxWidth;
-                            final resting = width / 4 + 22;
-                            final double distance;
-                            if (collision < .25) {
-                              final t = Curves.easeInOutCubic.transform(
-                                ((collision - .10) / .15).clamp(0.0, 1.0),
-                              );
-                              distance = (width / 2 + 45) * (1 - t) + 41 * t;
-                            } else {
-                              final t = const Cubic(.16, .8, .3, 1.1).transform(
-                                ((collision - .25) / .16).clamp(0.0, 1.0),
-                              );
-                              distance = 41 + (resting - 41) * t;
-                            }
+                            final distance = profileClashDistance(
+                              progress: collision,
+                              width: width,
+                            );
                             return Stack(
                               alignment: Alignment.center,
                               clipBehavior: Clip.none,

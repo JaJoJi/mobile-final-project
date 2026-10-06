@@ -1,0 +1,83 @@
+groups:
+  - name: auto-chess-storage-and-queues
+    rules:
+      - alert: HostDiskSpaceLow
+        expr: node_filesystem_avail_bytes{mountpoint="/"} / node_filesystem_size_bytes{mountpoint="/"} < 0.15
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: Host disk has less than 15% free space
+          description: Check Docker volume growth and follow the storage runbook before cleanup.
+
+      - alert: HostDiskSpaceCritical
+        expr: node_filesystem_avail_bytes{mountpoint="/"} / node_filesystem_size_bytes{mountpoint="/"} < 0.08
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: Host disk has less than 8% free space
+          description: Escalate to the on-call DevOps owner and free or expand disk capacity.
+
+      - alert: MatchTablesGrowingQuickly
+        expr: sum(delta(app_table_size_bytes[7d])) > 536870912
+        for: 30m
+        labels:
+          severity: warning
+        annotations:
+          summary: Match tables grew by more than 512 MiB in seven days
+          description: Review match retention reports and the largest table/index sizes.
+
+      - alert: MatchTablesGrowthCritical
+        expr: sum(delta(app_table_size_bytes[7d])) > 1073741824
+        for: 15m
+        labels:
+          severity: critical
+        annotations:
+          summary: Match tables grew by more than 1 GiB in seven days
+          description: Check retention job failures and available Postgres disk space.
+
+      - alert: RedisMemoryHigh
+        expr: app_redis_used_memory_bytes > 402653184
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: Redis is using more than 384 MiB
+          description: Inspect Redis memory, match namespaces, and expired-key cleanup.
+
+      - alert: RedisMemoryCritical
+        expr: app_redis_used_memory_bytes > 536870912
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: Redis is using more than 512 MiB
+          description: Escalate to the DevOps owner and identify the largest key namespaces.
+
+      - alert: BullMQBacklogGrowing
+        expr: sum by (queue) (app_bullmq_jobs{state="waiting"}) > 100
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: BullMQ queue has more than 100 waiting jobs
+          description: Inspect worker health, queue counts, and the oldest waiting job.
+
+      - alert: BullMQJobsStale
+        expr: app_bullmq_oldest_waiting_age_seconds > 300
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: A BullMQ job has waited more than five minutes
+          description: Inspect the named queue's workers and recent errors.
+
+      - alert: MatchRetentionFailing
+        expr: app_bullmq_jobs{queue="match-cleanup",state="failed"} > 0
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: Match retention jobs have failed
+          description: Inspect Nest logs and the BullMQ failed-job payload before retrying.

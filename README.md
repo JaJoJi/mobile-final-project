@@ -1,4 +1,4 @@
-# Auto Chess Mobile — University Project
+# Rival Arena — University Project
 
 CI/CD: **Jenkins** on Azure (`Jenkinsfile`, [infra/README.md](infra/README.md)) — the only CI; there are no GitHub Actions workflows. Every DevOps script and where to read about it: [§14](#14-devops-what-every-script-does-and-where-to-read).
 

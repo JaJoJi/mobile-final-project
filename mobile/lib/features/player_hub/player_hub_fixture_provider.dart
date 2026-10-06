@@ -1,6 +1,7 @@
 import 'package:auto_chess_mobile/features/player_hub/player_hub_models.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/api/api_client.dart';
+import 'player_hub_cache_state.dart';
 
 /// Fixture data retained for isolated widget tests.
 abstract final class PlayerHubFixtures {
@@ -56,11 +57,15 @@ abstract final class PlayerHubFixtures {
 }
 
 final leaderboardSourceProvider =
-    FutureProvider.autoDispose<LeaderboardViewData>(
-  (ref) async => LeaderboardViewData.fromJson(
+    FutureProvider<LeaderboardViewData>((ref) async {
+  final value = LeaderboardViewData.fromJson(
     await ref.read(apiClientProvider).getLeaderboard(),
-  ),
-);
+  );
+  ref
+      .read(playerHubFreshnessProvider.notifier)
+      .markFresh(PlayerHubResource.leaderboard);
+  return value;
+});
 
 final roomFixtureProvider =
     Provider<RoomViewState>((ref) => PlayerHubFixtures.hostWaiting);

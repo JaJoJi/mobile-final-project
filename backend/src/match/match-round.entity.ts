@@ -29,8 +29,8 @@ export class MatchRound {
   roundNumber!: number;
 
   /** Full ordered `CombatEvent[]` for this round (see `docs/04-api-contracts.md §2.1`). */
-  @Column({ type: 'jsonb' })
-  events!: Record<string, unknown>[];
+  @Column({ type: 'jsonb', nullable: true })
+  events!: Record<string, unknown>[] | null;
 
   @CreateDateColumn({ type: 'timestamptz', default: () => 'now()' })
   createdAt!: Date;

@@ -37,6 +37,24 @@ class FinalPlayerState {
       );
 }
 
+class RatingChange {
+  const RatingChange({
+    required this.before,
+    required this.after,
+    required this.delta,
+  });
+
+  final int before;
+  final int after;
+  final int delta;
+
+  factory RatingChange.fromJson(Map<String, dynamic> j) => RatingChange(
+        before: (j['before'] as num?)?.toInt() ?? 0,
+        after: (j['after'] as num?)?.toInt() ?? 0,
+        delta: (j['delta'] as num?)?.toInt() ?? 0,
+      );
+}
+
 class MatchEndEvent {
   const MatchEndEvent({
     required this.matchId,
@@ -44,6 +62,8 @@ class MatchEndEvent {
     required this.reason,
     required this.finalP1,
     required this.finalP2,
+    this.ratingP1,
+    this.ratingP2,
   });
 
   final String matchId;
@@ -53,6 +73,8 @@ class MatchEndEvent {
   final MatchEndReason reason;
   final FinalPlayerState finalP1;
   final FinalPlayerState finalP2;
+  final RatingChange? ratingP1;
+  final RatingChange? ratingP2;
 
   bool get isDraw => winnerId == null;
 
@@ -63,12 +85,22 @@ class MatchEndEvent {
     final fin = (j['final'] as Map?)?.cast<String, dynamic>() ?? const {};
     Map<String, dynamic> side(String k) =>
         (fin[k] as Map?)?.cast<String, dynamic>() ?? const {};
+    final rating = (j['rating'] as Map?)?.cast<String, dynamic>();
+    RatingChange? ratingSide(String k) {
+      final value = rating?[k];
+      return value is Map
+          ? RatingChange.fromJson(value.cast<String, dynamic>())
+          : null;
+    }
+
     return MatchEndEvent(
       matchId: j['matchId'] as String? ?? '',
       winnerId: j['winnerId'] as String?,
       reason: MatchEndReason.fromJson(j['reason'] as String?),
       finalP1: FinalPlayerState.fromJson(side('p1')),
       finalP2: FinalPlayerState.fromJson(side('p2')),
+      ratingP1: ratingSide('p1'),
+      ratingP2: ratingSide('p2'),
     );
   }
 

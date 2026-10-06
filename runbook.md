@@ -166,5 +166,52 @@ flutter build apk --release --dart-define=API_BASE_URL=http://<vm-ip> --dart-def
 # -> build/app/outputs/flutter-apk/app-release.apk
 ```
 
+## 12. Match cleanup, retention and growth alerts (#388, #389, #390, #391)
+
+Retention defaults are configured in `/etc/auto-chess/app.env`:
+
+| Setting | Default | Effect |
+|---|---:|---|
+| `MATCH_EVENT_RETENTION_DAYS` | 90 | Clears detailed combat events from finished rounds after this many days, keeping round rows and match summaries. |
+| `MATCH_HISTORY_RETENTION_DAYS` | 365 | Deletes finished/forfeited match summaries and their round rows after this many days. Must be at least the event retention period. |
+| `MATCH_RETENTION_BATCH_SIZE` | 500 | Maximum rows updated/deleted by each database statement. |
+
+Terminal matches now queue a one-shot Redis cleanup 30 seconds after the match row is saved. The worker confirms the row is terminal on the PostgreSQL primary, then removes only `match:<matchId>:*` runtime, shop, combat and action keys with Redis `SCAN` and `UNLINK`. It retries Redis failures up to five times. Room handoff already removes its code, membership and handoff keys when creating the match; its room hash remains for a five-minute retry tombstone. Existing Redis TTLs remain the fallback if enqueue or all retries fail. Inspect failed `match-cleanup` jobs and `match:<matchId>:*` keys if Redis memory remains high after games finish.
+
+All BullMQ queues now remove completed jobs and keep at most 100 failed jobs for diagnosis. To clear previously retained jobs, build the backend and preview counts first:
+
+```bash
+$C exec nest-1 node dist/queue/queue-retention.cli.js
+$C exec nest-1 node dist/queue/queue-retention.cli.js --apply
+```
+
+Each apply run removes at most 1,000 completed jobs older than one hour and 1,000 failed jobs older than seven days per queue. Run it again while old counts remain. It leaves waiting, active, delayed and repeat schedules intact. The Grafana BullMQ panel and `app_bullmq_jobs` metrics show retained completed and failed counts by queue.
+
+The retention worker runs daily. Preview eligible rows and estimated event bytes before deletion:
+
+```bash
+$C exec nest-1 node dist/match/match-retention.cli.js
+```
+
+The command is dry-run by default. To apply the current policy immediately:
+
+```bash
+$C exec nest-1 node dist/match/match-retention.cli.js --apply
+```
+
+Review the JSON report in Nest logs for `eventRowsEligible`, `eventBytesEligible`, `matchesEligible`, `eventsCleared`, and `matchesDeleted`. Event cleanup nulls JSONB payloads but preserves round counts; match cleanup cascades to round rows. PostgreSQL reuses freed space internally; `VACUUM` reclaims it for reuse, while `VACUUM FULL` needs extra disk and an exclusive lock and should be scheduled separately. Daily Postgres backups retain the existing seven-day recovery window; restoring older detailed events requires a backup from before the retention run.
+
+The Grafana dashboard **Auto Chess - Retention & Growth** shows database/table size history, Redis memory and namespace key counts, BullMQ state counts, and oldest waiting job age. Prometheus evaluates the thresholds in `infra/uni-vm/monitoring/alerts.yml`; alert states and firing details are visible at the Prometheus Alerts page and in Grafana's provisioned Prometheus data source.
+
+| Alert | Threshold | Response |
+|---|---|---|
+| `HostDiskSpaceLow` / `HostDiskSpaceCritical` | Free host disk below 15% / 8% | `fiat222` (DevOps): check `docker system df`, database growth, and backup volume usage; expand disk or remove only reviewed artifacts. |
+| `MatchTablesGrowingQuickly` / `MatchTablesGrowthCritical` | Match tables grow over 512 MiB / 1 GiB in 7 days | `fiat222` (DevOps): check the Grafana table trend and retention job logs. Run the dry-run report; confirm the retention settings are applied. |
+| `RedisMemoryHigh` / `RedisMemoryCritical` | Redis exceeds 384 MiB / 512 MiB | `fiat222` (DevOps): inspect `app_redis_keys` by namespace in Grafana. Check stale match/room keys and cleanup failures before changing Redis memory limits. |
+| `BullMQBacklogGrowing` / `BullMQJobsStale` | More than 100 waiting jobs / oldest waiting over 5 minutes | `fiat222` (DevOps): check worker logs and oldest waiting age for the queue; restore worker health and retry only after identifying the failure. |
+| `MatchRetentionFailing` | One or more failed jobs on the `match-cleanup` queue | `fiat222` (DevOps): inspect the failed job name and Nest logs. Retry one-shot cleanup after fixing Redis or PostgreSQL; for the daily retention job, run the dry-run report first. |
+
+The metrics endpoint is scraped by Prometheus over the private Compose network. Nginx returns 404 for public `/metrics` requests.
+
 Not verified end to end yet: first `main` build with the stage (Gradle
 download, ~10 min, cached in `/var/lib/jenkins/ci-cache/gradle` afterwards).

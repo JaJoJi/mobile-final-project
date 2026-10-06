@@ -52,6 +52,9 @@ x-nest: &nest
     JWT_ACCESS_TTL: ${JWT_ACCESS_TTL:-7d}
     JWT_REFRESH_TTL: ${JWT_REFRESH_TTL:-30d}
     COMBAT_DONE_TIMEOUT_MS: ${COMBAT_DONE_TIMEOUT_MS:-60000}
+    MATCH_EVENT_RETENTION_DAYS: ${MATCH_EVENT_RETENTION_DAYS:-90}
+    MATCH_HISTORY_RETENTION_DAYS: ${MATCH_HISTORY_RETENTION_DAYS:-365}
+    MATCH_RETENTION_BATCH_SIZE: ${MATCH_RETENTION_BATCH_SIZE:-500}
     # OTel SDK (backend/src/tracing.ts) -> Tempo
     OTEL_EXPORTER_OTLP_ENDPOINT: http://tempo:4318
     OTEL_SERVICE_NAME: auto-chess-backend
@@ -394,6 +397,7 @@ services:
       - --web.enable-remote-write-receiver
     volumes:
       - ../monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ../monitoring/alerts.yml:/etc/prometheus/alerts.yml:ro
       - prometheus_data:/prometheus
     mem_limit: 384m
 

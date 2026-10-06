@@ -172,6 +172,7 @@ async function run(): Promise<void> {
     users as any,
     { invalidateUsers: async () => undefined } as any,
     { bumpVersion: async () => undefined } as any,
+    { scheduleMatchCleanup: async () => undefined } as any,
   );
   const results: Result[] = [];
 

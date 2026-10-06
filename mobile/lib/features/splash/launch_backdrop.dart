@@ -41,7 +41,7 @@ class _LaunchBackdropState extends State<LaunchBackdrop>
     final titleSize = (width * .1).clamp(40.0, 52.0);
     final statusSize = (width * .038).clamp(15.0, 17.0);
     return Semantics(
-      label: 'กำลังโหลดออโต้เชส',
+      label: 'กำลังโหลด Rival Arena',
       liveRegion: true,
       child: ExcludeSemantics(
         child: CustomPaint(
@@ -98,7 +98,7 @@ class _LaunchBackdropState extends State<LaunchBackdrop>
                       ),
                       const SizedBox(height: 8),
                       Text(
-                        'ออโต้เชส',
+                        'Rival Arena',
                         textAlign: TextAlign.center,
                         style: TextStyle(
                           fontFamily: 'LaunchSarabun',

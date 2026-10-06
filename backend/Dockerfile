@@ -25,8 +25,8 @@ FROM base AS runtime
 # Static OCI metadata; revision/created/version are added per build by
 # the Jenkinsfile (`docker build --label ...`) so Docker Hub images trace
 # back to the exact commit.
-LABEL org.opencontainers.image.title="auto-chess-backend" \
-      org.opencontainers.image.description="Auto Chess game backend (NestJS)" \
+LABEL org.opencontainers.image.title="rival-arena-backend" \
+      org.opencontainers.image.description="Rival Arena game backend (NestJS)" \
       org.opencontainers.image.source="https://github.com/JaJoJi/mobile-final-project"
 WORKDIR /app
 ENV NODE_ENV=production

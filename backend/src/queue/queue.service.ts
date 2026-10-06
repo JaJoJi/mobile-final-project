@@ -1,10 +1,11 @@
 import { InjectQueue } from '@nestjs/bullmq';
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { Queue } from 'bullmq';
 import { JOB_NAMES, QUEUE_NAMES } from './queue.constants';
+import { JOB_RETENTION } from './queue.retention';
 
 @Injectable()
-export class QueueService {
+export class QueueService implements OnModuleInit {
   private readonly logger = new Logger(QueueService.name);
 
   constructor(
@@ -15,6 +16,29 @@ export class QueueService {
     @InjectQueue(QUEUE_NAMES.MATCH_CLEANUP) private readonly matchCleanup: Queue,
   ) {}
 
+  async onModuleInit(): Promise<void> {
+    await this.ensureMatchRetentionRepeating();
+  }
+
+  private async ensureMatchRetentionRepeating(intervalMs = 24 * 60 * 60 * 1000) {
+    const existing = await this.matchCleanup.getRepeatableJobs();
+    const already = existing.some(
+      (job) => job.name === JOB_NAMES.MATCH_RETENTION_RUN && Number(job.every) === intervalMs,
+    );
+    if (already) return;
+    await this.matchCleanup.add(
+      JOB_NAMES.MATCH_RETENTION_RUN,
+      {},
+      {
+        repeat: { every: intervalMs },
+        jobId: 'match-retention-daily',
+        attempts: 3,
+        backoff: { type: 'exponential', delay: 60_000 },
+        ...JOB_RETENTION,
+      },
+    );
+  }
+
   /**
    * One-shot delayed timer. Used by the Round Orchestrator to auto-advance
    * the phase after N ms (e.g. 40 s shop → battle).
@@ -23,7 +47,7 @@ export class QueueService {
     return this.phaseTimer.add(
       JOB_NAMES.PHASE_START,
       { matchId, round },
-      { delay: delayMs, jobId: `phase-${matchId}-${round}` },
+      { delay: delayMs, jobId: `phase-${matchId}-${round}`, ...JOB_RETENTION },
     );
   }
 
@@ -35,7 +59,7 @@ export class QueueService {
     return this.combatDoneTimeout.add(
       JOB_NAMES.COMBAT_DONE_TIMEOUT,
       { matchId, round },
-      { delay: delayMs, jobId: `combat-done-timeout-${matchId}-${round}` },
+      { delay: delayMs, jobId: `combat-done-timeout-${matchId}-${round}`, ...JOB_RETENTION },
     );
   }
 
@@ -44,7 +68,7 @@ export class QueueService {
     return this.combatDoneTimeout.add(
       JOB_NAMES.ROUND_READY_TIMEOUT,
       { matchId, round },
-      { delay: delayMs, jobId: `round-ready-timeout-${matchId}-${round}` },
+      { delay: delayMs, jobId: `round-ready-timeout-${matchId}-${round}`, ...JOB_RETENTION },
     );
   }
 
@@ -56,7 +80,7 @@ export class QueueService {
     return this.disconnectDetect.add(
       JOB_NAMES.DISCONNECT_DETECT,
       { matchId, userId },
-      { delay: delayMs, jobId: `disconnect-${matchId}-${userId}` },
+      { delay: delayMs, jobId: `disconnect-${matchId}-${userId}`, ...JOB_RETENTION },
     );
   }
 
@@ -79,8 +103,7 @@ export class QueueService {
         jobId: `match-pair-every-${intervalMs}`,
         // This job runs forever; retaining every successful one-second tick
         // would grow the completed set without bound.
-        removeOnComplete: true,
-        removeOnFail: 100,
+        ...JOB_RETENTION,
       },
     );
     return this.matchPair.getRepeatableJobs();
@@ -88,13 +111,19 @@ export class QueueService {
 
   /**
    * One-shot job scheduled at a specific epoch (ms). Used for match-end
-   * cleanup of Redis keys + match row persistence.
+   * cleanup of transient Redis keys after the terminal row is persisted.
    */
   async scheduleMatchCleanup(matchId: string, atEpochMs: number) {
     return this.matchCleanup.add(
       JOB_NAMES.MATCH_CLEANUP,
       { matchId },
-      { delay: Math.max(0, atEpochMs - Date.now()), jobId: `cleanup-${matchId}` },
+      {
+        delay: Math.max(0, atEpochMs - Date.now()),
+        jobId: `cleanup-${matchId}`,
+        attempts: 5,
+        backoff: { type: 'exponential', delay: 1000 },
+        ...JOB_RETENTION,
+      },
     );
   }
 }
