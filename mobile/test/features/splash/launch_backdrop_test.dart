@@ -23,7 +23,7 @@ void main() {
       expect(find.text('กำลังเตรียมสนามรบ…'), findsOneWidget);
       for (final text in [
         'เตรียมเข้าสู่สนาม',
-        'ออโต้เชส',
+        'Rival Arena',
         'กำลังเตรียมสนามรบ…',
       ]) {
         final style = tester.widget<Text>(find.text(text)).style!;

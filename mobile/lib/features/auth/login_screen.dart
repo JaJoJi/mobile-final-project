@@ -59,7 +59,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   @override
   Widget build(BuildContext context) {
     return AuthGameShell(
-      title: 'ออโต้เชส',
+      title: 'Rival Arena',
       subtitle: 'เข้าสู่ระบบเพื่อกลับสู่สนามแข่งขัน',
       child: AutofillGroup(
         child: Form(

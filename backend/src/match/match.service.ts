@@ -21,6 +21,17 @@ import { MatchRepository } from './match.repository';
 
 export type MatchEndReason = 'hp_zero' | 'forfeit' | 'disconnect';
 
+type RatingChange = {
+  before: number;
+  after: number;
+  delta: number;
+};
+
+type MatchRatingChanges = {
+  p1: RatingChange;
+  p2: RatingChange;
+};
+
 const ELO_K_FACTOR = 32;
 const HISTORY_LIMIT = 50;
 const CLEANUP_GRACE_MS = 30_000;
@@ -130,6 +141,7 @@ export class MatchService {
   ): Promise<boolean> {
     let finalized: Match | null = null;
     let alreadyTerminal = false;
+    let ratingChanges: MatchRatingChanges | null = null;
 
     await this.dataSource.transaction(async (manager) => {
       const match = await this.matches.findByIdForUpdate(matchId, manager);
@@ -159,6 +171,20 @@ export class MatchService {
         const p1 = players.find((player) => player.id === match.player1Id)!;
         const p2 = players.find((player) => player.id === match.player2Id)!;
         const p1Delta = this.eloDelta(p1.rating, p2.rating, winnerId === p1.id ? 1 : 0);
+        const p1After = Math.max(0, p1.rating + p1Delta);
+        const p2After = Math.max(0, p2.rating - p1Delta);
+        ratingChanges = {
+          p1: {
+            before: p1.rating,
+            after: p1After,
+            delta: p1After - p1.rating,
+          },
+          p2: {
+            before: p2.rating,
+            after: p2After,
+            delta: p2After - p2.rating,
+          },
+        };
         await this.users.updateRating(p1.id, p1Delta, manager);
         await this.users.updateRating(p2.id, -p1Delta, manager);
       }
@@ -196,6 +222,7 @@ export class MatchService {
         p1: this.finalPlayerState(finalized.p1State),
         p2: this.finalPlayerState(finalized.p2State),
       },
+      rating: ratingChanges,
     });
     this.logger.log(
       `finalized match=${finalized.id} winner=${finalized.winnerId ?? 'draw'} reason=${reason}`,

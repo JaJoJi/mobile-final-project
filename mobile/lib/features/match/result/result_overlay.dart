@@ -13,6 +13,7 @@ import '../../../shared/models/match_phase.dart';
 import '../../../shared/models/match_state.dart';
 import '../../../shared/models/unit.dart';
 import '../board/stone_board_tile.dart';
+import '../match_found_transition.dart';
 
 class RoundResultOverlay extends StatefulWidget {
   const RoundResultOverlay({
@@ -444,6 +445,8 @@ class MatchEndOverlay extends StatelessWidget {
                 Theme.of(context).colorScheme.error,
               );
     final finalState = mySide == MatchSide.p1 ? event.finalP1 : event.finalP2;
+    final ratingChange =
+        mySide == MatchSide.p1 ? event.ratingP1 : event.ratingP2;
     final outcome = event.isDraw
         ? 'draw'
         : didWin == true
@@ -476,114 +479,10 @@ class MatchEndOverlay extends StatelessWidget {
             ],
           ),
           const SizedBox(height: AppSpacing.sm),
-          Stack(
-            clipBehavior: Clip.none,
-            children: [
-              const Positioned(
-                left: -AppSpacing.lg,
-                top: -80,
-                child: SizedBox(
-                  key: ValueKey('result-ally-glow'),
-                  width: 250,
-                  height: 340,
-                  child: DecoratedBox(
-                    decoration: BoxDecoration(
-                      gradient: RadialGradient(
-                        center: Alignment(-0.75, -0.15),
-                        radius: 0.95,
-                        colors: [
-                          Color(0xB359B7E8),
-                          Color(0x70254562),
-                          Color(0x0010283B),
-                        ],
-                        stops: [0, 0.42, 0.82],
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-              const Positioned(
-                right: -AppSpacing.lg,
-                top: -80,
-                child: SizedBox(
-                  key: ValueKey('result-enemy-glow'),
-                  width: 250,
-                  height: 340,
-                  child: DecoratedBox(
-                    decoration: BoxDecoration(
-                      gradient: RadialGradient(
-                        center: Alignment(0.75, -0.15),
-                        radius: 0.95,
-                        colors: [
-                          Color(0xB3FF746D),
-                          Color(0x8046252F),
-                          Color(0x0010283B),
-                        ],
-                        stops: [0, 0.42, 0.82],
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-              Padding(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: AppSpacing.sm,
-                  vertical: AppSpacing.md,
-                ),
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Expanded(
-                      child: _ResultPlayer(name: playerName, mine: true),
-                    ),
-                    Padding(
-                      padding: const EdgeInsets.only(
-                        top: AppSpacing.md,
-                        left: AppSpacing.sm,
-                        right: AppSpacing.sm,
-                      ),
-                      child: Container(
-                        width: AppSpacing.huge,
-                        height: AppSpacing.huge,
-                        alignment: Alignment.center,
-                        decoration: BoxDecoration(
-                          shape: BoxShape.circle,
-                          color: const Color(0xFF111B2A),
-                          border: Border.all(
-                            color: const Color(0xFFF2C14E),
-                            width: 2,
-                          ),
-                          boxShadow: const [
-                            BoxShadow(
-                              color: Color(0x8859B7E8),
-                              blurRadius: AppSpacing.lg,
-                              offset: Offset(-AppSpacing.sm, 0),
-                            ),
-                            BoxShadow(
-                              color: Color(0x88FF746D),
-                              blurRadius: AppSpacing.lg,
-                              offset: Offset(AppSpacing.sm, 0),
-                            ),
-                          ],
-                        ),
-                        child: Text(
-                          'VS',
-                          style:
-                              Theme.of(context).textTheme.titleMedium?.copyWith(
-                                    color: game.gold,
-                                    fontWeight: FontWeight.w900,
-                                    fontStyle: FontStyle.italic,
-                                  ),
-                        ),
-                      ),
-                    ),
-                    Expanded(
-                      child: _ResultPlayer(name: opponentName, mine: false),
-                    ),
-                  ],
-                ),
-              ),
-            ],
+          _AnimatedResultDuel(
+            key: ValueKey('result-duel-${event.matchId}'),
+            playerName: playerName,
+            opponentName: opponentName,
           ),
           const SizedBox(height: AppSpacing.md),
           Row(
@@ -608,17 +507,32 @@ class MatchEndOverlay extends StatelessWidget {
           ),
           const SizedBox(height: AppSpacing.xs),
           Text(
-            '${_reasonText(event.reason, didWin)} · $rounds รอบ',
+            _reasonText(event.reason, didWin),
             textAlign: TextAlign.center,
             style: Theme.of(context).textTheme.bodyMedium,
           ),
+          if (ratingChange != null) ...[
+            const SizedBox(height: AppSpacing.md),
+            _RatingChangeCard(change: ratingChange, outcomeColor: color),
+          ],
           const SizedBox(height: AppSpacing.md),
-          Align(
-            alignment: Alignment.centerLeft,
-            child: Text(
-              'ทีมสุดท้าย',
-              style: Theme.of(context).textTheme.titleMedium,
-            ),
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  'ทีมสุดท้าย',
+                  style: Theme.of(context).textTheme.titleMedium,
+                ),
+              ),
+              Text(
+                'รอบที่ $rounds',
+                key: const ValueKey('match-result-round'),
+                style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                      color: const Color(0xFFFFE5A4),
+                      fontWeight: FontWeight.w800,
+                    ),
+              ),
+            ],
           ),
           const SizedBox(height: AppSpacing.sm),
           _FinalBoard(slots: finalTeam),
@@ -691,14 +605,316 @@ class MatchEndOverlay extends StatelessWidget {
       };
 }
 
+class _AnimatedResultDuel extends StatefulWidget {
+  const _AnimatedResultDuel({
+    super.key,
+    required this.playerName,
+    required this.opponentName,
+  });
+
+  final String playerName;
+  final String opponentName;
+
+  @override
+  State<_AnimatedResultDuel> createState() => _AnimatedResultDuelState();
+}
+
+class _AnimatedResultDuelState extends State<_AnimatedResultDuel>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _controller = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 2000),
+    animationBehavior: AnimationBehavior.preserve,
+  );
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _controller.forward();
+    });
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => SizedBox(
+        key: const ValueKey('match-result-duel-animation'),
+        width: double.infinity,
+        height: 112,
+        child: LayoutBuilder(
+          builder: (context, constraints) => AnimatedBuilder(
+            animation: _controller,
+            builder: (context, _) {
+              final motion = profileClashMotion(_controller.value);
+              final distance = profileClashDistance(
+                progress: motion.collision,
+                width: constraints.maxWidth,
+              );
+              return SizedBox.expand(
+                child: Stack(
+                  clipBehavior: Clip.none,
+                  alignment: Alignment.topCenter,
+                  children: [
+                    const Positioned(
+                      left: -AppSpacing.lg,
+                      top: -80,
+                      child: SizedBox(
+                        key: ValueKey('result-ally-glow'),
+                        width: 250,
+                        height: 340,
+                        child: DecoratedBox(
+                          decoration: BoxDecoration(
+                            gradient: RadialGradient(
+                              center: Alignment(-0.75, -0.15),
+                              radius: 0.95,
+                              colors: [
+                                Color(0xB359B7E8),
+                                Color(0x70254562),
+                                Color(0x0010283B),
+                              ],
+                              stops: [0, 0.42, 0.82],
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                    const Positioned(
+                      right: -AppSpacing.lg,
+                      top: -80,
+                      child: SizedBox(
+                        key: ValueKey('result-enemy-glow'),
+                        width: 250,
+                        height: 340,
+                        child: DecoratedBox(
+                          decoration: BoxDecoration(
+                            gradient: RadialGradient(
+                              center: Alignment(0.75, -0.15),
+                              radius: 0.95,
+                              colors: [
+                                Color(0xB3FF746D),
+                                Color(0x8046252F),
+                                Color(0x0010283B),
+                              ],
+                              stops: [0, 0.42, 0.82],
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                    Transform.translate(
+                      offset: Offset(-(constraints.maxWidth / 4 + 22), 0),
+                      child: _ResultPlayer(
+                        name: widget.playerName,
+                        mine: true,
+                        avatarOffset: constraints.maxWidth / 4 + 22 - distance,
+                      ),
+                    ),
+                    Transform.translate(
+                      offset: Offset(constraints.maxWidth / 4 + 22, 0),
+                      child: _ResultPlayer(
+                        name: widget.opponentName,
+                        mine: false,
+                        avatarOffset:
+                            distance - (constraints.maxWidth / 4 + 22),
+                      ),
+                    ),
+                    if (motion.flash > 0.001)
+                      Positioned(
+                        top: -12,
+                        child: IgnorePointer(
+                          child: Opacity(
+                            opacity: motion.flash * .65,
+                            child: const SizedBox(
+                              width: 96,
+                              height: 96,
+                              child: DecoratedBox(
+                                decoration: BoxDecoration(
+                                  shape: BoxShape.circle,
+                                  gradient: RadialGradient(
+                                    colors: [
+                                      Color(0xE6FFFFFF),
+                                      Color(0x99FFE9A8),
+                                      Color(0x00FFE9A8),
+                                    ],
+                                    stops: [0, 0.18, 1],
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                    Positioned(
+                      top: AppSpacing.md,
+                      child: Transform.scale(
+                        scale: motion.reveal,
+                        child: Opacity(
+                          opacity: motion.reveal.clamp(0.0, 1.0),
+                          child: const _ResultVsEmblem(),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              );
+            },
+          ),
+        ),
+      );
+}
+
+class _ResultVsEmblem extends StatelessWidget {
+  const _ResultVsEmblem();
+
+  @override
+  Widget build(BuildContext context) {
+    final game = Theme.of(context).extension<GameTheme>()!;
+    return Container(
+      key: const ValueKey('match-result-vs'),
+      width: AppSpacing.huge,
+      height: AppSpacing.huge,
+      alignment: Alignment.center,
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        color: const Color(0xFF111B2A),
+        border: Border.all(color: const Color(0xFFF2C14E), width: 2),
+        boxShadow: const [
+          BoxShadow(
+            color: Color(0xDDF2C14E),
+            blurRadius: AppSpacing.xl,
+          ),
+          BoxShadow(
+            color: Color(0x8859B7E8),
+            blurRadius: AppSpacing.xxl,
+            offset: Offset(-AppSpacing.sm, 0),
+          ),
+          BoxShadow(
+            color: Color(0x88FF746D),
+            blurRadius: AppSpacing.xxl,
+            offset: Offset(AppSpacing.sm, 0),
+          ),
+        ],
+      ),
+      child: Text(
+        'VS',
+        style: Theme.of(context).textTheme.titleMedium?.copyWith(
+              color: game.gold,
+              fontWeight: FontWeight.w900,
+              fontStyle: FontStyle.italic,
+            ),
+      ),
+    );
+  }
+}
+
+class _RatingChangeCard extends StatelessWidget {
+  const _RatingChangeCard({
+    required this.change,
+    required this.outcomeColor,
+  });
+
+  final RatingChange change;
+  final Color outcomeColor;
+
+  @override
+  Widget build(BuildContext context) {
+    final deltaText = change.delta > 0 ? '+${change.delta}' : '${change.delta}';
+    final deltaColor = change.delta == 0
+        ? Theme.of(context).colorScheme.onSurfaceVariant
+        : outcomeColor;
+    return Semantics(
+      label:
+          'คะแนนแรงค์จาก ${change.before} เป็น ${change.after} เปลี่ยนแปลง $deltaText',
+      child: Container(
+        key: const ValueKey('match-result-rating-change'),
+        width: double.infinity,
+        padding: const EdgeInsets.symmetric(
+          horizontal: AppSpacing.md,
+          vertical: AppSpacing.sm,
+        ),
+        decoration: BoxDecoration(
+          color: const Color(0xFF0D2333).withValues(alpha: 0.88),
+          borderRadius: AppRadius.allMd,
+          border: Border.all(color: deltaColor.withValues(alpha: 0.68)),
+          boxShadow: [
+            BoxShadow(
+              color: deltaColor.withValues(alpha: 0.15),
+              blurRadius: AppSpacing.md,
+            ),
+          ],
+        ),
+        child: Row(
+          children: [
+            Icon(Icons.emoji_events_rounded, color: deltaColor),
+            const SizedBox(width: AppSpacing.sm),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    'คะแนนแรงค์',
+                    style: Theme.of(context).textTheme.labelLarge?.copyWith(
+                          color: const Color(0xFFB8CEF0),
+                          fontWeight: FontWeight.w700,
+                        ),
+                  ),
+                  Text(
+                    '${_formatRating(change.before)}  →  ${_formatRating(change.after)}',
+                    key: const ValueKey('match-result-rating-range'),
+                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                          color: const Color(0xFFF4F7FF),
+                          fontWeight: FontWeight.w900,
+                        ),
+                  ),
+                ],
+              ),
+            ),
+            Container(
+              key: const ValueKey('match-result-rating-delta'),
+              padding: const EdgeInsets.symmetric(
+                horizontal: AppSpacing.sm,
+                vertical: AppSpacing.xs,
+              ),
+              decoration: BoxDecoration(
+                color: deltaColor.withValues(alpha: 0.14),
+                borderRadius: AppRadius.allSm,
+              ),
+              child: Text(
+                deltaText,
+                style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                      color: deltaColor,
+                      fontWeight: FontWeight.w900,
+                    ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  static String _formatRating(int value) => value.toString().replaceAllMapped(
+        RegExp(r'\B(?=(\d{3})+(?!\d))'),
+        (_) => ',',
+      );
+}
+
 class _ResultPlayer extends StatelessWidget {
   const _ResultPlayer({
     required this.name,
     required this.mine,
+    this.avatarOffset = 0,
   });
 
   final String name;
   final bool mine;
+  final double avatarOffset;
 
   @override
   Widget build(BuildContext context) {
@@ -706,32 +922,38 @@ class _ResultPlayer extends StatelessWidget {
     final displayName = name.trim().isEmpty ? (mine ? 'คุณ' : 'คู่แข่ง') : name;
     return Column(
       children: [
-        Container(
-          width: AppSpacing.huge + AppSpacing.xl,
-          height: AppSpacing.huge + AppSpacing.xl,
-          alignment: Alignment.center,
-          decoration: BoxDecoration(
-            shape: BoxShape.circle,
-            gradient: RadialGradient(
-              colors: mine
-                  ? const [Color(0xFF214C70), Color(0xFF172454)]
-                  : const [Color(0xFF49252B), Color(0xFF171622)],
+        Transform.translate(
+          offset: Offset(avatarOffset, 0),
+          child: Container(
+            key: ValueKey(
+              mine ? 'result-player-avatar' : 'result-opponent-avatar',
             ),
-            border: Border.all(color: sideColor, width: 2),
-            boxShadow: [
-              BoxShadow(
-                color: sideColor.withValues(alpha: 0.40),
-                blurRadius: AppSpacing.xl,
-                spreadRadius: AppSpacing.xxs,
+            width: AppSpacing.huge + AppSpacing.xl,
+            height: AppSpacing.huge + AppSpacing.xl,
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              gradient: RadialGradient(
+                colors: mine
+                    ? const [Color(0xFF214C70), Color(0xFF172454)]
+                    : const [Color(0xFF49252B), Color(0xFF171622)],
               ),
-            ],
-          ),
-          child: Text(
-            displayName.characters.first.toUpperCase(),
-            style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                  color: const Color(0xFFF4F7FF),
-                  fontWeight: FontWeight.w800,
+              border: Border.all(color: sideColor, width: 2),
+              boxShadow: [
+                BoxShadow(
+                  color: sideColor.withValues(alpha: 0.40),
+                  blurRadius: AppSpacing.xl,
+                  spreadRadius: AppSpacing.xxs,
                 ),
+              ],
+            ),
+            child: Text(
+              displayName.characters.first.toUpperCase(),
+              style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                    color: const Color(0xFFF4F7FF),
+                    fontWeight: FontWeight.w800,
+                  ),
+            ),
           ),
         ),
         const SizedBox(height: AppSpacing.sm),
@@ -832,28 +1054,106 @@ class _OverlaySurface extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Positioned.fill(
-        child: ColoredBox(
-          color: Theme.of(context).colorScheme.scrim.withValues(alpha: 0.40),
-          child: SafeArea(
-            child: Padding(
-              padding: const EdgeInsets.all(AppSpacing.lg),
-              child: LayoutBuilder(
-                builder: (context, constraints) => Center(
-                  child: FittedBox(
-                    fit: BoxFit.scaleDown,
-                    child: SizedBox(
-                      width: constraints.maxWidth.clamp(0, 430),
-                      child: FantasyPanel(
-                        key: outcomeKey,
-                        padding: const EdgeInsets.all(AppSpacing.lg),
-                        child: child,
+        child: Stack(
+          fit: StackFit.expand,
+          children: [
+            ColoredBox(
+              color:
+                  Theme.of(context).colorScheme.scrim.withValues(alpha: 0.40),
+              child: SafeArea(
+                child: Padding(
+                  padding: const EdgeInsets.all(AppSpacing.lg),
+                  child: LayoutBuilder(
+                    builder: (context, constraints) => Center(
+                      child: FittedBox(
+                        fit: BoxFit.scaleDown,
+                        child: SizedBox(
+                          width: constraints.maxWidth.clamp(0, 430),
+                          child: _ResultPanelImpact(
+                            child: FantasyPanel(
+                              key: outcomeKey,
+                              padding: const EdgeInsets.all(AppSpacing.lg),
+                              child: child,
+                            ),
+                          ),
+                        ),
                       ),
                     ),
                   ),
                 ),
               ),
             ),
-          ),
+          ],
         ),
+      );
+}
+
+/// Runs on the same post-frame clock as the profile collision, above the
+/// result panel, clipped to its rounded border.
+class _ResultPanelImpact extends StatefulWidget {
+  const _ResultPanelImpact({required this.child});
+
+  final Widget child;
+
+  @override
+  State<_ResultPanelImpact> createState() => _ResultPanelImpactState();
+}
+
+class _ResultPanelImpactState extends State<_ResultPanelImpact>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _controller = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 2000),
+    animationBehavior: AnimationBehavior.preserve,
+  );
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _controller.forward();
+    });
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => AnimatedBuilder(
+        animation: _controller,
+        child: widget.child,
+        builder: (context, child) {
+          final motion = profileClashMotion(_controller.value);
+          return Transform(
+            alignment: Alignment.center,
+            transform: Matrix4.identity()
+              ..translateByDouble(motion.shake, -motion.flash * 2, 0, 1)
+              ..scaleByDouble(
+                1 + motion.flash * .012,
+                1 + motion.flash * .012,
+                1,
+                1,
+              ),
+            child: Stack(
+              children: [
+                child!,
+                Positioned.fill(
+                  child: IgnorePointer(
+                    child: ClipRRect(
+                      borderRadius: AppRadius.allLg,
+                      child: ColoredBox(
+                        color:
+                            Colors.white.withValues(alpha: motion.flash * .08),
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          );
+        },
       );
 }

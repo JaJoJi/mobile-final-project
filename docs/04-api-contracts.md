@@ -259,6 +259,10 @@ End-of-round.
   winnerId: string | null;     // null on double 0 HP
   reason: 'hp_zero' | 'forfeit' | 'disconnect';
   final: { p1: { hp: number; gold: number }, p2: { hp: number; gold: number } };
+  rating: {
+    p1: { before: number; after: number; delta: number };
+    p2: { before: number; after: number; delta: number };
+  } | null; // null only when a draw does not change ratings
 }
 ```
 

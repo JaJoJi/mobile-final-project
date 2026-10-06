@@ -2,6 +2,7 @@ import 'package:auto_chess_mobile/core/auth/auth_gate.dart';
 import 'package:auto_chess_mobile/core/router.dart';
 import 'package:auto_chess_mobile/features/auth/login_screen.dart';
 import 'package:auto_chess_mobile/features/history/history_list_screen.dart';
+import 'package:auto_chess_mobile/features/history/history_providers.dart';
 import 'package:auto_chess_mobile/features/lobby/lobby_screen.dart';
 import 'package:auto_chess_mobile/features/player_hub/player_hub_fixture_provider.dart';
 import 'package:auto_chess_mobile/features/units/units_screen.dart';
@@ -51,6 +52,7 @@ void main() {
           leaderboardSourceProvider.overrideWith(
             (ref) async => PlayerHubFixtures.leaderboard,
           ),
+          matchHistoryProvider.overrideWith((ref) async => []),
         ],
         child: MaterialApp.router(routerConfig: router),
       ),
@@ -99,6 +101,33 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.byType(UnitsScreen), findsOneWidget);
+  });
+
+  testWidgets('Player Hub branch keeps local state when switching tabs', (
+    tester,
+  ) async {
+    AuthGate.instance.signalSignedIn();
+    final router = await pumpApp(tester);
+
+    router.go(HistoryListScreen.path);
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('history-filter-menu')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('history-filter-wins')));
+    await tester.pumpAndSettle();
+    expect(find.text('ชนะ'), findsOneWidget);
+
+    router.go(UnitsScreen.path);
+    await tester.pumpAndSettle();
+    router.go(HistoryListScreen.path);
+    await tester.pumpAndSettle();
+
+    expect(find.byType(HistoryListScreen), findsOneWidget);
+    expect(
+      find.text('ชนะ'),
+      findsOneWidget,
+      reason: 'the history branch must not be recreated when another tab opens',
+    );
   });
 
   testWidgets('sign-out signal bounces an authed screen back to /login',

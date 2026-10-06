@@ -116,4 +116,21 @@ describe('MatchService.finalize leaderboard invalidation (#256)', () => {
     expect(leaderboard.bumpVersion).toHaveBeenCalledTimes(1);
     expect(published).toHaveLength(1);
   });
+
+  it('publishes each player rating before, after, and delta', async () => {
+    const { service, published } = makeService({});
+
+    await expect(service.finalize('match-1', 'p2', 'hp_zero')).resolves.toBe(true);
+
+    expect(published[0]).toEqual([
+      'match-1',
+      'game:match:end',
+      expect.objectContaining({
+        rating: {
+          p1: { before: 1000, after: 984, delta: -16 },
+          p2: { before: 1000, after: 1016, delta: 16 },
+        },
+      }),
+    ]);
+  });
 });

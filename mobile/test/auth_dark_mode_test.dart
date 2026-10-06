@@ -22,7 +22,7 @@ void main() {
 
   testWidgets('LoginScreen renders on the dark scheme', (tester) async {
     await pumpDark(tester, const LoginScreen());
-    expect(find.text('ออโต้เชส'), findsOneWidget);
+    expect(find.text('Rival Arena'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 
@@ -38,7 +38,7 @@ void main() {
 
   testWidgets('RegisterScreen renders on the dark scheme', (tester) async {
     await pumpDark(tester, const RegisterScreen());
-    expect(find.text('สมัครเล่นออโต้เชส'), findsOneWidget);
+    expect(find.text('สมัครเล่น Rival Arena'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 

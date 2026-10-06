@@ -1001,8 +1001,46 @@ void main() {
         'p1': {'hp': 72, 'gold': 4},
         'p2': {'hp': 0, 'gold': 2},
       },
+      'rating': {
+        'p1': {'before': 1000, 'after': 1016, 'delta': 16},
+        'p2': {'before': 1000, 'after': 984, 'delta': -16},
+      },
     });
     await tester.pump();
+    expect(
+      find.byKey(const ValueKey('match-result-duel-animation')),
+      findsOneWidget,
+    );
+    // The first animation tick establishes the ticker epoch; subsequent pumps
+    // advance through impact and recoil.
+    await tester.pump(const Duration(milliseconds: 1));
+    final playerNameFinder = find.byKey(const ValueKey('result-player-avatar'));
+    final opponentNameFinder =
+        find.byKey(const ValueKey('result-opponent-avatar'));
+    final playerStartX = tester.getCenter(playerNameFinder).dx;
+    final opponentStartX = tester.getCenter(opponentNameFinder).dx;
+    await tester.pump(const Duration(milliseconds: 500));
+    final playerImpactX = tester.getCenter(playerNameFinder).dx;
+    final opponentImpactX = tester.getCenter(opponentNameFinder).dx;
+    await tester.pump(const Duration(milliseconds: 500));
+    final playerRestX = tester.getCenter(playerNameFinder).dx;
+    final opponentRestX = tester.getCenter(opponentNameFinder).dx;
+    expect(playerImpactX, greaterThan(playerStartX));
+    expect(opponentImpactX, lessThan(opponentStartX));
+    expect(playerRestX, lessThan(playerImpactX));
+    expect(opponentRestX, greaterThan(opponentImpactX));
+    final duelRect = tester.getRect(
+      find.byKey(const ValueKey('match-result-duel-animation')),
+    );
+    expect(
+      tester.getRect(playerNameFinder).left,
+      greaterThanOrEqualTo(duelRect.left),
+    );
+    expect(
+      tester.getRect(opponentNameFinder).right,
+      lessThanOrEqualTo(duelRect.right),
+    );
+    expect(find.byKey(const ValueKey('match-result-vs')), findsOneWidget);
     expect(find.text('คุณชนะ'), findsOneWidget);
     expect(find.byKey(const ValueKey('result-win')), findsOneWidget);
     expect(find.byKey(const ValueKey('match-result-divider')), findsOneWidget);
@@ -1010,7 +1048,8 @@ void main() {
     expect(find.byKey(const ValueKey('result-enemy-glow')), findsOneWidget);
     expect(find.byKey(const ValueKey('result-player-outcome')), findsNothing);
     expect(find.byKey(const ValueKey('result-opponent-outcome')), findsNothing);
-    expect(find.text('พลังชีวิตหมด · 1 รอบ'), findsOneWidget);
+    expect(find.text('พลังชีวิตหมด'), findsOneWidget);
+    expect(find.text('รอบที่ 1'), findsOneWidget);
     expect(
       tester
           .widget<Text>(find.byKey(const ValueKey('result-player-name')))
@@ -1040,6 +1079,8 @@ void main() {
     );
     expect(find.text('ทีมสุดท้าย'), findsOneWidget);
     expect(find.text('HP สุดท้าย 72 / 100'), findsOneWidget);
+    expect(find.text('1,000  →  1,016'), findsOneWidget);
+    expect(find.text('+16'), findsOneWidget);
     expect(find.text('เล่นอีกครั้ง'), findsOneWidget);
     expect(find.text('กลับหน้าหลัก'), findsOneWidget);
     expect(

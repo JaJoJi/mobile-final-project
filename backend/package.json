@@ -1,7 +1,7 @@
 {
   "name": "auto-chess-backend",
   "version": "0.1.0",
-  "description": "Backend for the Auto Chess mobile game โ€” NestJS + TypeORM + ioredis + BullMQ",
+  "description": "Backend for the Rival Arena mobile game — NestJS + TypeORM + ioredis + BullMQ",
   "private": true,
   "scripts": {
     "build": "tsc -p tsconfig.build.json && npm run build:assets",
