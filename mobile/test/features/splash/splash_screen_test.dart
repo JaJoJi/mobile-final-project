@@ -48,7 +48,7 @@ void main() {
     await tester.pump(); // first frame, before _resolve settles
 
     expect(find.byType(SplashScreen), findsOneWidget);
-    expect(find.text('ออโต้เชส'), findsOneWidget);
+    expect(find.text('Rival Arena'), findsOneWidget);
     expect(find.byKey(const ValueKey('launch-progress')), findsOneWidget);
     expect(find.byType(CircularProgressIndicator), findsNothing);
 

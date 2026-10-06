@@ -1,4 +1,4 @@
-/// Build-time configuration for the Auto Chess mobile client.
+/// Build-time configuration for the Rival Arena mobile client.
 ///
 /// Values are read from `--dart-define` flags at build time:
 ///   flutter run --dart-define=API_BASE_URL=http://10.0.2.2:80

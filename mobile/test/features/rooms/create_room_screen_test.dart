@@ -115,7 +115,7 @@ void main() {
     expect(find.text('เจ้าของห้อง'), findsOneWidget);
     expect(find.text('คุณ · เจ้าของห้อง'), findsNothing);
     expect(find.text('กำลังรอผู้ท้าชิง'), findsOneWidget);
-    expect(find.text('ออโต้เชส / ประลองกับเพื่อน'), findsNothing);
+    expect(find.text('Rival Arena / ประลองกับเพื่อน'), findsNothing);
   });
 
   testWidgets('animates the hourglass while waiting for a challenger', (

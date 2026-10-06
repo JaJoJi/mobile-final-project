@@ -449,7 +449,7 @@ pipeline {
             flutter pub get
             flutter build apk --release               --build-name "0.1.${BUILD_NUMBER}" --build-number "${BUILD_NUMBER}"               --dart-define "API_BASE_URL=${API}" --dart-define "WS_BASE_URL=${WS}"
             mkdir -p ../apk
-            cp build/app/outputs/flutter-apk/app-release.apk "../apk/auto-chess-${IMAGE_TAG}.apk"
+            cp build/app/outputs/flutter-apk/app-release.apk "../apk/rival-arena-${IMAGE_TAG}.apk"
           '''
         }
       }

@@ -10,6 +10,8 @@ import '../../core/widgets/widgets.dart';
 import '../lobby/logout_button.dart';
 import '../lobby/player_hub_navigation.dart';
 import '../lobby/profile_card.dart';
+import '../player_hub/player_hub_refresh_controller.dart';
+import 'profile_providers.dart';
 import 'settings_provider.dart';
 import 'settings_tile.dart';
 
@@ -23,7 +25,7 @@ class ProfileScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final me = ref.watch(currentUserProvider);
-    final statistics = ref.watch(_myStatsProvider);
+    final statistics = ref.watch(myStatsProvider);
 
     return Theme(
       data: fantasySurfaceTheme(context),
@@ -90,11 +92,6 @@ class ProfileScreen extends ConsumerWidget {
 
 /// Statistics are deliberately independent from the account request: profile
 /// actions remain available if the optional statistics endpoint is unavailable.
-final _myStatsProvider =
-    FutureProvider.autoDispose<Map<String, dynamic>>((ref) {
-  return ref.read(apiClientProvider).getMyStats();
-});
-
 Future<void> _editUsername(
   BuildContext context,
   WidgetRef ref,
@@ -104,7 +101,9 @@ Future<void> _editUsername(
     context,
     builder: (_) => _EditUsernameSheet(current: current),
   );
-  if (saved == true) ref.invalidate(currentUserProvider);
+  if (saved == true) {
+    ref.read(playerHubRefreshControllerProvider).invalidateProfile();
+  }
 }
 
 class _ProfileHero extends StatelessWidget {
@@ -359,7 +358,7 @@ class _Content extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final settings = ref.watch(settingsProvider);
     final settingsNotifier = ref.read(settingsProvider.notifier);
-    final stats = ref.watch(_myStatsProvider);
+    final stats = ref.watch(myStatsProvider);
 
     return _ProfileDetails(
       statistics: stats,
@@ -367,7 +366,7 @@ class _Content extends ConsumerWidget {
       autoReconnect: settings.wsAutoReconnect,
       onSoundChanged: settingsNotifier.setSoundEnabled,
       onReconnectChanged: settingsNotifier.setWsAutoReconnect,
-      onRetryStats: () => ref.invalidate(_myStatsProvider),
+      onRetryStats: () => ref.invalidate(myStatsProvider),
     );
   }
 }

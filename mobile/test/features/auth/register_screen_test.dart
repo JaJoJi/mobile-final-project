@@ -12,7 +12,7 @@ void main() {
       (tester) async {
     await pumpScreen(tester, const RegisterScreen());
 
-    expect(find.text('สมัครเล่นออโต้เชส'), findsOneWidget);
+    expect(find.text('สมัครเล่น Rival Arena'), findsOneWidget);
     expect(find.byType(TextFormField), findsNWidgets(3));
     expect(createButton, findsOneWidget);
     expect(find.text('มีบัญชีอยู่แล้ว? เข้าสู่ระบบ'), findsOneWidget);

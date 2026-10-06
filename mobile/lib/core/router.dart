@@ -55,19 +55,90 @@ GoRouter buildRouter() {
     routes: [
       GoRoute(
         path: SplashScreen.path,
-        builder: (_, __) => const SplashScreen(),
+        pageBuilder: (_, state) => NoTransitionPage<void>(
+          key: state.pageKey,
+          child: const SplashScreen(),
+        ),
       ),
       GoRoute(
         path: LoginScreen.path,
-        builder: (_, __) => const LoginScreen(),
+        pageBuilder: (_, state) => NoTransitionPage<void>(
+          key: state.pageKey,
+          child: const LoginScreen(),
+        ),
       ),
       GoRoute(
         path: RegisterScreen.path,
-        builder: (_, __) => const RegisterScreen(),
+        pageBuilder: (_, state) => NoTransitionPage<void>(
+          key: state.pageKey,
+          child: const RegisterScreen(),
+        ),
       ),
-      GoRoute(
-        path: LobbyScreen.path,
-        builder: (_, __) => const LobbyScreen(),
+      StatefulShellRoute.indexedStack(
+        pageBuilder: (_, state, navigationShell) => NoTransitionPage<void>(
+          key: state.pageKey,
+          child: navigationShell,
+        ),
+        branches: [
+          StatefulShellBranch(
+            routes: [
+              GoRoute(
+                path: LobbyScreen.path,
+                builder: (_, __) => const LobbyScreen(),
+              ),
+            ],
+          ),
+          StatefulShellBranch(
+            routes: [
+              GoRoute(
+                path: UnitsScreen.path,
+                builder: (_, __) => const UnitsScreen(),
+                routes: [
+                  GoRoute(
+                    path: ':unitId',
+                    redirect: (context, state) {
+                      final idString = state.pathParameters['unitId'];
+                      if (idString == null ||
+                          !UnitId.values.any(
+                            (unitId) => unitId.toJson() == idString,
+                          )) {
+                        return UnitsScreen.path;
+                      }
+                      return null;
+                    },
+                    builder: (_, state) => UnitDetailScreen(
+                      unitId: UnitId.fromJson(state.pathParameters['unitId']),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+          StatefulShellBranch(
+            routes: [
+              GoRoute(
+                path: HistoryListScreen.path,
+                builder: (_, __) => const HistoryListScreen(),
+                routes: [
+                  GoRoute(
+                    path: ':matchId',
+                    builder: (_, state) => MatchDetailScreen(
+                      matchId: state.pathParameters['matchId']!,
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+          StatefulShellBranch(
+            routes: [
+              GoRoute(
+                path: ProfileScreen.path,
+                builder: (_, __) => const ProfileScreen(),
+              ),
+            ],
+          ),
+        ],
       ),
       GoRoute(
         path: '/match/:id',
@@ -77,39 +148,8 @@ GoRouter buildRouter() {
         ),
       ),
       GoRoute(
-        path: HistoryListScreen.path,
-        builder: (_, __) => const HistoryListScreen(),
-      ),
-      GoRoute(
-        path: '/history/:matchId',
-        builder: (_, state) =>
-            MatchDetailScreen(matchId: state.pathParameters['matchId']!),
-      ),
-      GoRoute(
-        path: ProfileScreen.path,
-        builder: (_, __) => const ProfileScreen(),
-      ),
-      GoRoute(
         path: LeaderboardScreen.path,
         builder: (_, __) => const LeaderboardScreen(),
-      ),
-      GoRoute(
-        path: UnitsScreen.path,
-        builder: (_, __) => const UnitsScreen(),
-      ),
-      GoRoute(
-        path: UnitDetailScreen.path,
-        redirect: (context, state) {
-          final idString = state.pathParameters['unitId'];
-          if (idString == null ||
-              !UnitId.values.any((unitId) => unitId.toJson() == idString)) {
-            return UnitsScreen.path;
-          }
-          return null;
-        },
-        builder: (_, state) => UnitDetailScreen(
-          unitId: UnitId.fromJson(state.pathParameters['unitId']),
-        ),
       ),
       GoRoute(
         path: CreateRoomScreen.path,

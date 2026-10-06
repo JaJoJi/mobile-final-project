@@ -22,6 +22,7 @@ import '../../core/ws/ws_client.dart';
 import '../../core/ws/ws_providers.dart';
 import '../../shared/models/game_events.dart';
 import '../lobby/matchmaking_state.dart';
+import '../player_hub/player_hub_refresh_controller.dart';
 import 'battle/battle_view.dart';
 import 'board/board_slot.dart';
 import 'board/board_tab.dart';
@@ -179,12 +180,14 @@ class _MatchScreenState extends ConsumerState<MatchScreen> {
 
   void _returnToLobby() {
     ScaffoldMessenger.maybeOf(context)?.clearSnackBars();
+    ref.read(playerHubRefreshControllerProvider).invalidateAfterMatch();
     ref.read(matchmakingStateProvider.notifier).resetAfterMatch();
     context.go('/lobby');
   }
 
   void _playAgain() {
     ScaffoldMessenger.maybeOf(context)?.clearSnackBars();
+    ref.read(playerHubRefreshControllerProvider).invalidateAfterMatch();
     final matchmaking = ref.read(matchmakingStateProvider.notifier);
     matchmaking.resetAfterMatch();
     context.go('/lobby');

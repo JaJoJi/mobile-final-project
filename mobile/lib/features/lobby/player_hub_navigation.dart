@@ -1,20 +1,23 @@
 import 'dart:ui';
 
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../core/theme/app_spacing.dart';
+import '../player_hub/player_hub_cache_state.dart';
+import '../player_hub/player_hub_refresh_controller.dart';
 
 enum PlayerHubTab { home, units, history, profile }
 
 /// Full-width premium glass navigation shared by all Player Hub screens.
-class PlayerHubNavigation extends StatelessWidget {
+class PlayerHubNavigation extends ConsumerWidget {
   const PlayerHubNavigation({super.key, required this.selected});
 
   final PlayerHubTab? selected;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final bottomInset = MediaQuery.viewPaddingOf(context).bottom;
 
     return ClipRRect(
@@ -69,7 +72,7 @@ class PlayerHubNavigation extends StatelessWidget {
                       child: _NavigationItem(
                         tab: tab,
                         selected: tab == selected,
-                        onTap: () => _select(context, tab),
+                        onTap: () => _select(context, ref, tab),
                       ),
                     ),
                   )
@@ -81,8 +84,11 @@ class PlayerHubNavigation extends StatelessWidget {
     );
   }
 
-  void _select(BuildContext context, PlayerHubTab next) {
+  void _select(BuildContext context, WidgetRef ref, PlayerHubTab next) {
     if (next == selected) return;
+    ref
+        .read(playerHubRefreshControllerProvider)
+        .refreshIfStale(_resourcesFor(next));
     switch (next) {
       case PlayerHubTab.home:
         context.go('/lobby');
@@ -94,6 +100,20 @@ class PlayerHubNavigation extends StatelessWidget {
         context.go('/profile');
     }
   }
+
+  Iterable<PlayerHubResource> _resourcesFor(PlayerHubTab tab) => switch (tab) {
+        PlayerHubTab.home => const {
+            PlayerHubResource.account,
+            PlayerHubResource.leaderboard,
+            PlayerHubResource.history,
+          },
+        PlayerHubTab.units => const <PlayerHubResource>{},
+        PlayerHubTab.history => const {PlayerHubResource.history},
+        PlayerHubTab.profile => const {
+            PlayerHubResource.account,
+            PlayerHubResource.statistics,
+          },
+      };
 }
 
 class _NavigationItem extends StatelessWidget {

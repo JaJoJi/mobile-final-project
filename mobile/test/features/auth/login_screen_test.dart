@@ -9,7 +9,7 @@ void main() {
       (tester) async {
     await pumpScreen(tester, const LoginScreen());
 
-    expect(find.text('ออโต้เชส'), findsOneWidget);
+    expect(find.text('Rival Arena'), findsOneWidget);
     expect(find.byType(TextFormField), findsNWidgets(2));
     expect(find.text('เข้าสู่ระบบ'), findsOneWidget);
     expect(find.text('ยังไม่มีบัญชี? สมัครสมาชิก'), findsOneWidget);
