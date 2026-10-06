@@ -1,8 +1,10 @@
 import { Global, Module } from '@nestjs/common';
 import { BullModule } from '@nestjs/bullmq';
 import { RedisService } from '../redis/redis.service';
-import { QUEUE_NAMES } from './queue.constants';
+import { MatchRetentionService } from '../match/match-retention.service';
+import { MATCH_CLEANUP_SCHEDULER, QUEUE_NAMES } from './queue.constants';
 import { QueueService } from './queue.service';
+import { queueConnectionOptions } from './queue.retention';
 import { QUEUE_WORKERS } from './workers/queue.workers';
 
 /**
@@ -31,37 +33,37 @@ import { QUEUE_WORKERS } from './workers/queue.workers';
   imports: [
     BullModule.forRootAsync({
       inject: [RedisService],
-      useFactory: (redis: RedisService) => ({ connection: redis.bullClient }),
+      useFactory: queueConnectionOptions,
     }),
     BullModule.registerQueueAsync(
       {
         name: QUEUE_NAMES.PHASE_TIMER,
         inject: [RedisService],
-        useFactory: (redis: RedisService) => ({ connection: redis.bullClient }),
+        useFactory: queueConnectionOptions,
       },
       {
         name: QUEUE_NAMES.COMBAT_DONE_TIMEOUT,
         inject: [RedisService],
-        useFactory: (redis: RedisService) => ({ connection: redis.bullClient }),
+        useFactory: queueConnectionOptions,
       },
       {
         name: QUEUE_NAMES.DISCONNECT_DETECT,
         inject: [RedisService],
-        useFactory: (redis: RedisService) => ({ connection: redis.bullClient }),
+        useFactory: queueConnectionOptions,
       },
       {
         name: QUEUE_NAMES.MATCH_PAIR,
         inject: [RedisService],
-        useFactory: (redis: RedisService) => ({ connection: redis.bullClient }),
+        useFactory: queueConnectionOptions,
       },
       {
         name: QUEUE_NAMES.MATCH_CLEANUP,
         inject: [RedisService],
-        useFactory: (redis: RedisService) => ({ connection: redis.bullClient }),
+        useFactory: queueConnectionOptions,
       },
     ),
   ],
-  providers: [QueueService, ...QUEUE_WORKERS],
-  exports: [QueueService, BullModule],
+  providers: [QueueService, { provide: MATCH_CLEANUP_SCHEDULER, useExisting: QueueService }, MatchRetentionService, ...QUEUE_WORKERS],
+  exports: [QueueService, MATCH_CLEANUP_SCHEDULER, BullModule],
 })
 export class QueueModule {}

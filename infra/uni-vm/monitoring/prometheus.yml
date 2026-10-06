@@ -19,3 +19,12 @@ scrape_configs:
   - job_name: prometheus
     static_configs:
       - targets: ["localhost:9090"]
+
+  - job_name: auto-chess-operations
+    scrape_interval: 60s
+    static_configs:
+      - targets: ["nest-1:3000"]
+    metrics_path: /metrics
+
+rule_files:
+  - /etc/prometheus/alerts.yml

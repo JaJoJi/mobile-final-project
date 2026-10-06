@@ -38,6 +38,26 @@ const makeService = () => {
 };
 
 describe('QueueService job contracts (#306)', () => {
+  it('schedules one daily retention run with retries across module starts', async () => {
+    const { matchCleanup, service } = makeService();
+    await service.onModuleInit();
+    expect(matchCleanup.added).toEqual([{
+      name: JOB_NAMES.MATCH_RETENTION_RUN,
+      data: {},
+      opts: expect.objectContaining({
+        repeat: { every: 86_400_000 },
+        jobId: 'match-retention-daily',
+        attempts: 3,
+        removeOnComplete: true,
+        removeOnFail: 100,
+      }),
+    }]);
+
+    matchCleanup.repeatable = [{ name: JOB_NAMES.MATCH_RETENTION_RUN, every: 86_400_000 }];
+    await service.onModuleInit();
+    expect(matchCleanup.added).toHaveLength(1);
+  });
+
   it('schedules one phase timer per match+round (dedup by jobId)', async () => {
     const { phaseTimer, service } = makeService();
     await service.schedulePhaseStart('m1', 2, 40000);
@@ -45,7 +65,7 @@ describe('QueueService job contracts (#306)', () => {
       {
         name: JOB_NAMES.PHASE_START,
         data: { matchId: 'm1', round: 2 },
-        opts: expect.objectContaining({ delay: 40000, jobId: 'phase-m1-2' }),
+        opts: expect.objectContaining({ delay: 40000, jobId: 'phase-m1-2', removeOnComplete: true, removeOnFail: 100 }),
       },
     ]);
     expect(QUEUE_NAMES.PHASE_TIMER).toBe('phase-timer');
@@ -58,7 +78,7 @@ describe('QueueService job contracts (#306)', () => {
       {
         name: JOB_NAMES.COMBAT_DONE_TIMEOUT,
         data: { matchId: 'm1', round: 2 },
-        opts: expect.objectContaining({ delay: 65000, jobId: 'combat-done-timeout-m1-2' }),
+        opts: expect.objectContaining({ delay: 65000, jobId: 'combat-done-timeout-m1-2', removeOnComplete: true, removeOnFail: 100 }),
       },
     ]);
   });
@@ -73,6 +93,8 @@ describe('QueueService job contracts (#306)', () => {
         opts: expect.objectContaining({
           delay: 3000,
           jobId: 'round-ready-timeout-m1-2',
+          removeOnComplete: true,
+          removeOnFail: 100,
         }),
       },
     ]);
@@ -85,7 +107,7 @@ describe('QueueService job contracts (#306)', () => {
       {
         name: JOB_NAMES.DISCONNECT_DETECT,
         data: { matchId: 'm1', userId: 'u1' },
-        opts: expect.objectContaining({ delay: 30000, jobId: 'disconnect-m1-u1' }),
+        opts: expect.objectContaining({ delay: 30000, jobId: 'disconnect-m1-u1', removeOnComplete: true, removeOnFail: 100 }),
       },
     ]);
   });
@@ -107,6 +129,7 @@ describe('QueueService job contracts (#306)', () => {
         opts: expect.objectContaining({
           jobId: 'match-pair-every-1000',
           removeOnComplete: true,
+          removeOnFail: 100,
         }),
       },
     ]);
@@ -119,6 +142,7 @@ describe('QueueService job contracts (#306)', () => {
     expect(matchCleanup.added[0]).toMatchObject({
       name: JOB_NAMES.MATCH_CLEANUP,
       data: { matchId: 'm1' },
+      opts: { attempts: 5, removeOnComplete: true, removeOnFail: 100 },
     });
     const delay = (matchCleanup.added[0].opts as { delay: number }).delay;
     expect(delay).toBeGreaterThan(0);

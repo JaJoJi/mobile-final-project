@@ -20,12 +20,17 @@ export interface LeaderboardResponse {
 /** Version counter backing versioned cache keys (O(1) invalidation). */
 export const LEADERBOARD_VERSION_KEY = 'leaderboard:version';
 
-/** `leaderboard:{version}:{limit}:{offset}` — old versions expire via TTL. */
+/**
+ * `leaderboard:{version}:{userId}:{limit}:{offset}` — old versions expire via
+ * TTL. The caller id is required because the response contains the private
+ * `me` row in addition to the shared page.
+ */
 export const leaderboardCacheKey = (
   version: string,
+  userId: string,
   limit: number,
   offset: number,
-): string => `leaderboard:${version}:${limit}:${offset}`;
+): string => `leaderboard:${version}:${userId}:${limit}:${offset}`;
 
 /** Cache TTL in seconds — also the natural expiry for stale versions. */
 export const LEADERBOARD_CACHE_TTL_SECONDS = 30;
@@ -67,7 +72,7 @@ export class LeaderboardService {
     if (version !== null) {
       try {
         const cached = await this.redis.client.get(
-          leaderboardCacheKey(version, limit, offset),
+          leaderboardCacheKey(version, userId, limit, offset),
         );
         if (cached) {
           return JSON.parse(cached) as LeaderboardResponse;
@@ -84,7 +89,7 @@ export class LeaderboardService {
     if (version !== null) {
       try {
         await this.redis.client.set(
-          leaderboardCacheKey(version, limit, offset),
+          leaderboardCacheKey(version, userId, limit, offset),
           JSON.stringify(response),
           'EX',
           LEADERBOARD_CACHE_TTL_SECONDS,

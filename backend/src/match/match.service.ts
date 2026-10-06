@@ -1,12 +1,15 @@
 import {
   BadRequestException,
   ForbiddenException,
+  Inject,
   Injectable,
   Logger,
   NotFoundException,
 } from '@nestjs/common';
 import { DataSource } from 'typeorm';
 import { runOnMaster } from '../database/postgres-replication';
+import { MATCH_CLEANUP_SCHEDULER } from '../queue/queue.constants';
+import type { QueueService } from '../queue/queue.service';
 import { PubsubBridge } from '../runtime/pubsub.bridge';
 import { LeaderboardService } from '../user/leaderboard.service';
 import { StatsService } from '../user/stats.service';
@@ -18,8 +21,20 @@ import { MatchRepository } from './match.repository';
 
 export type MatchEndReason = 'hp_zero' | 'forfeit' | 'disconnect';
 
+type RatingChange = {
+  before: number;
+  after: number;
+  delta: number;
+};
+
+type MatchRatingChanges = {
+  p1: RatingChange;
+  p2: RatingChange;
+};
+
 const ELO_K_FACTOR = 32;
 const HISTORY_LIMIT = 50;
+const CLEANUP_GRACE_MS = 30_000;
 
 @Injectable()
 export class MatchService {
@@ -32,6 +47,7 @@ export class MatchService {
     private readonly users: UserService,
     private readonly stats: StatsService,
     private readonly leaderboard: LeaderboardService,
+    @Inject(MATCH_CLEANUP_SCHEDULER) private readonly queue: Pick<QueueService, 'scheduleMatchCleanup'>,
   ) {}
 
   async findById(id: string): Promise<Match> {
@@ -124,11 +140,16 @@ export class MatchService {
     reason: MatchEndReason,
   ): Promise<boolean> {
     let finalized: Match | null = null;
+    let alreadyTerminal = false;
+    let ratingChanges: MatchRatingChanges | null = null;
 
     await this.dataSource.transaction(async (manager) => {
       const match = await this.matches.findByIdForUpdate(matchId, manager);
       if (!match) this.throwNotFound(matchId);
-      if (match.status !== 'in_progress') return;
+      if (match.status !== 'in_progress') {
+        alreadyTerminal = !!match.finishedAt;
+        return;
+      }
       if (winnerId && winnerId !== match.player1Id && winnerId !== match.player2Id) {
         throw new BadRequestException({
           code: 'match.invalid_winner',
@@ -150,6 +171,20 @@ export class MatchService {
         const p1 = players.find((player) => player.id === match.player1Id)!;
         const p2 = players.find((player) => player.id === match.player2Id)!;
         const p1Delta = this.eloDelta(p1.rating, p2.rating, winnerId === p1.id ? 1 : 0);
+        const p1After = Math.max(0, p1.rating + p1Delta);
+        const p2After = Math.max(0, p2.rating - p1Delta);
+        ratingChanges = {
+          p1: {
+            before: p1.rating,
+            after: p1After,
+            delta: p1After - p1.rating,
+          },
+          p2: {
+            before: p2.rating,
+            after: p2After,
+            delta: p2After - p2.rating,
+          },
+        };
         await this.users.updateRating(p1.id, p1Delta, manager);
         await this.users.updateRating(p2.id, -p1Delta, manager);
       }
@@ -164,7 +199,14 @@ export class MatchService {
       finalized = Object.assign(match, { status, winnerId, finishedAt });
     });
 
-    if (!finalized) return false;
+    if (!finalized) {
+      // A retry after enqueue or publish failed can repair the missing job.
+      if (alreadyTerminal) {
+        await this.queue.scheduleMatchCleanup(matchId, Date.now() + CLEANUP_GRACE_MS);
+      }
+      return false;
+    }
+    await this.queue.scheduleMatchCleanup(finalized.id, Date.now() + CLEANUP_GRACE_MS);
     // Cache invalidation (#254 stats + #256 leaderboard): statistics and
     // ratings change exactly when a match reaches a terminal state, and every
     // terminal path funnels through finalize. Both are best-effort — the
@@ -180,6 +222,7 @@ export class MatchService {
         p1: this.finalPlayerState(finalized.p1State),
         p2: this.finalPlayerState(finalized.p2State),
       },
+      rating: ratingChanges,
     });
     this.logger.log(
       `finalized match=${finalized.id} winner=${finalized.winnerId ?? 'draw'} reason=${reason}`,
@@ -247,7 +290,7 @@ export class MatchService {
       status: match.status,
       rounds: rounds.map((round) => ({
         roundNumber: round.roundNumber,
-        events: round.events,
+        events: round.events ?? [],
       })),
       createdAt: match.createdAt.toISOString(),
       finishedAt: match.finishedAt?.toISOString() ?? null,

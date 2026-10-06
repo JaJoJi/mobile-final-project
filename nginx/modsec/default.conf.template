@@ -56,6 +56,9 @@ server {
         access_log off;
     }
 
+    # Prometheus scrapes Nest directly on the private compose network.
+    location = /metrics { return 404; }
+
     location /socket.io/ {
         proxy_pass http://backend;
         proxy_http_version 1.1;

@@ -5,6 +5,7 @@ import '../../core/api/api_client.dart';
 import '../../core/theme/app_spacing.dart';
 import '../../core/widgets/app_card.dart';
 import '../../core/widgets/state_views.dart';
+import '../player_hub/player_hub_cache_state.dart';
 
 /// Fetches `/user/me` once when the lobby mounts and shows
 /// `username` + `rating`.
@@ -14,7 +15,11 @@ import '../../core/widgets/state_views.dart';
 /// spinner, per design spec §3.10.
 final currentUserProvider = FutureProvider<Map<String, dynamic>>((ref) async {
   final api = ref.read(apiClientProvider);
-  return api.getMe();
+  final value = await api.getMe();
+  ref
+      .read(playerHubFreshnessProvider.notifier)
+      .markFresh(PlayerHubResource.account);
+  return value;
 });
 
 /// Profile card. Reads [currentUserProvider]; renders nothing useful while

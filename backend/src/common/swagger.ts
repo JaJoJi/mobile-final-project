@@ -12,7 +12,7 @@ import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
  */
 export function setupSwagger(app: INestApplication): void {
   const config = new DocumentBuilder()
-    .setTitle('Auto Chess API')
+    .setTitle('Rival Arena API')
     .setDescription('REST + WebSocket contract — see docs/04-api-contracts.md')
     .setVersion(process.env.npm_package_version ?? '0.1.0')
     .addBearerAuth()

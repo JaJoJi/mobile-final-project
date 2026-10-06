@@ -304,12 +304,20 @@ void main() {
           'p1': {'hp': 0, 'gold': 3},
           'p2': {'hp': 12, 'gold': 8},
         },
+        'rating': {
+          'p1': {'before': 1000, 'after': 984, 'delta': -16},
+          'p2': {'before': 1000, 'after': 1016, 'delta': 16},
+        },
       });
       expect(e.reason, MatchEndReason.hpZero);
       expect(e.didWin('user-2'), isTrue);
       expect(e.didWin('user-1'), isFalse);
       expect(e.isDraw, isFalse);
       expect(e.finalP2.gold, 8);
+      expect(e.ratingP1?.before, 1000);
+      expect(e.ratingP1?.after, 984);
+      expect(e.ratingP1?.delta, -16);
+      expect(e.ratingP2?.delta, 16);
     });
 
     test('null winnerId is a draw', () {

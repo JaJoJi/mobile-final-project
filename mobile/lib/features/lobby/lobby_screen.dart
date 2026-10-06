@@ -173,7 +173,7 @@ class _PlayCard extends StatelessWidget {
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               Text(
-                                'ออโต้เชส',
+                                'Rival Arena',
                                 maxLines: 1,
                                 style: Theme.of(context)
                                     .textTheme

@@ -86,7 +86,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
   @override
   Widget build(BuildContext context) {
     return AuthGameShell(
-      title: 'สมัครเล่นออโต้เชส',
+      title: 'สมัครเล่น Rival Arena',
       subtitle: 'สร้างโปรไฟล์ผู้บัญชาการของคุณ',
       showBack: true,
       onBack: _loading
