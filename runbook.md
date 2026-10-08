@@ -136,6 +136,20 @@ $C down -v         # DELETES database, Vault data, dashboards (needs re-bootstra
 | Grafana empty | `$C logs alloy`, `$C logs prometheus`; targets page (section 6) |
 | Disk filling | `docker system df`; `docker image prune -f` |
 
+The replica recovered on 2026-10-08 uses the
+`pg_replica_recovery_20261008` volume and the `replica_recovery_20261008`
+physical replication slot. Check both after updating the VM:
+
+```bash
+$C exec postgres-primary sh -c 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -c "SELECT application_name, state, replay_lsn FROM pg_stat_replication;" -c "SELECT slot_name, active, restart_lsn FROM pg_replication_slots;"'
+```
+
+Expect `state = streaming` and `active = t`. The slot retains WAL while the
+replica is offline, so investigate an inactive slot and watch host disk space.
+If this replica volume must be rebuilt later, use a new volume and slot name:
+`pg_basebackup -C` cannot create a slot that already exists. Keep the old
+replica volume until the new one has caught up; never use `down -v` for this.
+
 ## 11. Mobile app (release APK, #194)
 
 **Jenkins builds it**: every build of `main` (after the image is published)
