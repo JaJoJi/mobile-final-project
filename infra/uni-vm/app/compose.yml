@@ -103,9 +103,10 @@ services:
     depends_on:
       postgres-primary:
         condition: service_healthy
-    # Same bootstrap as the dev compose: base backup from the primary on
-    # first start, then run as a hot standby. The replication password is
-    # read from the Vault-rendered file into PGPASSWORD (never in compose).
+    # Bootstrap a fresh replica from the primary and create a physical slot
+    # so the primary retains WAL while the replica is disconnected. The old
+    # pg_replica_data volume remains available for inspection after recovery.
+    # The replication password is read from Vault into PGPASSWORD.
     command:
       - bash
       - -c
@@ -116,12 +117,13 @@ services:
         if [ ! -s /var/lib/postgresql/data/PG_VERSION ]; then
           until pg_isready -h postgres-primary -U "$$POSTGRES_USER"; do sleep 2; done
           pg_basebackup -h postgres-primary -D /var/lib/postgresql/data \
-            -U replicator -P -Xs -R --checkpoint=fast
+            -U replicator -P -Xs -R --checkpoint=fast \
+            -C -S replica_recovery_20261008
           chown -R postgres:postgres /var/lib/postgresql/data
         fi
         exec docker-entrypoint.sh postgres
     volumes:
-      - pg_replica_data:/var/lib/postgresql/data
+      - pg_replica_recovery_20261008:/var/lib/postgresql/data
       - vault_secrets:/vault/secrets:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
@@ -451,6 +453,7 @@ services:
 volumes:
   pg_primary_data:
   pg_replica_data:
+  pg_replica_recovery_20261008:
   pg_backups:
   vault_data:
   # In-memory only: rendered secrets never touch the VM disk.
